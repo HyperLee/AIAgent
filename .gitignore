@@ -1,0 +1,20 @@
+# 本機憑證與設定
+.env
+.env.*
+!.env.example
+gemini-api-key.txt
+api-key.txt
+*.secrets.json
+appsettings.Local.json
+.secrets/
+secrets/
+
+# 日誌與記憶體傾印
+logs/
+*.log
+*.dmp
+*.dump
+
+# .NET 建置產物
+**/bin/
+**/obj/
