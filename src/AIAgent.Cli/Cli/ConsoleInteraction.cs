@@ -51,6 +51,6 @@ internal sealed class ConsoleInteraction(ITerminal terminal) : IBootstrapInterac
             terminal.Write(key.Value.KeyChar.ToString());
         }
     }
-    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken) => new(new HiddenKeyReader(terminal).Read(cancellationToken));
+    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken) => new(new HiddenKeyReader(terminal, Policy).Read(cancellationToken));
     public void ShowStatus(string safeMessage) => terminal.Write((Policy?.RedactForDisplay(safeMessage) ?? safeMessage) + Environment.NewLine);
 }

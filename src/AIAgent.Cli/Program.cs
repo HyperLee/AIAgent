@@ -1,6 +1,7 @@
 using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Llm;
 
 using var cancellation = new CancellationTokenSource();
 ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
@@ -12,6 +13,7 @@ try
         new WorkspaceResolver(new WorkspaceFileSystem()), interaction, interaction);
     using var result = await bootstrapper.StartAsync(args, cancellation.Token);
     interaction.Policy = result.Session?.Policy;
+    await using var model = result.Session is { } session ? new GeminiClient(session) : null;
     interaction.ShowStatus(StatusMessages.For(result));
     return result.ExitCode;
 }

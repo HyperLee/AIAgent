@@ -50,10 +50,10 @@ public sealed class FileSystemIntegrationTests
         var temp = NewDirectory();
         var app = Directory.CreateDirectory(Path.Combine(temp, "app")).FullName;
         var workspace = Directory.CreateDirectory(Path.Combine(temp, "workspace")).FullName;
-        File.WriteAllText(Path.Combine(app, "appsettings.json"), "{\"Gemini\":{\"Model\":null}}");
+        File.WriteAllText(Path.Combine(app, "appsettings.json"), "{\"Gemini\":{\"Model\":\"gemini-3.5-flash-lite\"}}");
         File.WriteAllText(Path.Combine(workspace, "appsettings.json"), "{\"ApiKey\":\"FAKE_CONFIG_ONLY\"}");
         var before = Directory.GetFiles(workspace);
-        Assert.IsNull(new SettingsLoader(app).Load().Model, "AC-004");
+        Assert.IsTrue(new SettingsLoader(app).Load().Model == "gemini-3.5-flash-lite", "AC-004");
         Assert.IsTrue(Directory.GetFiles(workspace).SequenceEqual(before), "AC-010");
         try { new SettingsLoader(Path.Combine(temp, "missing")).Load(); Assert.Fail("AC-004"); }
         catch (BootstrapFailureException ex) { Assert.IsTrue(ex.Code == BootstrapErrorCode.InvalidSettings, "AC-004"); }

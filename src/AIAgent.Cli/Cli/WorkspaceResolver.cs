@@ -11,6 +11,7 @@ public interface IWorkspaceResolver
 internal interface IWorkspaceFileSystem
 {
     string? GetLinkTarget(string path);
+    void EnsureDirectoryTraversable(string path);
     void EnsureDirectoryAccessible(string path);
 }
 
@@ -20,33 +21,38 @@ internal sealed class WorkspaceResolver(IWorkspaceFileSystem fileSystem) : IWork
     {
         try
         {
-            var path = Path.GetFullPath(options.WorkspaceArgument ?? options.StartupDirectory, options.StartupDirectory);
+            var supplied = options.WorkspaceArgument ?? options.StartupDirectory;
+            var path = Path.IsPathRooted(supplied) ? supplied : Path.Combine(options.StartupDirectory, supplied);
+            var root = Path.GetPathRoot(path)!;
+            var current = root;
+            var pending = new LinkedList<string>(path[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries));
             var states = new HashSet<string>(StringComparer.Ordinal);
             var links = 0;
-            while (true)
+            fileSystem.EnsureDirectoryTraversable(current);
+            while (pending.First is { } next)
             {
-                var root = Path.GetPathRoot(path)!;
-                var parts = path[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-                var current = root;
-                fileSystem.EnsureDirectoryAccessible(current);
-                var restarted = false;
-                for (var i = 0; i < parts.Length; i++)
+                pending.RemoveFirst();
+                if (next.Value == ".") continue;
+                if (next.Value == "..")
                 {
-                    current = Path.Combine(current, parts[i]);
-                    var target = fileSystem.GetLinkTarget(current);
-                    if (target is not null)
-                    {
-                        // Restart from the target root so links in the target's ancestors are also resolved.
-                        if (++links > 256 || !states.Add(current + "\0" + string.Join('/', parts[(i + 1)..]))) throw Failure();
-                        var resolved = Path.GetFullPath(target, Path.GetDirectoryName(current)!);
-                        path = Path.GetFullPath(Path.Combine([resolved, .. parts[(i + 1)..]]));
-                        restarted = true;
-                        break;
-                    }
-                    fileSystem.EnsureDirectoryAccessible(current);
+                    current = Path.GetDirectoryName(current) ?? root;
+                    continue;
                 }
-                if (!restarted) return new(current);
+                var candidate = Path.Combine(current, next.Value);
+                var target = fileSystem.GetLinkTarget(candidate);
+                if (target is null)
+                {
+                    fileSystem.EnsureDirectoryTraversable(candidate);
+                    current = candidate;
+                    continue;
+                }
+                if (++links > 256 || !states.Add(candidate + "\0" + string.Join('/', pending))) throw Failure();
+                // Resolve links before interpreting parent segments in their targets.
+                if (Path.IsPathRooted(target)) { root = Path.GetPathRoot(target)!; current = root; target = target[root.Length..]; }
+                foreach (var part in target.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Reverse()) pending.AddFirst(part);
             }
+            fileSystem.EnsureDirectoryAccessible(current);
+            return new(current);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -66,9 +72,13 @@ internal sealed class WorkspaceResolver(IWorkspaceFileSystem fileSystem) : IWork
 internal sealed class WorkspaceFileSystem : IWorkspaceFileSystem
 {
     public string? GetLinkTarget(string path) => new DirectoryInfo(path).LinkTarget;
-    public void EnsureDirectoryAccessible(string path)
+    public void EnsureDirectoryTraversable(string path)
     {
         if (!File.GetAttributes(path).HasFlag(FileAttributes.Directory)) throw new IOException("工作區不是目錄");
+    }
+    public void EnsureDirectoryAccessible(string path)
+    {
+        EnsureDirectoryTraversable(path);
         using var entries = Directory.EnumerateFileSystemEntries(path).GetEnumerator();
         _ = entries.MoveNext(); // Force opening the directory; do not retain or display entries.
     }

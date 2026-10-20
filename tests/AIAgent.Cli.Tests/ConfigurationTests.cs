@@ -30,16 +30,35 @@ public sealed class ConfigurationTests
     [TestMethod]
     public void AC004_StrictJsonAndApplicationLocation()
     {
-        foreach (var model in new[] { "null", "\" model-name \"" })
+        foreach (var model in new[] { "\"gemini-3.5-flash-lite\"", "\" model-name \"" })
         {
             var opened = "";
             var loader = new SettingsLoader("/application", path => { opened = path; return Json("{\"Gemini\":{\"Model\":" + model + "}}"); });
             var settings = loader.Load();
             Assert.IsTrue(opened == "/application/appsettings.json", "AC-004");
-            Assert.IsTrue(settings.Model == (model == "null" ? null : "model-name"), "AC-004");
+            Assert.IsTrue(settings.Model == (model.Contains("model-name", StringComparison.Ordinal) ? "model-name" : "gemini-3.5-flash-lite"), "AC-004");
         }
         string[] invalid = ["", "[]", "{}", "{\"gemini\":{\"Model\":null}}", "{\"Gemini\":null}", "{\"Gemini\":{}}", "{\"Gemini\":{\"Model\":12}}", "{\"Gemini\":{\"Model\":\"\"}}", "{\"Gemini\":{\"Model\":\" \"}}", "{\"Gemini\":{\"Model\":\"x\\ny\"}}", "{\"Gemini\":{\"Model\":null,\"Model\":null}}", "{\"Gemini\":{\"Model\":null},\"Gemini\":{\"Model\":null}}", "{\"Gemini\":{\"Model\":null,\"ApiKey\":\"FAKE_CONFIG_ONLY\"}}", "{\"Gemini\":{\"Model\":null},\"extra\":0}", "{\"Gemini\":{\"Model\":null,}}", "{/*comment*/\"Gemini\":{\"Model\":null}}"];
         foreach (var json in invalid) ExpectSettingsFailure(() => new SettingsLoader("/application", _ => Json(json)).Load());
+    }
+
+    [TestMethod]
+    public async Task GEMAC002_InvalidModelStopsBeforeWorkspaceAndKey()
+    {
+        string?[] values = [null, "", " ", "bad/model", "models/name", "https://host", "name?x", "name#x", "-name", "UPPER", "中文", "x\ny", "x\ty", new string('a', 129)];
+        foreach (var value in values)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new { Gemini = new { Model = value } });
+            var loader = new SettingsLoader("/application", _ => Json(json));
+            var fake = new BootstrapFake();
+            using var result = await new Bootstrapper(loader, fake, fake, fake, () => "/startup").StartAsync([], default);
+            Assert.IsTrue(result.ErrorCode == BootstrapErrorCode.InvalidSettings && result.ExitCode == 2 && fake.Calls.Count == 0, "GEM-AC-002");
+        }
+        foreach (var value in new[] { " a ", "0", "gemini-3.5-flash-lite", "a_b.c-1", new string('a', 128) })
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new { Gemini = new { Model = value } });
+            Assert.IsTrue(new SettingsLoader("/application", _ => Json(json)).Load().Model == value.Trim(), "GEM-AC-002");
+        }
     }
 
     [TestMethod]

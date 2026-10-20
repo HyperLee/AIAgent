@@ -76,6 +76,7 @@ internal sealed class FakeWorkspaceFileSystem : IWorkspaceFileSystem
     internal Exception? Failure { get; set; }
     internal string? OnlyListablePath { get; set; }
     public string? GetLinkTarget(string path) => Links.GetValueOrDefault(path);
+    public void EnsureDirectoryTraversable(string path) { if (Failure is not null) throw Failure; }
     public void EnsureDirectoryAccessible(string path)
     {
         if (Failure is not null) throw Failure;

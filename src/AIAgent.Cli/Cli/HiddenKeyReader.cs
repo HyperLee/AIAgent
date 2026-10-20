@@ -1,8 +1,9 @@
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Cli;
 
-internal sealed class HiddenKeyReader(ITerminal terminal)
+internal sealed class HiddenKeyReader(ITerminal terminal, ISensitiveDataPolicy? policy = null)
 {
     internal KeyInputResult Read(CancellationToken cancellationToken)
     {
@@ -29,7 +30,7 @@ internal sealed class HiddenKeyReader(ITerminal terminal)
         {
             while (true)
             {
-                terminal.Write("請輸入 API Key（不回顯）：");
+                Write("請輸入 API Key（不回顯）：");
                 var length = 0;
                 var invalid = false;
                 while (true)
@@ -41,13 +42,13 @@ internal sealed class HiddenKeyReader(ITerminal terminal)
                     if (IsControl(key, ConsoleKey.C, '\u0003')) return KeyInputResult.End(KeyInputStatus.Cancelled);
                     if (key.Key == ConsoleKey.Enter || key.KeyChar is '\r' or '\n')
                     {
-                        terminal.Write(Environment.NewLine);
+                        Write(Environment.NewLine);
                         var start = 0;
                         while (start < length && buffer[start] == ' ') start++;
                         while (length > start && buffer[length - 1] == ' ') length--;
                         if (!invalid && length > start) return KeyInputResult.Accept(buffer.AsSpan(start, length - start));
                         Array.Clear(buffer);
-                        terminal.Write("輸入無效，請重新輸入。" + Environment.NewLine);
+                        Write("輸入無效，請重新輸入。" + Environment.NewLine);
                         break;
                     }
                     if (key.Key is ConsoleKey.Backspace or ConsoleKey.Delete || key.KeyChar is '\b' or '\u007f')
@@ -63,6 +64,8 @@ internal sealed class HiddenKeyReader(ITerminal terminal)
         }
         finally { Array.Clear(buffer); }
     }
+
+    private void Write(string text) => terminal.Write(policy?.RedactForDisplay(text) ?? text);
 
     internal static bool IsControl(ConsoleKeyInfo key, ConsoleKey letter, char control) =>
         key.KeyChar == control || (key.Key == letter && key.Modifiers.HasFlag(ConsoleModifiers.Control));

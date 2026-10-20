@@ -18,13 +18,12 @@ internal sealed class SettingsLoader(string applicationDirectory, Func<string, S
             using var document = JsonDocument.Parse(stream);
             var gemini = OnlyProperty(document.RootElement, "Gemini");
             var model = OnlyProperty(gemini, "Model");
-            if (model.ValueKind == JsonValueKind.Null) return new(null);
             if (model.ValueKind != JsonValueKind.String) throw Invalid();
             var value = model.GetString()!;
-            if (value.Any(char.IsControl) || string.IsNullOrWhiteSpace(value)) throw Invalid();
+            if (value.Any(char.IsControl) || !ModelIdentifier.IsValid(value.Trim())) throw Invalid();
             return new(value.Trim());
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException)
         {
             throw Invalid();
         }
