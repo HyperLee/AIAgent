@@ -2,6 +2,7 @@ using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Llm;
+using AIAgent.Cli.Workspace;
 
 try
 {
@@ -19,7 +20,7 @@ try
     }
     using var chatInteraction = new ConsoleChatInteraction(terminal);
     var chat = new ChatApplication(chatInteraction, new ChatRuntimeFactory(), new ConversationContext(),
-        new UsageAccumulator(), ApplicationInstructions.Value);
+        new UsageAccumulator(), ApplicationInstructions.Value, new WorkspaceFilesFactory());
     interrupts.RouteTo(chat.Interrupt);
     return await chat.RunAsync(result.TakeSession(), cancellation.Token);
 }

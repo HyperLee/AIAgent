@@ -1,8 +1,8 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已完成子規格 01～03 的實作：啟動與隱藏 Key、Gemini 用戶端、文字聊天、最近 5 個完整回合及程序用量累計。整體 Agent 尚未開發完成，檔案工具與工具循環留待後續子規格。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已完成子規格 01～04 的實作：啟動與隱藏 Key、Gemini 用戶端、文字聊天、最近 5 個完整回合、程序用量累計，以及供後續工具使用的工作區唯讀服務與有限讀取快照。正式聊天仍只有文字對話；檔案工具派送與工具循環留待第 05 份子規格。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md) 與 [03：CLI 與 Context](specs/03-cli-and-context.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md) 與 [04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -11,10 +11,11 @@
 | 01：啟動與 API Key | 啟動參數、工作區確認、隱藏 Key 與非機密設定。 | 已實作。 |
 | 02：Gemini 用戶端 | 模型契約、SDK 轉接、請求限制、錯誤分類與資料保護。 | 已實作。 |
 | 03：CLI 與 Context | 文字聊天、指令、5 回合歷史、取消、換 Key 與用量累計。 | 已實作；真人終端機與真實 Gemini 驗收尚未執行。 |
-| 04～05 | 工作區操作邊界、檔案讀取、工具派送與工具循環。 | 尚未實作。 |
+| 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作內部唯讀服務；未接入正式聊天。 |
+| 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 尚未實作。 |
 | 06～07 | 檔案寫入、差異預覽與確認、衝突處理及整體驗收。 | 尚未實作。 |
 
-子規格 01～03 對應總規格的第一階段「可以聊天」，不等於總規格第三階段「可以修改」已完成。目前工作區僅供啟動確認及保存固定路徑；正式聊天不提供檔案工具，不能讀寫工作區檔案。CLI-AC-033～035 仍待人工驗收，實作完成不代表真實服務已驗證。
+子規格 01～03 對應總規格的第一階段「可以聊天」，不等於總規格第三階段「可以修改」已完成。第 04 份內部服務可列檔與讀檔，並已串接聊天清除及 session 生命週期；正式聊天仍不提供檔案工具，不能透過自然語言或本機指令讀寫工作區檔案。第二階段「可以讀檔」須等 04～05 完成整合驗收。CLI-AC-033～035 仍待人工驗收，實作完成不代表真實服務已驗證。
 
 ## 建置與啟動
 
@@ -84,6 +85,7 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 |---|---|
 | Core | `ChatApplication` 狀態機、`ConversationContext`、`UsageAccumulator` 與原有模型契約；新聊天契約為 internal，不依賴 SDK 型別。 |
 | Llm | session 綁定的 `GeminiClient`、SDK 轉換、受控 HTTP 傳輸、協定保存、回應與錯誤分類。 |
+| Workspace | 依固定工作區及當前政策驗證路徑、種類、連結與內容；有界列檔／讀取、明確 JSON 投影及記憶體快照。 |
 | Security | 當前 Key 的 Ordinal 完整子字串檢查、整次拒絕、顯示遮蔽與已知憑證欄位遮蔽。 |
 | Configuration／Cli | 嚴格設定、固定工作區、隱藏輸入、單一終端機讀取者、busy 控制觀察及安全純文字顯示。 |
 
@@ -200,8 +202,63 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 當時依已確認範圍修正既有產品 C# 的換行、檔尾、using 及空白，未放寬 `.editorconfig`；新增 `.gitattributes` 的 C# CRLF 屬性，使 Git 正規化與既有格式規則一致，未改寫 Git 設定或索引。未新增產品套件、設定或後續工具；未安裝 hooks、提交、推送或改寫歷史。暫存測試工作區保留，不使用批次刪除。
 
+## 第 04 份工作區唯讀服務
+
+`IWorkspaceFilesFactory.Create(session)` 為當前 session 建立一份內部服務，建構不掃描或讀取工作區。`ListFilesAsync(path, cancellationToken)` 與 `ReadFileAsync(path, cancellationToken)` 共用路徑、敏感資料與生命週期檢查；尚無工具 Schema、派送或模型呼叫循環。
+
+| 限制 | 固定值與行為 |
+|---|---|
+| 相對路徑 | 原始輸入最多 4096 UTF-16 單位；根使用 `.`；不 Trim、不展開變數或 `~`，不允許 `..`、絕對路徑或反斜線。 |
+| 列檔 | 只列第一層，最多掃描 4096 筆、回傳 200 筆；依完整相對 Path 的 Ordinal 排序。 |
+| 檔案 | 最多 131072 原始 bytes（含 BOM）；最多實讀 131073 bytes 偵測增長，完整讀取或整次拒絕。 |
+| 文字 | 嚴格 UTF-8；支援開頭 UTF-8 BOM，保留原 bytes、換行與檔尾；拒絕非法編碼及規格列出的控制字元。 |
+| 工具資料投影 | 完整 Response object 最多 196608 UTF-8 JSON bytes；列檔只移除尾端完整項目，讀檔超限不截斷內容。既有 Gemini 262144-byte 請求上限仍獨立生效。 |
+| 讀取快照 | 每份服務最多 20 個 Ordinal 相對路徑、原始 bytes 合計 1048576；成功重讀更新順序，查詢／列檔不刷新。 |
+
+敏感名稱、連結與特殊項目在列檔中隱藏，`SafetyFiltered` 固定為 true，不提供隱藏數量；`Truncated` 表示項目、掃描或結果容量限制導致不完整。掃描達限時只保證已觀察集合的排序前綴。
+
+讀取前先使同路徑舊快照失效，成功時才發布新 bytes、BOM 與 SHA-256。`/clear`、強制 Context 重設、接受替換 Key、退出與服務釋放共同清除快照；世代檢查防止清除後的遲到操作補回成功。呼叫前已取消則不做 I/O、不移除既有快照；並行第二操作立即拒絕，釋放會取消並等待活動操作。
+
+每次操作重新檢查固定根與工作區內沿途種類、連結及狀態。macOS 轉接器區分普通檔案、目錄、連結與 FIFO／socket 等特殊項目；不以試讀辨識種類。應用層前後檢查無法保證抵抗精確交換後還原、硬連結其他名稱或掛載變動，並非作業系統沙盒。當前只實測 macOS arm64；其他架構／平台未驗證。
+
+當前 Key 出現在 path、名稱、內容或投影的實際欄位名稱／字串值時整次拒絕，不回傳遮蔽後的成功內容。明確 writer 不匯出完整路徑、快照或政策；若短 Key 也命中固定失敗投影，`TryCreateResponse` 回傳 false，留給第 05 份停止送出。敏感名稱規則與當前 Key 比對不等於通用秘密掃描。
+
+## 第 04 份子規格驗收對照
+
+| 驗收案例 | 主要測試檔與驗證內容 |
+|---|---|
+| WS-AC-001～002、020、028 | `WorkspaceContractTests`、`WorkspaceFilesTests`：工廠無 I/O、資料所有權、固定安全結果、JSON 欄位與短 Key。 |
+| WS-AC-003～008 | `WorkspacePathTests`、`WorkspaceBoundaryTests`、`WorkspaceReadIntegrationTests`：路徑、敏感清單、根邊界、真實內外／壞／循環連結及 FIFO／socket。 |
+| WS-AC-009～012 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：第一層列檔、Ordinal 排序、200／4096 邊界、容量截斷、例外及資源關閉。 |
+| WS-AC-013～020 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`、`WorkspaceReadIntegrationTests`：UTF-8／BOM／換行、控制字元、大小／JSON 精確邊界、敏感內容及狀態變更。 |
+| WS-AC-021～024、027 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：Ordinal 快照、容量／淘汰、失效、Clear／取消、並行、釋放等待及清理失敗。 |
+| WS-AC-025～026、030 | `ChatWorkspaceTests` 及完整既有回歸：真實 ChatApplication 的清除／換 Key／建構失敗清理；Tools 空、無額外生成，既有 Gemini 請求限制保留。 |
+| WS-AC-029 | `WorkspaceReadIntegrationTests`：真實暫存工作區逐檔比較 bytes 與項目，檔案內假指令不觸發額外操作。 |
+| WS-AC-031～034 | 既有 PTY 另記；真人終端機未驗證。真實工具往返與寫入交接留待第 05～07 份。 |
+
+## 第 04 份子規格實作驗證紀錄（2026-10-21）
+
+在 macOS arm64、.NET SDK 10.0.100 執行，以下為本次實際結果；53 個新增測試加上原有 107 個，合計 160 個。完整產品驗收對應 WS-AC-001～030；PTY 單獨對應 WS-AC-031，不將真人或後續工具流程計入。
+
+| 實際命令 | 退出碼與結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；依賴已還原。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；160 通過、0 失敗、0 略過，全部離線。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；維持啟動用法，沒有新增檔案指令。 |
+| `python3 tests/terminal_smoke.py` | 0；既有 24 組 PTY 通過，包含聊天、清除、換 Key、取消／退出及終端機復原。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --verify-no-changes` | 0。 |
+| `git diff --check` | 0；新檔另做 no-index 空白檢查；變更 C# 為 CRLF、無檔尾換行。 |
+| 保護檔案及文件檢查 | 總規格、01～04 規格、設定、專案／套件版本、格式規則及應用指示均未修改；README 連結存在、程式碼區塊閉合。 |
+| WS-AC-032：真人終端機 | 未執行，不以 PTY 或測試 host 代替。 |
+| WS-AC-033～034：真實 Gemini 工具往返及寫入交接 | 留待第 05～07 份；本次未驗證。 |
+
+一次獨立唯讀程式審查指出兩項需修正問題，均先加入失敗回歸再修正：前置 `./` 不得繞過磁碟機語法拒絕；根目錄於初次子項目檢查、開啟、列舉或讀取失敗期間消失時，須回報 WorkspaceUnavailable 並清空所有快照。同時驗證 Clear 與根失效競爭仍以舊世代取消收尾。修正後重新執行上表完整驗收通過，無待處理的審查項目。
+
+程式與測試沒有新增產品套件、設定、工具派送或寫入方法；測試資料只使用假值，隔離暫存工作區保留，不批次刪除。本次未提交、推送或改寫歷史。
+
 ## 後續階段
 
-第 04～05 份子規格將接續工作區邊界、實際列檔／讀檔、工具派送、完整工具鏈、讀取快照及每回合最多 5 次生成；第 06～07 份子規格將處理寫入確認、衝突與整體交付，以上均尚未實作。第 03 份子規格正式請求 Tools 為空，不能讀寫工作區檔案。
+第 04 份已建立工作區唯讀服務、有限快照與清除串接。第 05 份接續工具 Schema、登錄、派送、呼叫配對、完整工具鏈及每回合最多 5 次生成；第 06～07 份處理寫入確認、衝突與整體交付。正式請求 Tools 仍為空，每個文字回合仍至多一次生成；沒有自然語言讀檔、本機讀檔指令或寫入能力。
 
 **真實 Gemini API 未驗證。** CLI-AC-033～035 需使用者另外操作。自動測試與 PTY 不取得真實 Key，也不證明服務可用、回答正確或已讀寫檔案。

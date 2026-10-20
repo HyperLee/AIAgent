@@ -1,7 +1,9 @@
+using AIAgent.Cli.Workspace;
+
 namespace AIAgent.Cli.Core;
 
 internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntimeFactory runtimeFactory,
-    ConversationContext context, UsageAccumulator usage, string systemInstruction)
+    ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory)
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _stop = new();
@@ -9,6 +11,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
     private TaskCompletionSource? _turnSignal;
     private BootstrapSession? _session;
     private ILlmClient? _client;
+    private IWorkspaceFiles? _workspace;
     private ChatState _state = ChatState.AwaitingInput;
     private StopReason _stopReason;
     private bool _cancelTurn;
@@ -31,6 +34,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 interaction.SetPolicy(initialSession.Policy);
                 policyReady = true;
                 _client = runtimeFactory.CreateClient(initialSession);
+                _workspace = workspaceFilesFactory.Create(initialSession);
                 interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
                     "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
             }
@@ -59,7 +63,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 }
                 if (command == "/clear")
                 {
-                    context.Clear(); LastOutcome = null;
+                    ClearConversationState(); LastOutcome = null;
                     interaction.Show(new(ChatEventKind.ContextCleared, text: "對話已清除。"));
                     continue;
                 }
@@ -87,12 +91,16 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
         {
             SetState(ChatState.Stopping);
             if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
+            try { ClearConversationState(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
+            try { await DisposeWorkspaceAsync(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
             try { await DisposeClientAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { _session?.Dispose(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             _session = null;
-            context.Clear(); LastOutcome = null;
+            LastOutcome = null;
             registration.Dispose();
             lock (_gate) _finalized = true;
             _stop.Dispose();
@@ -125,7 +133,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             var (status, error, reset) = Validate(result);
             lock (_gate)
             {
-                if (reset) context.Clear();
+                if (reset) ClearConversationState();
                 // This lock is the commit point: signal callbacks only set flags under the same gate.
                 if (_cancelTurn || _stopReason != StopReason.None)
                 { status = LlmStatus.Cancelled; error = LlmErrorCode.None; }
@@ -188,25 +196,45 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             RequestStop(input.Status switch { KeyInputStatus.EndOfInput => StopReason.Normal, KeyInputStatus.Cancelled => StopReason.Cancelled, _ => StopReason.Failure });
             return;
         }
-        context.Clear(); LastOutcome = null;
+        ClearConversationState(); LastOutcome = null;
+        await DisposeWorkspaceAsync();
         BootstrapSession? replacement = null;
         ILlmClient? client = null;
+        IWorkspaceFiles? workspace = null;
         try
         {
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             client = runtimeFactory.CreateClient(replacement);
+            workspace = workspaceFilesFactory.Create(replacement);
             interaction.SetPolicy(replacement.Policy);
             var old = _session;
-            _session = replacement; _client = client;
-            replacement = null; client = null;
+            _session = replacement; _client = client; _workspace = workspace;
+            replacement = null; client = null; workspace = null;
             old.Dispose();
             interaction.Show(new(ChatEventKind.ContextCleared, text: "認證資料已更新；對話已清除，請重新輸入訊息。"));
         }
         finally
         {
-            try { if (client is not null) await client.DisposeAsync(); }
-            finally { replacement?.Dispose(); }
+            try { if (workspace is not null) await workspace.DisposeAsync(); }
+            finally
+            {
+                try { if (client is not null) await client.DisposeAsync(); }
+                finally { replacement?.Dispose(); }
+            }
         }
+    }
+
+    private void ClearConversationState()
+    {
+        context.Clear();
+        _workspace?.Snapshots.Clear();
+    }
+
+    private async Task DisposeWorkspaceAsync()
+    {
+        var workspace = _workspace;
+        _workspace = null;
+        if (workspace is not null) await workspace.DisposeAsync();
     }
 
     private async Task DisposeClientAsync()

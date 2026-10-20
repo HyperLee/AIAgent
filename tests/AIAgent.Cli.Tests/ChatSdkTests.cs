@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Llm;
+using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Tests;
 
@@ -13,7 +14,7 @@ public sealed class ChatSdkTests
     {
         var interaction = Inputs("one", "two", "/exit");
         var handler = new GeminiHandler { Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response("[{\"text\":\"private thought\",\"thought\":true},{\"text\":\"visible\",\"thoughtSignature\":\"c2lnbmF0dXJl\"}]"))) };
-        var app = new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test instruction");
+        var app = new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test instruction", new WorkspaceFilesFactory());
         Assert.AreEqual(0, await app.RunAsync(GeminiFixtures.Session(), default));
         Assert.AreEqual(2, handler.Calls);
         using var body = JsonDocument.Parse(handler.Bodies[1]);
@@ -32,7 +33,7 @@ public sealed class ChatSdkTests
         handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls == 2
             ? GeminiFixtures.Response("[{\"text\":\"FAKE_KEY_\"},{\"text\":\"FOR_TESTS_ONLY\"}]", usage: "{\"totalTokenCount\":17}") : GeminiFixtures.Text()));
         var usage = new UsageAccumulator();
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "test instruction").RunAsync(GeminiFixtures.Session(), default));
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "test instruction", new WorkspaceFilesFactory()).RunAsync(GeminiFixtures.Session(), default));
         Assert.AreEqual(3, handler.Calls);
         using var body = JsonDocument.Parse(handler.Bodies[2]);
         Assert.AreEqual(1, body.RootElement.GetProperty("contents").GetArrayLength());
@@ -52,7 +53,7 @@ public sealed class ChatSdkTests
             var context = new ConversationContext();
             var turns = 0;
             interaction.OnShow = e => { if (e.Kind == ChatEventKind.Usage) turns = context.CompletedTurnCount; };
-            Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction").RunAsync(GeminiFixtures.Session(), default));
+            Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction", new WorkspaceFilesFactory()).RunAsync(GeminiFixtures.Session(), default));
             return (handler, interaction, turns);
         }
         var calibration = await Run("history");
@@ -77,7 +78,7 @@ public sealed class ChatSdkTests
         var old = new GeminiHandler { Respond = (_, _) => Task.FromResult(GeminiHandler.Json("{\"error\":{\"message\":\"" + GeminiFixtures.Key + "\"}}", System.Net.HttpStatusCode.Unauthorized)) };
         var replacement = new GeminiHandler { Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Text("prefixFAKE_NEW_KEY_ONLYsuffix"))) };
         var factory = new SdkChatFactory(old, replacement);
-        Assert.AreEqual(0, await new ChatApplication(interaction, factory, new(), new(), "instruction").RunAsync(GeminiFixtures.Session(), default));
+        Assert.AreEqual(0, await new ChatApplication(interaction, factory, new(), new(), "instruction", new WorkspaceFilesFactory()).RunAsync(GeminiFixtures.Session(), default));
         Assert.AreEqual(1, old.Calls);
         Assert.AreEqual(1, replacement.Calls);
         using var body = JsonDocument.Parse(replacement.Bodies[0]);

@@ -2,6 +2,7 @@ using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Llm;
+using AIAgent.Cli.Workspace;
 
 using Microsoft.Win32.SafeHandles;
 
@@ -17,7 +18,7 @@ try
     using var result = await new Bootstrapper(new FixedSettings(), new WorkspaceResolver(new WorkspaceFileSystem()), bootstrap, bootstrap).StartAsync([], cancellation.Token);
     if (result.Status != BootstrapStatus.Ready) { bootstrap.ShowStatus(StatusMessages.For(result)); return result.ExitCode; }
     using var interaction = new ConsoleChatInteraction(terminal);
-    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction");
+    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new WorkspaceFilesFactory());
     interrupts.RouteTo(chat.Interrupt);
     return await chat.RunAsync(result.TakeSession(), cancellation.Token);
 }
