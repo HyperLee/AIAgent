@@ -1,7 +1,9 @@
 using System.Text.Json;
+
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
+
 using Google.GenAI;
 using Google.GenAI.Types;
 
@@ -30,12 +32,21 @@ public sealed class GeminiClient : ILlmClient
         model = session.Settings.Model ?? "";
         policy = session.Policy;
         if (!ModelIdentifier.IsValid(model)) { handler.Dispose(); return; }
-        transport = new GeminiTransport(handler, model, policy);
-        http = new HttpClient(transport) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
-        // The SDK owns the necessary string copy. Never retain a second application-level string key.
-        sdk = new Client(enterprise: false, vertexAI: false, apiKey: new string(session.Secrets.AuthenticationKey),
-            httpOptions: new HttpOptions { BaseUrl = GeminiLimits.BaseUrl, ApiVersion = "v1beta", Timeout = GeminiLimits.RequestTimeoutSeconds * 1000, RetryOptions = new HttpRetryOptions { Attempts = 1 } },
-            clientOptions: new ClientOptions { HttpClientFactory = () => http! });
+        try
+        {
+            transport = new GeminiTransport(handler, model, policy);
+            http = new HttpClient(transport) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+            // The SDK owns the necessary string copy. Never retain a second application-level string key.
+            sdk = new Client(enterprise: false, vertexAI: false, apiKey: new string(session.Secrets.AuthenticationKey),
+                httpOptions: new HttpOptions { BaseUrl = GeminiLimits.BaseUrl, ApiVersion = "v1beta", Timeout = GeminiLimits.RequestTimeoutSeconds * 1000, RetryOptions = new HttpRetryOptions { Attempts = 1 } },
+                clientOptions: new ClientOptions { HttpClientFactory = () => http! });
+        }
+        catch
+        {
+            try { if (http is not null) http.Dispose(); else handler.Dispose(); }
+            finally { lifetime.Dispose(); }
+            throw;
+        }
     }
 
     public Task<LlmResult> GenerateAsync(LlmRequest request, CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+
 using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Core;
@@ -37,6 +38,13 @@ public sealed class BootstrapResult : IDisposable
         ? throw new ArgumentException("狀態無效") : new(status, BootstrapErrorCode.None, null);
     internal static BootstrapResult Failed(BootstrapErrorCode errorCode) => errorCode == BootstrapErrorCode.None
         ? throw new ArgumentException("錯誤碼無效") : new(BootstrapStatus.Failed, errorCode, null);
+    internal BootstrapSession TakeSession()
+    {
+        if (Status != BootstrapStatus.Ready || Session is null) throw new InvalidOperationException("無可移交的工作階段");
+        var session = Session;
+        Session = null;
+        return session;
+    }
     public void Dispose() { Session?.Dispose(); Session = null; }
     public override string ToString() => "[BootstrapResult]";
 }

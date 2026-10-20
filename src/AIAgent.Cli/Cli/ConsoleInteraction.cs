@@ -1,6 +1,7 @@
+using System.Text;
+
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
-using System.Text;
 
 namespace AIAgent.Cli.Cli;
 

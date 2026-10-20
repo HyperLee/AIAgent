@@ -1,0 +1,2 @@
+# Match .editorconfig in the working tree; keep Git text normalized.
+*.cs text eol=crlf

@@ -19,6 +19,11 @@ internal sealed class SystemTerminal : ITerminal
 
     public void Write(string text) => Console.Write(text);
 
+    public void DiscardBufferedInput()
+    {
+        while (Console.KeyAvailable) _ = Console.ReadKey(intercept: true);
+    }
+
     private sealed class InputScope : IDisposable
     {
         private readonly bool original;

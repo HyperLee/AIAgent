@@ -1,5 +1,7 @@
 using System.Text.Json;
+
 using AIAgent.Cli.Core;
+
 using Google.GenAI.Types;
 
 namespace AIAgent.Cli.Llm;

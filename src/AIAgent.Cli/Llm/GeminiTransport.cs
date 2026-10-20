@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
 
@@ -75,10 +76,14 @@ internal sealed class GeminiTransport(HttpMessageHandler inner, string model, IS
         }
         return status switch
         {
-            401 => LlmErrorCode.AuthenticationFailed, 404 => LlmErrorCode.ModelUnavailable,
-            403 => LlmErrorCode.PermissionDenied, 429 => LlmErrorCode.QuotaOrRateLimited,
-            400 or 422 => LlmErrorCode.InvalidRequest, 408 or 504 => LlmErrorCode.Timeout,
-            >= 500 and <= 599 => LlmErrorCode.ServiceUnavailable, _ => LlmErrorCode.InvalidResponse
+            401 => LlmErrorCode.AuthenticationFailed,
+            404 => LlmErrorCode.ModelUnavailable,
+            403 => LlmErrorCode.PermissionDenied,
+            429 => LlmErrorCode.QuotaOrRateLimited,
+            400 or 422 => LlmErrorCode.InvalidRequest,
+            408 or 504 => LlmErrorCode.Timeout,
+            >= 500 and <= 599 => LlmErrorCode.ServiceUnavailable,
+            _ => LlmErrorCode.InvalidResponse
         };
     }
 

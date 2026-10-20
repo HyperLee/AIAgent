@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/AIAgent.Cli/AIAgent.Cli.csproj" />
+    <ProjectReference Include="../AIAgent.Cli.TerminalHost/AIAgent.Cli.TerminalHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

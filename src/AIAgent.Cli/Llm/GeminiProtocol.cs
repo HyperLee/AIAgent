@@ -1,6 +1,8 @@
 using System.Text.Json;
+
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
+
 using Google.GenAI.Types;
 
 namespace AIAgent.Cli.Llm;
@@ -69,7 +71,8 @@ internal static class GeminiProtocol
     internal static GenerateContentConfig Config(LlmRequest request) => new()
     {
         SystemInstruction = new Content { Parts = [new Part { Text = request.SystemInstruction }] },
-        CandidateCount = GeminiLimits.CandidateCount, MaxOutputTokens = GeminiLimits.MaxOutputTokens,
+        CandidateCount = GeminiLimits.CandidateCount,
+        MaxOutputTokens = GeminiLimits.MaxOutputTokens,
         AutomaticContinuation = false,
         Tools = request.Tools.Count == 0 ? null : [new Tool { FunctionDeclarations = request.Tools.Select(t => new FunctionDeclaration { Name = t.Name, Description = t.Description, ParametersJsonSchema = t.Parameters }).ToList() }]
     };

@@ -1,5 +1,6 @@
-using AIAgent.Cli.Core;
 using System.Text.Json;
+
+using AIAgent.Cli.Core;
 
 namespace AIAgent.Cli.Configuration;
 

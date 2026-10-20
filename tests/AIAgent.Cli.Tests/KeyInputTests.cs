@@ -91,5 +91,6 @@ internal sealed class FakeTerminal : ITerminal
         return null;
     }
     public void Write(string text) => Output += text;
+    public void DiscardBufferedInput() { }
     private sealed class Scope(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }

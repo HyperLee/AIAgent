@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """macOS PTY smoke checks. Only synthetic keys; never print/capture raw terminal data to disk.
 
-This is automated PTY evidence, not the AC-014/015 human terminal acceptance.
+This is automated PTY evidence, not the CLI-AC-033/034/035 human acceptance.
 Temporary workspaces are retained; no recursive cleanup is performed.
 """
 import argparse
@@ -19,7 +19,8 @@ import time
 FAKE_KEY = b"FAKE_KEY_FOR_TERMINAL_TESTS_ONLY"
 KEY_PROMPT = "請輸入 API Key（不回顯）：".encode()
 CONFIRM = "使用此工作區？[y/N]".encode()
-READY = "啟動檢查完成；聊天功能尚未接入".encode()
+READY = "聊天已就緒".encode()
+CHAT_PROMPT = "你> ".encode()
 
 
 class CaseFailure(Exception):
@@ -32,14 +33,14 @@ def check(condition, case):
 
 
 class TerminalProcess:
-    def __init__(self, command, workspace):
+    def __init__(self, command, workspace, extra_fds=()):
         self.master, self.slave = os.openpty()
         self.original = termios.tcgetattr(self.slave)
         self.output = bytearray()
 
         self.process = subprocess.Popen(
             command, cwd=workspace, stdin=self.slave, stdout=self.slave,
-            stderr=self.slave,
+            stderr=self.slave, pass_fds=extra_fds,
         )
 
     def pump(self):
@@ -55,7 +56,8 @@ class TerminalProcess:
         deadline = time.monotonic() + 8
         while self.output.count(marker) < count:
             self.pump()
-            check(time.monotonic() < deadline and self.process.poll() is None, "PTY-prompt")
+            if self.output.count(marker) < count:
+                check(time.monotonic() < deadline and self.process.poll() is None, "PTY-prompt")
 
     def send(self, data):
         os.write(self.master, data)
@@ -88,6 +90,13 @@ def run_case(command, case, actions, expected_exit=0, ready=False):
         for marker, data, count in actions:
             terminal.wait_for(marker, count)
             terminal.send(data)
+        if ready:
+            terminal.wait_for(CHAT_PROMPT)
+            terminal.send(b"/help\r")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.send(b"/clear\r")
+            terminal.wait_for(CHAT_PROMPT, 3)
+            terminal.send(b"/exit\r")
         terminal.finish(expected_exit)
         check((READY in terminal.output) == ready, case)
         check(os.listdir(workspace) == [], "PTY-no-workspace-writes")
@@ -99,6 +108,7 @@ def run_case(command, case, actions, expected_exit=0, ready=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", type=Path, default=Path(__file__).resolve().parents[1] / "src/AIAgent.Cli/bin/Debug/net10.0/AIAgent.Cli.dll")
+    parser.add_argument("--host", type=Path, default=Path(__file__).resolve().parents[1] / "tests/AIAgent.Cli.TerminalHost/bin/Debug/net10.0/AIAgent.Cli.TerminalHost.dll")
     args = parser.parse_args()
     check(sys.platform == "darwin", "macOS-required")
     command = ["dotnet", str(args.app.resolve())]
@@ -142,7 +152,134 @@ def main():
     check(help_result.returncode == 0 and KEY_PROMPT not in help_result.stdout, "redirect-help")
     invalid = subprocess.run(command + ["--key", "FAKE_ARGUMENT_ONLY"], stdin=subprocess.DEVNULL, capture_output=True, timeout=8)
     check(invalid.returncode == 2 and b"FAKE_ARGUMENT_ONLY" not in invalid.stdout + invalid.stderr, "argument-no-echo")
+    # The expected output may already exist when a fast child exits.
+    completed = TerminalProcess([sys.executable, "-c", "print('PTY_COMPLETE', flush=True)"], tempfile.mkdtemp(prefix="aiagent-pty-completed-"))
+    try:
+        completed.process.wait(timeout=8)
+        completed.wait_for(b"PTY_COMPLETE")
+        completed.finish(0)
+    finally:
+        completed.close()
     print("PTY-redirection-help-arguments: PASS", flush=True)
+    chat_cases(["dotnet", str(args.host.resolve())])
+
+
+def chat_cases(host):
+    def start(scenario, gate_fd=None):
+        workspace = tempfile.mkdtemp(prefix="aiagent-chat-pty-")
+        command = host + [scenario] + ([] if gate_fd is None else [str(gate_fd)])
+        terminal = TerminalProcess(command, workspace, () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM)
+        terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT)
+        terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT)
+        return terminal
+
+    terminal = start("text")
+    try:
+        before = len(terminal.output)
+        terminal.send(" 安全中文😀X".encode())
+        for _ in range(3):
+            terminal.pump()
+        check("安全中文".encode() not in terminal.output[before:], "CLI-AC-029-hidden-before-enter")
+        terminal.send(b"\x7f\x7f" + "字\r\n".encode())
+        terminal.wait_for(CHAT_PROMPT, 2)
+        check("使用者： 安全中文字".encode() in terminal.output, "CLI-AC-032-unicode-delete")
+        terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT, 3)
+        check("已阻擋本次傳送".encode() in terminal.output, "CLI-AC-029-sensitive-input")
+        terminal.send(b"x" * 16385 + b"\x7f\r")
+        terminal.wait_for(CHAT_PROMPT, 4)
+        check("輸入無效或超過 16384".encode() in terminal.output, "CLI-AC-032-overflow")
+        terminal.send(b"control\r")
+        terminal.wait_for(CHAT_PROMPT, 5)
+        check(b"\\u001B]0;blocked\\u0007" in terminal.output, "CLI-AC-032-control-output")
+        check(b"\x1b]0;blocked\x07" not in terminal.output, "CLI-AC-032-no-raw-control-output")
+        terminal.send(b"/exit\r")
+        terminal.finish(0)
+        print("CLI-AC-029/032-text-unicode-controls: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for external in (False, True):
+        terminal = start("busy")
+        try:
+            terminal.send(b"question\r")
+            terminal.wait_for("處理中".encode())
+            terminal.send(b"DISCARDED_BUSY_TEXT/exit")
+            if external:
+                os.kill(terminal.process.pid, signal.SIGINT)
+            else:
+                terminal.send(b"\x03\x03")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check(b"DISCARDED_BUSY_TEXT" not in terminal.output, "CLI-AC-030-no-queue")
+            terminal.send(b"next\r")
+            terminal.wait_for(CHAT_PROMPT, 3)
+            if external:
+                os.kill(terminal.process.pid, signal.SIGINT)
+            else:
+                terminal.send(b"\x03")
+            terminal.finish(130)
+            print("CLI-AC-030-busy-" + ("SIGINT" if external else "CtrlC") + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    for scenario, control, expected in (("busy", b"\x04", 0), ("failure", b"", 1)):
+        terminal = start(scenario)
+        try:
+            terminal.send(b"question\r")
+            terminal.wait_for("處理中".encode())
+            if control:
+                terminal.send(control)
+            terminal.finish(expected)
+            print("CLI-AC-030-" + scenario + "-exit-" + str(expected) + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    for control, expected in ((b"\x04", 0), (b"\x03", 130)):
+        read_fd, write_fd = os.pipe()
+        terminal = start("auth", read_fd)
+        os.close(read_fd)
+        try:
+            terminal.send(b"question\r")
+            terminal.wait_for("處理中".encode())
+            terminal.send(b"yes\rFAKE_BUSY_KEY_ONLY\r")
+            os.write(write_fd, b"1")
+            terminal.wait_for("重新輸入 Key？[y/N]".encode())
+            terminal.send(b"invalid\ryes\r")
+            terminal.wait_for(KEY_PROMPT, 2)
+            terminal.send(b"FAKE_NEW_KEY_ONLY\r")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check(b"FAKE_NEW_KEY_ONLY" not in terminal.output and b"FAKE_BUSY_KEY_ONLY" not in terminal.output, "CLI-AC-031-no-key-echo")
+            check(terminal.output.count("處理中".encode()) == 1, "CLI-AC-031-no-validation-generation")
+            terminal.send(control)
+            terminal.finish(expected)
+            print("CLI-AC-031-auth-" + str(expected) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
+
+    for key_entry, control, expected in ((False, b"\x04", 0), (False, b"\x03", 130), (True, b"\x04", 0), (True, b"\x03", 130)):
+        read_fd, write_fd = os.pipe()
+        terminal = start("auth", read_fd)
+        os.close(read_fd)
+        try:
+            terminal.send(b"question\r")
+            terminal.wait_for("處理中".encode())
+            os.write(write_fd, b"1")
+            terminal.wait_for("重新輸入 Key？[y/N]".encode())
+            if key_entry:
+                terminal.send(b"yes\r\n")
+                terminal.wait_for(KEY_PROMPT, 2)
+                terminal.send(b"FAKE_PARTIAL_ONLY")
+            terminal.send(control)
+            terminal.finish(expected)
+            check(b"FAKE_PARTIAL_ONLY" not in terminal.output, "CLI-AC-031-partial-discard")
+            print("CLI-AC-031-abort-" + ("key" if key_entry else "choice") + "-" + str(expected) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
 
 
 if __name__ == "__main__":
