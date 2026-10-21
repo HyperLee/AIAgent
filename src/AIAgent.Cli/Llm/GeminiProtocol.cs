@@ -34,22 +34,22 @@ internal static class GeminiProtocol
                     contents.Add(new Content { Role = "user", Parts = [new Part { Text = message.UserText }] });
                     break;
                 case LlmMessageKind.Model:
-                    if (contents.Count == 0 || previous == LlmMessageKind.Model || pending.Count != 0 || message.Protocol is not GeminiModelContent original || !ReferenceEquals(original.Owner, owner)) throw Invalid();
+                    if (contents.Count == 0 || previous == LlmMessageKind.Model || pending.Count != 0 || message.Protocol is not GeminiModelContent original || !ReferenceEquals(original.Owner, owner) || !ToolCallPairing.MatchesProjection(message, original.Calls)) throw Invalid();
                     var cloned = JsonSerializer.Deserialize<Content>(JsonSerializer.SerializeToUtf8Bytes(original.Content)) ?? throw Invalid();
                     Check(JsonSerializer.SerializeToElement(cloned), policy, ContentBoundary.ModelInput);
                     contents.Add(cloned); pending = original.Calls;
                     break;
                 case LlmMessageKind.ToolResults:
-                    if (previous != LlmMessageKind.Model || pending.Count == 0 || message.Results.Count != pending.Count || message.Results.Any(r => r is null)) throw Invalid();
+                    if (previous != LlmMessageKind.Model || !ToolCallPairing.MatchesResults(pending, message.Results)) throw Invalid();
                     var parts = new List<Part>();
-                    foreach (var call in pending)
+                    for (var index = 0; index < pending.Count; index++)
                     {
-                        var matches = message.Results.Where(r => r.PartIndex == call.PartIndex && r.Name == call.Name && r.CallId == call.CallId).ToArray();
-                        if (matches.Length != 1 || matches[0].Response.ValueKind != JsonValueKind.Object) throw Invalid();
-                        Check(matches[0].Response, policy, ContentBoundary.ToolResult);
-                        Check(matches[0].Name, policy, ContentBoundary.ToolResult);
-                        if (matches[0].CallId is { } id) Check(id, policy, ContentBoundary.ToolResult);
-                        parts.Add(new Part { FunctionResponse = new FunctionResponse { Id = call.CallId, Name = call.Name, Response = Dictionary(matches[0].Response) } });
+                        var call = pending[index];
+                        var result = message.Results[index];
+                        Check(result.Response, policy, ContentBoundary.ToolResult);
+                        Check(result.Name, policy, ContentBoundary.ToolResult);
+                        if (result.CallId is { } id) Check(id, policy, ContentBoundary.ToolResult);
+                        parts.Add(new Part { FunctionResponse = new FunctionResponse { Id = call.CallId, Name = call.Name, Response = Dictionary(result.Response) } });
                     }
                     contents.Add(new Content { Role = "user", Parts = parts }); pending = [];
                     break;

@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Llm;
 
@@ -65,7 +66,7 @@ public sealed class GeminiProtocolTests
         {
             var result = await client.GenerateAsync(new("instruction", messages, [GeminiFixtures.Tool()]), default);
             Assert.IsTrue(result.Status == LlmStatus.ToolCalls, "GEM-AC-011");
-            var results = result.ToolCalls.Select(GeminiFixtures.Result).Reverse().ToArray();
+            var results = result.ToolCalls.Select(GeminiFixtures.Result).ToArray();
             messages.Add(result.ModelMessage!); messages.Add(LlmMessage.FromToolResults(results));
         }
         var completed = await client.GenerateAsync(new("instruction", messages, [GeminiFixtures.Tool()]), default);
@@ -87,13 +88,13 @@ public sealed class GeminiProtocolTests
         await using var client = new GeminiClient(session, handler);
         var first = await client.GenerateAsync(GeminiFixtures.Request(tools: [GeminiFixtures.Tool()]), default);
         var a = GeminiFixtures.Result(first.ToolCalls[0]); var b = GeminiFixtures.Result(first.ToolCalls[1]);
-        var invalid = new IReadOnlyList<LlmToolResult>[] { [a], [a,a], [a,new(b.PartIndex,null,"wrong",b.Response)], [a,new(b.PartIndex,"wrong",b.Name,b.Response)], [a,new(8,null,b.Name,b.Response)] };
+        var invalid = new IReadOnlyList<LlmToolResult>[] { [a], [a, a], [a, new(b.PartIndex, null, "wrong", b.Response)], [a, new(b.PartIndex, "wrong", b.Name, b.Response)], [a, new(8, null, b.Name, b.Response)] };
         foreach (var results in invalid)
         {
             var result = await client.GenerateAsync(new("instruction", [LlmMessage.FromUserText("question"), first.ModelMessage!, LlmMessage.FromToolResults(results)], [GeminiFixtures.Tool()]), default);
             Assert.IsTrue(result.ErrorCode == LlmErrorCode.InvalidRequest && !result.RequestDispatched && handler.Calls == 1, "GEM-AC-012");
         }
-        var valid = await client.GenerateAsync(new("instruction", [LlmMessage.FromUserText("question"), first.ModelMessage!, LlmMessage.FromToolResults([b,a])], [GeminiFixtures.Tool()]), default);
+        var valid = await client.GenerateAsync(new("instruction", [LlmMessage.FromUserText("question"), first.ModelMessage!, LlmMessage.FromToolResults([a, b])], [GeminiFixtures.Tool()]), default);
         Assert.IsTrue(valid.Status == LlmStatus.ToolCalls && handler.Calls == 2, "GEM-AC-012");
     }
 

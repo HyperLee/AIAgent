@@ -1,3 +1,4 @@
+using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Core;
@@ -12,6 +13,8 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
     private BootstrapSession? _session;
     private ILlmClient? _client;
     private IWorkspaceFiles? _workspace;
+    private ToolRegistry? _registry;
+    private AgentRunner? _runner;
     private ChatState _state = ChatState.AwaitingInput;
     private StopReason _stopReason;
     private bool _cancelTurn;
@@ -35,6 +38,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 policyReady = true;
                 _client = runtimeFactory.CreateClient(initialSession);
                 _workspace = workspaceFilesFactory.Create(initialSession);
+                (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
                 interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
                     "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
             }
@@ -55,9 +59,9 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/clear：清除對話，保留累計；/exit：退出。\n" +
-                        "目前只有文字聊天，沒有檔案工具。空白不送出；EOF／Ctrl+D 正常退出。\n" +
-                        "等待輸入時 Ctrl+C 退出；生成中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
+                    interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/clear：清除對話與讀取快照，保留累計；/exit：退出。\n" +
+                        "目前支援受限列檔與 UTF-8 讀檔；選取內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
+                        "等待輸入時 Ctrl+C 退出；生成或工具處理中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
                         "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。"));
                     continue;
                 }
@@ -119,63 +123,78 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             _cancelTurn = false;
             _state = ChatState.Generating;
         }
+        var keyHandoff = false;
         try
         {
             using var observer = interaction.ObserveBusyInput(HandleSignal);
-            interaction.Show(new(ChatEventKind.Generating));
-            var request = new LlmRequest(systemInstruction, context.BuildMessages(user), []);
-            var generation = _client!.GenerateAsync(request, cancellation.Token);
-            await Task.WhenAny(generation, _turnSignal.Task);
-            if (cancellation.IsCancellationRequested) SetState(ChatState.Cancelling);
-            var result = await generation;
-            if (result is null) throw new InvalidOperationException("模型結果不存在");
-            usage.Record(result);
-            var (status, error, reset) = Validate(result);
+            var result = await _runner!.RunAsync(context.BuildMessages(user), cancellation.Token);
+            var status = result.Status;
+            var reason = result.StopReason;
             lock (_gate)
             {
-                if (reset) ClearConversationState();
-                // This lock is the commit point: signal callbacks only set flags under the same gate.
-                if (_cancelTurn || _stopReason != StopReason.None)
-                { status = LlmStatus.Cancelled; error = LlmErrorCode.None; }
-                else if (status == LlmStatus.Completed && !reset)
-                    context.CommitCompletedTurn([user, result.ModelMessage!]);
-                LastOutcome = new(status, error, result.RequestDispatched, reset);
-                _state = ChatState.AwaitingInput;
+                if (result.RequiresContextReset) ClearConversationState();
+                // Cancellation and final publication use the same CLI decision point.
+                if ((_cancelTurn || _stopReason != StopReason.None) &&
+                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable))
+                { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
+                else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
+                {
+                    context.CommitCompletedTurn(result.CompletedTurn);
+                    interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Completed));
+                }
+                LastOutcome = new(result, status, reason);
+                if (status != AgentTurnStatus.Completed)
+                {
+                    if (status != AgentTurnStatus.Cancelled && result.ModelStatus == LlmStatus.Truncated &&
+                        !result.RequiresContextReset && !string.IsNullOrWhiteSpace(result.SafeText))
+                        interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Truncated));
+                    else interaction.Show(new(ChatEventKind.TurnEnded,
+                        status: status == AgentTurnStatus.Cancelled ? LlmStatus.Cancelled : result.ModelStatus,
+                        errorCode: result.ModelErrorCode, turnStatus: status, stopReason: reason));
+                }
             }
-            if (status == LlmStatus.Completed && !reset || status == LlmStatus.Truncated && !reset && !string.IsNullOrWhiteSpace(result.SafeText))
-                interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: status));
-            else interaction.Show(new(ChatEventKind.TurnEnded, status: status, errorCode: error));
-            if (reset) interaction.Show(new(ChatEventKind.ContextCleared, text: "模型 Context 已清除；請開始新的對話。"));
-            interaction.Show(new(ChatEventKind.Usage, turnUsage: result.RequestDispatched ? result.Usage : null,
-                sessionUsage: usage.Snapshot(), requestDispatched: result.RequestDispatched));
-            if (error == LlmErrorCode.ClientUnavailable) RequestStop(StopReason.Failure);
-            var authenticate = status == LlmStatus.Failed && error == LlmErrorCode.AuthenticationFailed && !Stopping;
-            if (authenticate) await DisposeClientAsync();
-            return authenticate;
+            if (result.RequiresContextReset)
+                interaction.Show(new(ChatEventKind.ContextCleared, text: "模型 Context 與讀取快照已清除；請開始新的對話。"));
+            interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(),
+                generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage));
+            if (result.ModelErrorCode == LlmErrorCode.ClientUnavailable ||
+                result.StopReason is AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable) RequestStop(StopReason.Failure);
+            lock (_gate)
+            {
+                keyHandoff = !_cancelTurn && _stopReason == StopReason.None &&
+                    status == AgentTurnStatus.Failed && result.ModelErrorCode == LlmErrorCode.AuthenticationFailed;
+                // Once the completed turn hands off to key choice, interrupts stop that
+                // next phase, including while client/busy-reader cleanup is finishing.
+                if (keyHandoff) _state = ChatState.AwaitingKeyChoice;
+            }
+            if (keyHandoff) await DisposeClientAsync();
+            return keyHandoff;
         }
         finally
         {
-            lock (_gate) { _turnCancellation = null; _turnSignal = null; }
+            lock (_gate)
+            {
+                _turnCancellation = null; _turnSignal = null;
+                if (_stopReason == StopReason.None) _state = keyHandoff ? ChatState.AwaitingKeyChoice : ChatState.AwaitingInput;
+            }
         }
     }
 
-    private (LlmStatus Status, LlmErrorCode Error, bool Reset) Validate(LlmResult result)
+    private (ToolRegistry Registry, AgentRunner Runner) CreateAgent(BootstrapSession session, ILlmClient client, IWorkspaceFiles workspace)
     {
-        var reset = result.RequiresContextReset;
-        if (result.SafeText is not null && _session!.Policy.ContainsCurrentKey(result.SafeText)) return (LlmStatus.Failed, LlmErrorCode.SensitiveOutput, true);
-        if (!Enum.IsDefined(result.Status) || !Enum.IsDefined(result.ErrorCode) || result.SafeText is null)
-            return (LlmStatus.Failed, LlmErrorCode.InvalidResponse, true);
-        if (result.Status == LlmStatus.ToolCalls || result.ToolCalls.Count != 0) return (LlmStatus.Failed, LlmErrorCode.UnexpectedToolCall, true);
-        if (result.Status == LlmStatus.Completed)
+        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
+        return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent));
+    }
+
+    private void HandleAgentEvent(AgentEvent message)
+    {
+        lock (_gate)
         {
-            if (result.ErrorCode != LlmErrorCode.None || string.IsNullOrWhiteSpace(result.SafeText) || result.ModelMessage is not { Kind: LlmMessageKind.Model, Protocol: not null })
-                return (LlmStatus.Failed, LlmErrorCode.InvalidResponse, true);
+            if (_cancelTurn || _stopReason != StopReason.None) _state = ChatState.Cancelling;
+            else _state = message.Kind == AgentEventKind.Generating ? ChatState.Generating : ChatState.ExecutingTools;
         }
-        else if (result.ModelMessage is not null || (result.Status == LlmStatus.Failed) == (result.ErrorCode == LlmErrorCode.None))
-            return (LlmStatus.Failed, LlmErrorCode.InvalidResponse, true);
-        reset |= result.ErrorCode is LlmErrorCode.SensitiveOutput or LlmErrorCode.InvalidResponse or LlmErrorCode.UnexpectedToolCall;
-        if (reset && result.Status == LlmStatus.Completed) return (LlmStatus.Failed, LlmErrorCode.InvalidResponse, true);
-        return (result.Status, result.ErrorCode, reset);
+        interaction.Show(message.Kind == AgentEventKind.Generating ? new(ChatEventKind.Generating) :
+            new(ChatEventKind.AgentProgress, agentEvent: message));
     }
 
     private async Task ReplaceKeyAsync()
@@ -206,9 +225,11 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             client = runtimeFactory.CreateClient(replacement);
             workspace = workspaceFilesFactory.Create(replacement);
+            var agent = CreateAgent(replacement, client, workspace);
             interaction.SetPolicy(replacement.Policy);
             var old = _session;
             _session = replacement; _client = client; _workspace = workspace;
+            _registry = agent.Registry; _runner = agent.Runner;
             replacement = null; client = null; workspace = null;
             old.Dispose();
             interaction.Show(new(ChatEventKind.ContextCleared, text: "認證資料已更新；對話已清除，請重新輸入訊息。"));
@@ -227,11 +248,13 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
     private void ClearConversationState()
     {
         context.Clear();
+        LastOutcome = null;
         _workspace?.Snapshots.Clear();
     }
 
     private async Task DisposeWorkspaceAsync()
     {
+        _runner = null; _registry = null;
         var workspace = _workspace;
         _workspace = null;
         if (workspace is not null) await workspace.DisposeAsync();
@@ -251,9 +274,10 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             if (_finalized) return;
             if (signal == ChatControlSignal.EndOfInput) RequestStop(StopReason.Normal);
             else if (signal == ChatControlSignal.Unavailable) RequestStop(StopReason.Failure);
-            else if (_state is ChatState.Generating or ChatState.Cancelling)
+            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.Cancelling)
             {
                 _cancelTurn = true;
+                _state = ChatState.Cancelling;
                 try { _turnCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }

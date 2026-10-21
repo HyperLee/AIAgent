@@ -168,6 +168,7 @@ def chat_cases(host):
     def start(scenario, gate_fd=None):
         workspace = tempfile.mkdtemp(prefix="aiagent-chat-pty-")
         command = host + [scenario] + ([] if gate_fd is None else [str(gate_fd)])
+        Path(workspace, "notes.md").write_text("Hello\n", encoding="utf-8")
         terminal = TerminalProcess(command, workspace, () if gate_fd is None else (gate_fd,))
         terminal.wait_for(CONFIRM)
         terminal.send(b"y\r")
@@ -201,6 +202,51 @@ def chat_cases(host):
         print("CLI-AC-029/032-text-unicode-controls: PASS", flush=True)
     finally:
         terminal.close()
+
+    terminal = start("tools")
+    try:
+        terminal.send(b"read\r")
+        terminal.wait_for(CHAT_PROMPT, 2)
+        check("[本機結果] 已讀取：notes.md，6 bytes".encode() in terminal.output, "LOOP-AC-037-real-read")
+        check("生成 2 次；傳輸嘗試 2 次".encode() in terminal.output, "LOOP-AC-037-two-generations")
+        terminal.send(b"/clear\r")
+        terminal.wait_for(CHAT_PROMPT, 3)
+        terminal.send(b"read\r")
+        terminal.wait_for(CHAT_PROMPT, 4)
+        check(terminal.output.count("[本機結果] 已讀取".encode()) == 2, "LOOP-AC-037-clear-reread")
+        terminal.send(b"/exit\r")
+        terminal.finish(0)
+        print("LOOP-AC-037-read-continue-clear: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for external, control, expected in ((False, b"\x03\x03", 0), (True, b"", 0), (False, b"\x04", 0)):
+        read_fd, write_fd = os.pipe()
+        terminal = start("tool-busy", read_fd)
+        os.close(read_fd)
+        try:
+            terminal.send(b"read\r")
+            terminal.wait_for("[工具] read_file".encode())
+            terminal.send(b"DISCARDED_TOOL_TEXT/exit")
+            if external:
+                os.kill(terminal.process.pid, signal.SIGINT)
+            else:
+                terminal.send(control)
+            terminal.wait_for(b"OFFLINE_TOOL_CANCEL_OBSERVED")
+            os.write(write_fd, b"1")
+            if control == b"\x04":
+                terminal.finish(expected)
+            else:
+                terminal.wait_for(CHAT_PROMPT, 2)
+                check(b"DISCARDED_TOOL_TEXT" not in terminal.output, "LOOP-AC-037-tool-no-queue")
+                terminal.send(b"next\r")
+                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.send(b"/exit\r")
+                terminal.finish(expected)
+            print("LOOP-AC-037-tool-cancel-" + ("SIGINT" if external else "EOF" if control == b"\x04" else "CtrlC") + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
 
     for external in (False, True):
         terminal = start("busy")
@@ -237,9 +283,9 @@ def chat_cases(host):
         finally:
             terminal.close()
 
-    for control, expected in ((b"\x04", 0), (b"\x03", 130)):
+    for scenario, control, expected in (("auth", b"\x04", 0), ("auth", b"\x03", 130), ("tool-auth", b"\x04", 0), ("tool-auth", b"\x03", 130)):
         read_fd, write_fd = os.pipe()
-        terminal = start("auth", read_fd)
+        terminal = start(scenario, read_fd)
         os.close(read_fd)
         try:
             terminal.send(b"question\r")
@@ -252,10 +298,12 @@ def chat_cases(host):
             terminal.send(b"FAKE_NEW_KEY_ONLY\r")
             terminal.wait_for(CHAT_PROMPT, 2)
             check(b"FAKE_NEW_KEY_ONLY" not in terminal.output and b"FAKE_BUSY_KEY_ONLY" not in terminal.output, "CLI-AC-031-no-key-echo")
-            check(terminal.output.count("處理中".encode()) == 1, "CLI-AC-031-no-validation-generation")
+            check(terminal.output.count("處理中".encode()) == (2 if scenario == "tool-auth" else 1), "CLI-AC-031-no-validation-generation")
+            if scenario == "tool-auth":
+                check("[本機結果] 已讀取".encode() in terminal.output, "LOOP-AC-037-tool-before-auth")
             terminal.send(control)
             terminal.finish(expected)
-            print("CLI-AC-031-auth-" + str(expected) + ": PASS", flush=True)
+            print(("LOOP-AC-037-tool-auth-" if scenario == "tool-auth" else "CLI-AC-031-auth-") + str(expected) + ": PASS", flush=True)
         finally:
             os.close(write_fd)
             terminal.close()

@@ -9,15 +9,19 @@ public sealed class LlmMessage
     internal string? UserText { get; }
     internal IReadOnlyList<LlmToolResult> Results { get; }
     internal object? Protocol { get; }
+    internal IReadOnlyList<LlmToolCall> ModelCalls { get; }
     internal LlmMessageKind Kind { get; }
 
-    private LlmMessage(LlmMessageKind kind, string? text, IReadOnlyList<LlmToolResult>? results, object? protocol)
+    private LlmMessage(LlmMessageKind kind, string? text, IReadOnlyList<LlmToolResult>? results, object? protocol,
+        IReadOnlyList<LlmToolCall>? calls = null)
     {
         Kind = kind; UserText = text; Results = Array.AsReadOnly(results?.ToArray() ?? []); Protocol = protocol;
+        ModelCalls = Array.AsReadOnly(calls?.ToArray() ?? []);
     }
     public static LlmMessage FromUserText(string text) => new(LlmMessageKind.User, text, null, null);
     public static LlmMessage FromToolResults(IReadOnlyList<LlmToolResult> results) => new(LlmMessageKind.ToolResults, null, results, null);
     internal static LlmMessage FromModel(object protocol) => new(LlmMessageKind.Model, null, null, protocol);
+    internal static LlmMessage FromModel(object protocol, IReadOnlyList<LlmToolCall> calls) => new(LlmMessageKind.Model, null, null, protocol, calls);
     public override string ToString() => "[LlmMessage]";
 }
 

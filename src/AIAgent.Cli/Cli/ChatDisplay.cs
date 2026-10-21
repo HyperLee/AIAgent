@@ -3,6 +3,7 @@ using System.Text;
 
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
+using AIAgent.Cli.Tools;
 
 namespace AIAgent.Cli.Cli;
 
@@ -26,13 +27,20 @@ internal static class ChatDisplay
         ChatEventKind.UserMessage => "使用者：" + message.Text + "\n",
         ChatEventKind.Answer => (message.Status == LlmStatus.Truncated ? "回答未完整產生\n" : "") + "AI：" + message.Text + "\n",
         ChatEventKind.Generating => "處理中；Ctrl+C 取消本回合，Ctrl+D 結束。\n",
+        ChatEventKind.AgentProgress => Operation(message.Agent!) + "\n",
         ChatEventKind.Usage => Usage(message),
-        ChatEventKind.TurnEnded => ResultText(message.Status, message.ErrorCode) + "\n",
+        ChatEventKind.TurnEnded => TurnText(message) + "\n",
         _ => (message.Text ?? "") + "\n"
     };
 
     private static string Usage(ChatEvent message)
     {
+        if (message.TurnSummary is { } turn)
+            return "本次用量：" + Fields(turn) + "\n程序累計：" + Fields(message.SessionUsage!) +
+                "\n[回合] 生成 " + Number(message.GenerationsStarted) + " 次；傳輸嘗試 " + Number(turn.DispatchedRequests) +
+                " 次" + (turn.CounterOverflowed ? "／不可完整累計（溢位）" : "") +
+                "；程序傳輸嘗試數：" + Number(message.SessionUsage!.DispatchedRequests) +
+                (message.SessionUsage.CounterOverflowed ? "／不可完整累計（溢位）" : "") + "\n";
         var current = message.RequestDispatched ? message.TurnUsage : null;
         var sum = message.SessionUsage!;
         return "本次用量：" + Join([Single(current?.PromptTokens), Single(current?.OutputTokens), Single(current?.ThoughtTokens), Single(current?.CachedTokens), Single(current?.TotalTokens)]) + "\n" +
@@ -40,6 +48,31 @@ internal static class ChatDisplay
             (message.RequestDispatched ? "本次已嘗試傳輸" : "本次未嘗試傳輸") + "；傳輸嘗試數：" + Number(sum.DispatchedRequests) +
             (sum.CounterOverflowed ? "／不可完整累計（溢位）" : "") + "\n";
     }
+
+    private static string Fields(UsageSnapshot value) => Join([Field(value.Prompt), Field(value.Output), Field(value.Thought), Field(value.Cached), Field(value.Total)]);
+
+    private static string Operation(AgentEvent message)
+    {
+        var name = message.ToolName ?? "未知工具";
+        if (message.Kind == AgentEventKind.ExecutingTool) return "[工具] " + name + "：開始處理";
+        var result = message.Operation!;
+        if (result.Status != ToolStatus.Success) return "[本機結果] " + name + "：" + result.Status + "／" + result.ErrorCode;
+        if (result.ByteCount is { } bytes) return "[本機結果] 已讀取：" + result.RelativePath + "，" + Number(bytes) + " bytes";
+        if (result.ReturnedEntries is null) return "[本機結果] " + name + "：Success；結果無法安全回填";
+        return "[本機結果] 已列出安全項目：" + Number(result.ReturnedEntries ?? 0) + " 筆" +
+            (result.Truncated ? "；僅回傳部分安全項目" : "") + "；已套用安全過濾";
+    }
+
+    private static string TurnText(ChatEvent message) => message.StopReason switch
+    {
+        AgentStopReason.TurnCancelled => "已取消本回合。",
+        AgentStopReason.GenerationLimit => "已達每回合五次生成上限；剩餘工具未執行。",
+        AgentStopReason.SensitiveData => "工具流程含敏感資訊或無法安全回填；本回合已停止。",
+        AgentStopReason.InvalidProtocol => "模型或工具配對無法驗證；本回合已停止。",
+        AgentStopReason.WorkspaceUnavailable => "工作區已無法使用；本回合已停止。",
+        AgentStopReason.RunnerUnavailable or AgentStopReason.LocalFailure => "本機工具流程無法完成；已安全停止。",
+        _ => ResultText(message.Status, message.ErrorCode)
+    };
 
     private static string Join(string[] values) => string.Join("；", new[] { "輸入", "輸出", "思考", "快取", "總計" }.Zip(values, (label, value) => label + " " + value));
     private static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);

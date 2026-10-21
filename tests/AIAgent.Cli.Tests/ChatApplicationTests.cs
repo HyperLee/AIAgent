@@ -91,14 +91,14 @@ public sealed class ChatApplicationTests
     }
 
     [TestMethod]
-    public async Task CLIAC006_OneGenerationPerMessageWithEmptyToolsAndSeparateInstruction()
+    public async Task CLIAC006_PlainTextUsesOneGenerationWithReadOnlyToolsAndSeparateInstruction()
     {
         var fixture = new ChatFixture("  安全問題  ", "/exit");
         Assert.AreEqual(0, await fixture.Run());
         Assert.AreEqual(1, fixture.Client.Requests.Count);
         var request = fixture.Client.Requests[0];
         Assert.AreEqual("test instruction", request.SystemInstruction);
-        Assert.AreEqual(0, request.Tools.Count);
+        Assert.IsTrue(request.Tools.Select(tool => tool.Name).SequenceEqual(new[] { "list_files", "read_file" }));
         Assert.AreEqual(1, request.Messages.Count);
         Assert.AreEqual("  安全問題  ", request.Messages[0].UserText);
         Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));
@@ -193,12 +193,13 @@ public sealed class ChatApplicationTests
     public async Task CLIAC014_CancelBeforeGenerationDoesNotCancelApplication()
     {
         var fixture = new ChatFixture("one", "two", "/exit");
-        fixture.Interaction.OnBusy = signal => { if (fixture.Client.Requests.Count == 0) { signal(ChatControlSignal.CancelTurn); signal(ChatControlSignal.CancelTurn); } };
+        var cancelled = false;
+        fixture.Interaction.OnBusy = signal => { if (!cancelled) { cancelled = true; signal(ChatControlSignal.CancelTurn); signal(ChatControlSignal.CancelTurn); } };
         fixture.Client.Respond = (_, _, token) => Task.FromResult(token.IsCancellationRequested
             ? new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, false, false) : ChatFixture.Completed());
         Assert.AreEqual(0, await fixture.Run());
-        Assert.AreEqual(2, fixture.Client.Requests.Count);
-        Assert.AreEqual(1, fixture.Client.Requests[1].Messages.Count);
+        Assert.AreEqual(1, fixture.Client.Requests.Count);
+        Assert.AreEqual(1, fixture.Client.Requests[0].Messages.Count);
         Assert.AreEqual(1L, fixture.Usage.Snapshot().DispatchedRequests);
     }
 
@@ -218,13 +219,14 @@ public sealed class ChatApplicationTests
     }
 
     [TestMethod]
-    public async Task CLIAC015_PostCommitCancelDoesNotUndoCommitAndStopsAtNextState()
+    public async Task CLIAC015_PostCommitBusyCancelDoesNotUndoCommitOrCancelNextTurn()
     {
-        var fixture = new ChatFixture("one", "unread");
+        var fixture = new ChatFixture("one", "next", "/exit");
         fixture.Interaction.OnShow = e => { if (e.Kind == ChatEventKind.Answer) fixture.Interaction.Signal!(ChatControlSignal.CancelTurn); };
-        Assert.AreEqual(130, await fixture.Run());
-        Assert.AreEqual(1, fixture.Client.Requests.Count);
-        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));
+        Assert.AreEqual(0, await fixture.Run());
+        Assert.AreEqual(2, fixture.Client.Requests.Count);
+        Assert.AreEqual(3, fixture.Client.Requests[1].Messages.Count);
+        Assert.AreEqual(2, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));
     }
 
     [TestMethod]
@@ -369,7 +371,7 @@ public sealed class ChatApplicationTests
         Assert.AreEqual(1, fixture.Client.Requests[2].Messages.Count);
         Assert.AreEqual(3L, fixture.Usage.Snapshot().DispatchedRequests);
         Assert.IsFalse(fixture.Interaction.Events.Any(e => e.Text?.Contains(GeminiFixtures.Key, StringComparison.Ordinal) == true));
-        Assert.IsTrue(fixture.Interaction.Events.Any(e => e.ErrorCode == LlmErrorCode.SensitiveOutput));
+        Assert.IsTrue(fixture.Interaction.Events.Any(e => e.StopReason == AgentStopReason.SensitiveData));
     }
 
     private static bool SessionIsDisposed(BootstrapSession session)
@@ -410,6 +412,8 @@ internal sealed class ScriptInteraction : IChatInteraction
     internal Action<Action<ChatControlSignal>>? OnBusy { get; set; }
     internal Action<ChatEvent>? OnShow { get; set; }
     internal Action? OnChoice { get; set; }
+    internal Action? OnBusyDisposed { get; set; }
+    internal int KeyReads { get; private set; }
     internal int ChoiceReads { get; private set; }
     internal bool FailPolicyChange { get; set; }
     internal bool ObserverFails { get; set; }
@@ -421,11 +425,12 @@ internal sealed class ScriptInteraction : IChatInteraction
     }
     public ValueTask<KeyReplacementChoice> ChooseKeyReplacementAsync(CancellationToken cancellationToken)
     { ChoiceReads++; OnChoice?.Invoke(); return new(Choices.Count > 0 ? Choices.Dequeue() : KeyReplacementChoice.Exit); }
-    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken) => new(Keys.Count > 0 ? Keys.Dequeue()() : KeyInputResult.End(KeyInputStatus.EndOfInput));
+    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken)
+    { KeyReads++; return new(Keys.Count > 0 ? Keys.Dequeue()() : KeyInputResult.End(KeyInputStatus.EndOfInput)); }
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> onSignal)
     {
         if (ObserverFails) throw new IOException("FAKE_OBSERVER_ONLY");
-        Signal = onSignal; OnBusy?.Invoke(onSignal); return new Scope(() => Signal = null);
+        Signal = onSignal; OnBusy?.Invoke(onSignal); return new Scope(() => { Signal = null; OnBusyDisposed?.Invoke(); });
     }
     public void SetPolicy(Security.ISensitiveDataPolicy policy)
     { if (++_policyChanges > 1 && FailPolicyChange) throw new IOException("FAKE_POLICY_ONLY"); }
@@ -440,6 +445,7 @@ internal sealed class ScriptClient : ILlmClient
     internal List<LlmResult> Returned { get; } = [];
     internal bool DisposedWithLiveSession { get; private set; }
     internal bool DisposeFails { get; set; }
+    internal Action? OnDispose { get; set; }
     internal Func<int, LlmRequest, CancellationToken, Task<LlmResult>> Respond { get; set; } = (_, _, _) => Task.FromResult(ChatFixture.Completed());
     public async Task<LlmResult> GenerateAsync(LlmRequest request, CancellationToken cancellationToken)
     {
@@ -449,6 +455,7 @@ internal sealed class ScriptClient : ILlmClient
     public ValueTask DisposeAsync()
     {
         _ = Session!.Secrets.AuthenticationKey.Length; DisposedWithLiveSession = true;
+        OnDispose?.Invoke();
         if (DisposeFails) throw new IOException(GeminiFixtures.Key);
         return ValueTask.CompletedTask;
     }

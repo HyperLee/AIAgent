@@ -42,6 +42,7 @@ internal sealed class GeminiTransport(HttpMessageHandler inner, string model, IS
         using var parsed = JsonDocument.Parse(bytes);
         state.Usage = GeminiJson.ReadUsage(parsed.RootElement);
         if (GeminiJson.IsSensitive(parsed.RootElement, currentPolicy!, ContentBoundary.ModelInput) || GeminiJson.HasSensitiveCombinedText(parsed.RootElement, currentPolicy!)) throw new GeminiBoundaryException(LlmErrorCode.SensitiveOutput);
+        if (GeminiJson.HasDuplicateProperties(parsed.RootElement)) throw new GeminiBoundaryException(LlmErrorCode.InvalidResponse);
         state.InvalidParts = GeminiJson.HasInvalidParts(parsed.RootElement);
         return response;
     }

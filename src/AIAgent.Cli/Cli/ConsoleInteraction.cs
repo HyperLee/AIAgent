@@ -24,7 +24,7 @@ internal sealed class ConsoleInteraction(ITerminal terminal) : IBootstrapInterac
         using var input = terminal.BeginInput();
         ShowStatus("工作區：" + workspace.RootPath);
         ShowStatus("模型：" + (settings.Model ?? "尚未設定模型"));
-        ShowStatus("本機聊天與選取的檔案內容可能傳送至 Gemini；本階段尚未提供檔案工具");
+        ShowStatus("本機聊天與選取的檔案內容可能傳送至 Gemini；支援受限列檔與 UTF-8 讀檔");
         terminal.Write("使用此工作區？[y/N] ");
         var answer = new StringBuilder();
         var invalid = false;

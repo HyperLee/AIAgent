@@ -15,8 +15,7 @@ internal sealed class ConversationContext
 
     internal void CommitCompletedTurn(IReadOnlyList<LlmMessage> messages)
     {
-        if (messages is not { Count: 2 } || messages[0] is not { Kind: LlmMessageKind.User } user ||
-            string.IsNullOrWhiteSpace(user.UserText) || messages[1] is not { Kind: LlmMessageKind.Model, Protocol: not null })
+        if (messages is null || !ToolCallPairing.ValidTurn(messages))
             throw new ArgumentException("完整回合無效");
         _turns.Enqueue(Array.AsReadOnly(messages.ToArray()));
         while (_turns.Count > MaxCompletedTurns) _turns.Dequeue();

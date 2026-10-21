@@ -1,8 +1,8 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已完成子規格 01～04 的實作：啟動與隱藏 Key、Gemini 用戶端、文字聊天、最近 5 個完整回合、程序用量累計，以及供後續工具使用的工作區唯讀服務與有限讀取快照。正式聊天仍只有文字對話；檔案工具派送與工具循環留待第 05 份子規格。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～05：啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、工作區唯讀服務，以及正式聊天的工具登錄與 Agent 循環。可透過自然語言要求受限列檔與 UTF-8 讀檔，每回合最多五次生成；真實 Gemini 與真人終端機尚未驗證。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md) 與 [04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md) 與 [05：Agent 工具循環](specs/05-agent-loop.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -11,11 +11,11 @@
 | 01：啟動與 API Key | 啟動參數、工作區確認、隱藏 Key 與非機密設定。 | 已實作。 |
 | 02：Gemini 用戶端 | 模型契約、SDK 轉接、請求限制、錯誤分類與資料保護。 | 已實作。 |
 | 03：CLI 與 Context | 文字聊天、指令、5 回合歷史、取消、換 Key 與用量累計。 | 已實作；真人終端機與真實 Gemini 驗收尚未執行。 |
-| 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作內部唯讀服務；未接入正式聊天。 |
-| 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 尚未實作。 |
+| 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作，並由第 05 份接入正式聊天。 |
+| 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作；離線與 PTY 證據見下方，真人／真實服務未驗證。 |
 | 06～07 | 檔案寫入、差異預覽與確認、衝突處理及整體驗收。 | 尚未實作。 |
 
-子規格 01～03 對應總規格的第一階段「可以聊天」，不等於總規格第三階段「可以修改」已完成。第 04 份內部服務可列檔與讀檔，並已串接聊天清除及 session 生命週期；正式聊天仍不提供檔案工具，不能透過自然語言或本機指令讀寫工作區檔案。第二階段「可以讀檔」須等 04～05 完成整合驗收。CLI-AC-033～035 仍待人工驗收，實作完成不代表真實服務已驗證。
+子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式只提供 `list_files`、`read_file`，不提供建立、修改或刪除檔案。第二階段的真人操作與真實 Gemini 往返仍需分別驗收；第三階段寫入與確認仍交第 06～07 份。
 
 ## 建置與啟動
 
@@ -36,7 +36,7 @@ dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help
 dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build
 ```
 
-程式讀取應用程式輸出目錄的 `appsettings.json`，確認工作區後，以無回顯方式讀取 Key，在記憶體中建立 session 與模型用戶端，再進入聊天。只有一般訊息會送出一次生成；啟動、建構、指令與換 Key 都不發出驗證生成，Key 是否有效由正常請求的服務端結果反映。
+程式讀取應用程式輸出目錄的 `appsettings.json`，確認工作區後，以無回顯方式讀取 Key，在記憶體中建立 session 與模型用戶端，再進入聊天。只有一般訊息會啟動回合，模型可直接回答或透過工具續接，最多五次生成；啟動、建構、指令與換 Key 都不發出驗證生成，Key 是否有效由正常請求的服務端結果反映。
 
 設定只包含非機密模型名稱：
 
@@ -58,24 +58,24 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 | 操作 | 行為 |
 |---|---|
-| 一般文字 | 保留原始首尾空白，送出一次生成；生成期間不接受下一則訊息。 |
+| 一般文字 | 保留原始首尾空白，啟動最多五次生成的回合；生成及工具處理期間不接受下一則訊息。 |
 | 空白 | 不送出，重新提示。 |
 | `/help` | 顯示聊天指令與目前能力；啟動參數 `--help` 只顯示啟動用法。 |
-| `/clear` | 清除對話與最近結果，保留 Key、工作區、模型及程序累計。 |
+| `/clear` | 清除對話、讀取快照及最近本機結果，保留 Key、工作區、模型及程序累計。 |
 | `/exit`、EOF、Ctrl+D | 正常退出；部分輸入會丟棄。 |
 | 等待輸入／認證選擇／Key 輸入時 Ctrl+C | 退出 130。 |
-| 生成中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
-| 生成中 Ctrl+D | 取消並等待收尾，正常退出。 |
+| 生成／工具處理中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
+| 生成／工具處理中 Ctrl+D | 取消並等待收尾，正常退出。 |
 
-指令在 Trim 後區分大小寫且完整匹配；`/CLEAR`、`/help extra`、`/tmp/a` 皆為未知指令，不送模型。生成、取消及收尾期間的普通按鍵（包含 `/exit`）會丟棄，不能排隊；外部 SIGINT 依相同聊天狀態路由。
+指令在 Trim 後區分大小寫且完整匹配；`/CLEAR`、`/help extra`、`/tmp/a` 皆為未知指令，不送模型。生成、工具處理、取消及收尾期間的普通按鍵（包含 `/exit`）會丟棄，不能排隊；外部 SIGINT 依相同聊天狀態路由。
 
 每行最多 16384 個 UTF-16 單位，補充平面字元計 2。支援中文、Unicode scalar 刪除、Backspace／Delete；導覽鍵不移動游標。控制字元、非法代理字元及 Unicode 行／段分隔字元會使整行無效，超限後刪除也不恢復有效。CRLF 視為一次 Enter；沒有多行編輯或輸入歷史。
 
-只有合法完成的 user／原始 model 訊息成對保存，最多保留 5 個完整回合。第 6 次請求仍包含前 5 回合，成功提交後才淘汰最舊回合。拒答、取消、截斷與一般失敗不加入歷史；截斷明示「回答未完整產生」。敏感輸出、非法協定或非預期工具資料會清除全部 Context 並通知。`/clear` 只釋放記憶體參考，不清除終端機捲動紀錄。
+只有合法完成的回合才保存：使用者訊息、零或多組完整模型呼叫／工具結果，以及最終模型回答；最多保留 5 個完整回合。第 6 次請求仍包含前 5 回合，成功提交後才淘汰最舊回合。拒答、取消、截斷與一般失敗不加入歷史；截斷明示「回答未完整產生」。敏感模型紀錄、非法協定／配對或無法安全回填結果時，清除全部 Context 與讀取快照並通知。`/clear` 只釋放記憶體參考，不清除終端機捲動紀錄。
 
 認證失敗時先完成舊政策下的錯誤與用量顯示、釋放舊 client，再詢問 `重新輸入 Key？[y/N]`。隱藏輸入 y／yes 後重新讀取 Key；成功切換新的 session／client 時清空對話、保留累計並等待新的訊息，不重送失敗需求。模型、權限、配額、網路與逾時錯誤各自分類，不誤當成 Key 問題。
 
-每次顯示「本次用量」與「程序累計」，欄位依序為輸入／輸出／思考／快取／總計。明確零值保留，缺值或負值標示不可得；部分資料顯示已知小計及缺值次數。溢位保留最後可表示的小計並永久標示不完整。Total 採 API 原值，thought／cached 不再加進 Total。傳輸嘗試不證明 Google 已收到或計費，本機統計不是正式帳單。
+每回合顯示生成方法呼叫數、回合傳輸嘗試數、「本次用量」與「程序累計」，欄位依序為輸入／輸出／思考／快取／總計。明確零值保留，缺值或負值標示不可得；部分資料顯示已知小計及缺值次數。溢位保留最後可表示的小計並永久標示不完整。Total 採 API 原值，thought／cached 不再加進 Total。傳輸嘗試不證明 Google 已收到或計費，本機統計不是正式帳單。
 
 參數或設定錯誤退出 2；終端機、I/O、不可恢復本機或清理失敗退出 1。清理失敗優先於正常／取消退出；明確程序取消優先於 EOF。API 回合失敗本身通常回到輸入，沒有自動重試。
 
@@ -83,17 +83,18 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 | 模組 | 本階段責任 |
 |---|---|
-| Core | `ChatApplication` 狀態機、`ConversationContext`、`UsageAccumulator` 與原有模型契約；新聊天契約為 internal，不依賴 SDK 型別。 |
+| Core | `ChatApplication` 狀態機、`AgentRunner`、完整回合驗證、`ConversationContext` 與用量累計；新增契約為 internal，不依賴 SDK 型別。 |
 | Llm | session 綁定的 `GeminiClient`、SDK 轉換、受控 HTTP 傳輸、協定保存、回應與錯誤分類。 |
+| Tools | 固定唯讀 Schema、Registry、嚴格參數解析與安全結果轉接。 |
 | Workspace | 依固定工作區及當前政策驗證路徑、種類、連結與內容；有界列檔／讀取、明確 JSON 投影及記憶體快照。 |
 | Security | 當前 Key 的 Ordinal 完整子字串檢查、整次拒絕、顯示遮蔽與已知憑證欄位遮蔽。 |
 | Configuration／Cli | 嚴格設定、固定工作區、隱藏輸入、單一終端機讀取者、busy 控制觀察及安全純文字顯示。 |
 
-`ChatApplication` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。本階段正式應用不提供工具定義，測試中的工具只有描述及假結果。
+`AgentRunner` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。正式請求固定依序提供 `list_files` 與 `read_file`，所有工作區 I/O 都經過既有服務。
 
 `Completed` 與合法 `ToolCalls` 才會提供可續傳的 `ModelMessage`。模型紀錄完整保存 Content、part 順序、工具 ID、thought parts 與簽章；顯示文字只串接非 thought 的 text parts。模型訊息不可公開序列化、列印內容或跨 client／session 續用。
 
-工具呼叫保留原始 `PartIndex` 及可空 `CallId`。後續呼叫者須先附上完整 `ModelMessage`，再提供包含全部對應結果的工具訊息；轉接器依原呼叫順序組成一份 user Content。遺漏、重複、錯名、錯 ID 或錯位置的結果均在傳輸前拒絕。本層不執行工具或自行開始下一步。
+工具呼叫保留原始 `PartIndex` 及可空 `CallId`。後續呼叫者須先附上完整 `ModelMessage`，再提供包含全部對應結果的工具訊息；轉接器依原呼叫順序組成一份 user Content。遺漏、重複、錯名、錯 ID 或錯位置的結果均在傳輸前拒絕。Gemini 轉接層不執行工具或自行開始下一步。
 
 ## 請求與資料保護
 
@@ -173,7 +174,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 | CLI-AC-001～002 | ChatCoreTests／ChatApplicationTests：internal 契約、固定 ToString、session 一次移交、指令及零啟動生成；既有啟動 help 測試保留。 |
 | CLI-AC-003～006 | ChatTerminalTests／ChatApplicationTests：無回顯、敏感輸入、16384／16385、代理配對與刪除、CRLF、busy 丟棄及單次生成。 |
 | CLI-AC-007～010 | ChatCoreTests／ChatApplicationTests：7 回合、原訊息身分、不可變快照、失敗不提交、手動及強制清除。 |
-| CLI-AC-011～013 | ChatSdkTests／ChatApplicationTests 與既有 GEMAC006：真實 SDK／假 handler 的 parts／簽章續傳、敏感清除、非法結果、空 Tools、實際 body 邊界及錯誤分類。 |
+| CLI-AC-011～013 | ChatSdkTests／ChatApplicationTests 與既有 GEMAC006：真實 SDK／假 handler 的 parts／簽章續傳、敏感清除、非法結果、工具定義、實際 body 邊界及錯誤分類。 |
 | CLI-AC-014～017 | ChatApplicationTests：可控取消與遲到完成、提交點、程序停止優先序、各種本機失敗、client 建構／釋放與 session 順序。 |
 | CLI-AC-018～023 | ChatApplicationTests／ChatTerminalTests／ChatSdkTests：認證收尾與切換、原值重新輸入、512／513、舊／新政策、CRLF 交接、完整顯示區塊控制字元與遮蔽。 |
 | CLI-AC-024～028 | ChatCoreTests／ChatApplicationTests／ChatTerminalTests：五欄缺值、零與負值、傳輸次數、long／計數器溢位、跨清除及換 Key 保留累計，以及完整既有回歸。 |
@@ -185,7 +186,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 ## 第 03 份子規格歷史驗證紀錄（2026-10-20）
 
-以下保留 2026-10-20 第 03 份子規格實作完成時的驗證紀錄，並非本輪 README 更新重新執行的結果。本輪僅更新文件並檢查文件格式及修改範圍，未重跑產品建置、測試、PTY 或格式化驗證。
+以下保留 2026-10-20 第 03 份子規格實作完成時的歷史驗證紀錄。當時後續的 README 維護只檢查文件；本次第 05 份實作的驗證另列，不沿用下表作為新結果。
 
 當時新增測試先重現缺少契約／功能，另重現並修正無效認證選擇誤判、提前取消的顯示政策、CRLF 跨 Key 提示及 client 部分建構的釋放問題。獨立唯讀審查另發現顯示使用者訊息期間中斷仍會進入生成的競爭；新增回歸先重現 1 次非預期呼叫，再將停止檢查與狀態切換放入同一鎖內修正。
 
@@ -204,7 +205,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 ## 第 04 份工作區唯讀服務
 
-`IWorkspaceFilesFactory.Create(session)` 為當前 session 建立一份內部服務，建構不掃描或讀取工作區。`ListFilesAsync(path, cancellationToken)` 與 `ReadFileAsync(path, cancellationToken)` 共用路徑、敏感資料與生命週期檢查；尚無工具 Schema、派送或模型呼叫循環。
+`IWorkspaceFilesFactory.Create(session)` 為當前 session 建立一份內部服務，建構不掃描或讀取工作區。`ListFilesAsync(path, cancellationToken)` 與 `ReadFileAsync(path, cancellationToken)` 共用路徑、敏感資料與生命週期檢查；服務本身不管理工具 Schema、派送或模型循環；第 05 份負責上述協調。
 
 | 限制 | 固定值與行為 |
 |---|---|
@@ -232,13 +233,13 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 | WS-AC-009～012 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：第一層列檔、Ordinal 排序、200／4096 邊界、容量截斷、例外及資源關閉。 |
 | WS-AC-013～020 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`、`WorkspaceReadIntegrationTests`：UTF-8／BOM／換行、控制字元、大小／JSON 精確邊界、敏感內容及狀態變更。 |
 | WS-AC-021～024、027 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：Ordinal 快照、容量／淘汰、失效、Clear／取消、並行、釋放等待及清理失敗。 |
-| WS-AC-025～026、030 | `ChatWorkspaceTests` 及完整既有回歸：真實 ChatApplication 的清除／換 Key／建構失敗清理；Tools 空、無額外生成，既有 Gemini 請求限制保留。 |
+| WS-AC-025～026、030 | `ChatWorkspaceTests` 及完整既有回歸：真實 ChatApplication 的清除／換 Key／建構失敗清理；第 05 份改為兩個唯讀 Tools，清除／換 Key 仍不額外生成，既有 Gemini 請求限制保留。 |
 | WS-AC-029 | `WorkspaceReadIntegrationTests`：真實暫存工作區逐檔比較 bytes 與項目，檔案內假指令不觸發額外操作。 |
 | WS-AC-031～034 | 既有 PTY 另記；真人終端機未驗證。真實工具往返與寫入交接留待第 05～07 份。 |
 
-## 第 04 份子規格實作驗證紀錄（2026-10-21）
+## 第 04 份子規格歷史驗證紀錄（2026-10-21）
 
-在 macOS arm64、.NET SDK 10.0.100 執行，以下為本次實際結果；53 個新增測試加上原有 107 個，合計 160 個。完整產品驗收對應 WS-AC-001～030；PTY 單獨對應 WS-AC-031，不將真人或後續工具流程計入。
+當時在 macOS arm64、.NET SDK 10.0.100 執行，以下為該次實際結果；53 個新增測試加上原有 107 個，合計 160 個。完整產品驗收對應 WS-AC-001～030；PTY 單獨對應 WS-AC-031，不將真人或後續工具流程計入。
 
 | 實際命令 | 退出碼與結果 |
 |---|---|
@@ -255,10 +256,59 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 一次獨立唯讀程式審查指出兩項需修正問題，均先加入失敗回歸再修正：前置 `./` 不得繞過磁碟機語法拒絕；根目錄於初次子項目檢查、開啟、列舉或讀取失敗期間消失時，須回報 WorkspaceUnavailable 並清空所有快照。同時驗證 Clear 與根失效競爭仍以舊世代取消收尾。修正後重新執行上表完整驗收通過，無待處理的審查項目。
 
-程式與測試沒有新增產品套件、設定、工具派送或寫入方法；測試資料只使用假值，隔離暫存工作區保留，不批次刪除。本次未提交、推送或改寫歷史。
+第 04 份實作當時沒有新增產品套件、設定、工具派送或寫入方法；測試資料只使用假值，隔離暫存工作區保留，不批次刪除。本次未提交、推送或改寫歷史。
+
+## 第 05 份 Agent 工具循環
+
+正式只登錄 `list_files`、`read_file`，兩者皆要求唯一的 string `path`，根目錄使用 `.`。模型可直接聊天；要操作檔案時，必須提出原生 function call。Markdown、檔案文字或模型附帶文字不會觸發隱藏操作。
+
+Registry 逐一驗證名稱及參數，沿用工作區的路徑、UTF-8、敏感檔案、快照及容量限制。額外、重複或大小寫變體欄位會拒絕；原始 HTTP 回應的重複 JSON 欄位在 SDK dictionary 轉換前拒絕，不採最後值。原始模型 Content、thought signatures、ID 與 part 順序保留，全部結果依原呼叫順序集中回填，逆序或缺失配對不續送。
+
+`AgentRunner` 只協調當前回合。每回合最多五次 `GenerateAsync`，不是五個工具；同批工具依序執行。第五次仍要求工具時，先做安全與協定檢查，再將該批全部標記 `generation_limit`，不開始該批 I/O，也不送第六次生成。一般參數／檔案失敗可交回模型修正；取消、工作區失效、敏感資料或非法配對會停止後續操作。完整 SDK body 仍限制為 262144 UTF-8 JSON bytes，不裁切結果、歷史或簽章以規避限制。120 秒期限適用每次生成，不是整個多步回合的期限。
+
+busy 範圍涵蓋生成、工具、配對、用量及收尾。Ctrl+C 取消同一回合並等待已開始操作結束；Ctrl+D／EOF 等待收尾後正常退出。工具已發布成功時，稍後取消仍保留其本機成功狀態及快照；共同清除仍會丟棄快照。最終模型回答是候選，CLI 在取消／停止決策點通過後才提交。輸出或清理失敗退出 1，不能被同時取消蓋掉。
+
+本機操作結果先於最終回答或模型錯誤顯示。讀取列出安全相對路徑及實際 bytes，列檔列出安全回傳筆數與截斷提示；未知名稱不回顯，失敗不回顯請求 path。讀取完成後模型失敗，仍保留本次已讀取的事實，不自動重讀。只在記憶體保存最新安全操作摘要，不保存額外參數、全文、CallId 或可續傳紀錄。
+
+每次模型結果由 Runner 向回合與程序累計各記帳一次。生成次數與傳輸嘗試數分開；未傳輸的本機拒絕仍占一次方法呼叫，但不增加 token 缺值。回合統計每次重建，程序統計跨 `/clear`、強制清除與換 Key 保留。五欄各自處理缺值及溢位，Total 不補算。
+
+### 第 05 份驗收對照
+
+| 驗收 | 主要證據 |
+|---|---|
+| LOOP-AC-001～005、013 | AgentContractTests、ToolRegistryTests、AgentSdkTests、AgentChatTests：internal 契約、所有權、正式 Schema、原始重複欄位、真實字面路徑與明確投影。 |
+| LOOP-AC-006～012、014～018 | AgentRunnerTests、AgentBoundaryTests、AgentAcceptanceTests、AgentLifecycleTests：純聊天、多步／同名呼叫、完整簽章、配對拒絕、可修正失敗、服務失效與第五次停止。 |
+| LOOP-AC-019～025 | AgentContractTests、AgentLifecycleTests、AgentAcceptanceTests 與既有 ChatApplicationTests／ChatWorkspaceTests：整回合裁切、清除、取消與發布競爭、busy 收尾、換 Key 及釋放。 |
+| LOOP-AC-026～029、035 | AgentSdkTests、AgentBoundaryTests、AgentChatTests、AgentAcceptanceTests：真實 SDK 敏感回應、整批預檢、真實敏感檔案、短 Key、控制字元與只讀資料。 |
+| LOOP-AC-030～034 | AgentAcceptanceTests、AgentChatTests、ToolRegistryTests 及既有用量測試：工具後模型失敗、真實列檔截斷、逐欄統計／溢位，以及含真實工具結果的 262144／262145 body 邊界。 |
+| LOOP-AC-036 | 完整 MSTest 回歸、help、格式及文件檢查；只更新階段增量造成的預期。 |
+| LOOP-AC-037 | macOS PTY 的工具續接、clear 重讀、受控遲到取消、Ctrl+C／SIGINT／EOF、工具後認證與終端機復原。 |
+| LOOP-AC-038～040 | 真人終端機、真實 Gemini 未驗證；寫入／預覽／確認／衝突與最終發布留待第 06～07 份。 |
+
+### 第 05 份實作驗證紀錄（2026-10-21）
+
+以下為本次實作後在 macOS arm64、.NET SDK 10.0.100 的實際結果。原有 160 項回歸與新增 56 項測試案例合計 216 項；這是測試執行數，與 LOOP-AC-001～036 的驗收編號數分開。
+
+| 命令／類別 | 退出碼與實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴成功還原。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；3 個專案，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；216 通過、0 失敗、0 略過；使用假模型／handler 與暫存工作區，無真實 Gemini 呼叫。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；只顯示啟動用法。 |
+| `python3 tests/terminal_smoke.py` | 0；原有 24 組與新增 6 組，合計 30 組 PTY 通過。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --verify-no-changes` | 0；變更測試檔另外以相同格式規則檢查。 |
+| `git diff --check` | 0；全部新增檔案另做 no-index 空白檢查。 |
+| 保護範圍／文件檢查 | 總規格、01～04 規格、原工作區實作、設定、專案／套件版本及格式規則未改動；原有未追蹤的 05 規格保留原文。README 本機連結、程式碼區塊及空白通過。 |
+| LOOP-AC-038：真人終端機 | 未執行，不以 PTY 代替。 |
+| LOOP-AC-039：真實 Gemini | 未執行；不取得或儲存真實 Key。 |
+| LOOP-AC-040：後續寫入／發布 | 不屬本階段完成項目。 |
+
+獨立唯讀審查發現兩項重要競爭問題，均先用可控測試重現，再修正並重跑上述完整驗證：認證交接決策後的 client／busy 觀察器清理期間取消，不得仍開啟 Key 讀取；工具不可恢復失敗不得被同時取消或安全投影失敗蓋掉。認證交接在完成舊政策下結果與用量後，於同一鎖內切換至 Key 選擇階段；之後取消退出 130 且零選單／Key 讀取。不可恢復本機失敗維持退出 1，同時保留安全操作紀錄及必要重設。無待處理的審查項目。
+
+實作決策沿用已確認計畫：在目前 checkout 工作，不提交或推送；實際回應 JSON 的重複欄位統一在 SDK 轉換前拒絕；生成前取消零呼叫，提交後 busy 取消不回溯成功歷史。未新增套件、設定、後續規格或持久化工具鏈，沒有寫入工具或批次刪除，隔離測試資料保留。
 
 ## 後續階段
 
-第 04 份已建立工作區唯讀服務、有限快照與清除串接。第 05 份接續工具 Schema、登錄、派送、呼叫配對、完整工具鏈及每回合最多 5 次生成；第 06～07 份處理寫入確認、衝突與整體交付。正式請求 Tools 仍為空，每個文字回合仍至多一次生成；沒有自然語言讀檔、本機讀檔指令或寫入能力。
+第 04～05 份已完成唯讀服務與工具循環的離線整合；第 06～07 份接續寫入確認、衝突與整體交付。本階段不提供寫入工具，也沒有新增本機讀檔指令。
 
 **真實 Gemini API 未驗證。** CLI-AC-033～035 需使用者另外操作。自動測試與 PTY 不取得真實 Key，也不證明服務可用、回答正確或已讀寫檔案。

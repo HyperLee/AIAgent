@@ -7,6 +7,14 @@ namespace AIAgent.Cli.Llm;
 
 internal static class GeminiJson
 {
+    internal static bool HasDuplicateProperties(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().Any(HasDuplicateProperties);
+        if (value.ValueKind != JsonValueKind.Object) return false;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        return value.EnumerateObject().Any(property => !names.Add(property.Name) || HasDuplicateProperties(property.Value));
+    }
+
     internal static bool IsSensitive(JsonElement element, ISensitiveDataPolicy policy, ContentBoundary boundary)
     {
         return element.ValueKind switch

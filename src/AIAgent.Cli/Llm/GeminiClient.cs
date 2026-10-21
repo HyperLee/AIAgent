@@ -76,7 +76,7 @@ public sealed class GeminiClient : ILlmClient
             var response = await sdk.Models.GenerateContentAsync(model, contents, config, linked.Token);
             linked.Token.ThrowIfCancellationRequested();
             var parsed = GeminiResults.Parse(response, request.Tools.Count > 0, state.InvalidParts);
-            var message = parsed.Content is null ? null : LlmMessage.FromModel(new GeminiModelContent(parsed.Content, owner, parsed.Calls));
+            var message = parsed.Content is null ? null : LlmMessage.FromModel(new GeminiModelContent(parsed.Content, owner, parsed.Calls), parsed.Calls);
             linked.Token.ThrowIfCancellationRequested();
             return new(parsed.Status, LlmErrorCode.None, policy!.RedactForDisplay(parsed.Text), parsed.Calls, message, state.Usage, state.RequestDispatched, false);
         }
