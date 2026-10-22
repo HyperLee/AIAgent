@@ -1,8 +1,8 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06：啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具與 Agent 循環，以及單檔建立／精確替換、差異預覽與逐次核准。每回合最多五次生成；真實 Gemini 與真人終端機尚未驗證。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、單檔建立／精確替換及逐次核准；每回合最多五次生成。第 07 份本機 Release 掃描仍有 BUD-S003 阻擋；真實 Gemini 與真人終端機尚未驗證，第三階段整體驗收尚未完成。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md) 與 [06：檔案編輯與核准](specs/06-file-edit-and-approval.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md) 與 [07：預算與整體驗收](specs/07-budget-and-acceptance.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -14,9 +14,9 @@
 | 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作，並由第 05 份接入正式聊天。 |
 | 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作；離線與 PTY 證據見下方，真人／真實服務未驗證。 |
 | 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作；當次離線與 PTY 證據見下方。 |
-| 07：整體驗收 | 成本整合、完整人工清單、提交與發布掃描。 | 尚未實作。 |
+| 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 離線實作與驗證見第 07 份紀錄；真人／服務與人工分發門檻未完成。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。真人操作與真實 Gemini 往返仍需分別驗收；第三階段整體交付仍須第 07 份。
+子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；第三階段整體交付仍需真人、真實服務與人工提交／分享檢查。
 
 ## 建置與啟動
 
@@ -360,8 +360,127 @@ busy 範圍涵蓋生成、工具、配對、用量及收尾。Ctrl+C 取消同�
 
 既有規格、設定、SDK／測試套件、公開 LLM 契約與 Git 排除規則保留；沒有新增認證來源或 hooks，沒有提交、推送或批次清理。x64、真人終端機與真實 Gemini 未驗證，不以假 handler 或 PTY 代替。
 
+## 第 07 份預算整合與開發掃描
+
+「預算」沿用各模組的請求次數、bytes、筆數及回合限制。沒有新增計數 API、價格／免費額度估算、金額扣抵、模型切換、重試或摘要。Runner 對每次返回結果各記程序與回合用量一次；只有 `RequestDispatched=true` 才更新五欄及缺值計數。生成次數與傳輸嘗試分開，Total 採 API 原值，不從其他欄相加或補算。clear、重設及換 Key 保留程序累計，下一回合建立獨立累計。
+
+| 邊界 | 固定限制與單位 |
+|---|---|
+| 生成／歷史 | 每回合最多 5 次生成；最近 5 個完整成功回合。 |
+| 輸入／產品 path | 16384／4096 UTF-16 單位，補充平面字元計 2。 |
+| 原始檔／完整候選 | 含 BOM 最多 131072 bytes；各編輯參數另限 131072 UTF-16 單位及 UTF-8 bytes。 |
+| 列檔／結果／快照 | 回傳 200 筆、取得 4096 個直接子項目；完整結果 JSON 196608 bytes；快照 20 份／1048576 bytes。 |
+| 預覽／暫存 | 完整預覽與首次提示 65536 UTF-8 bytes、前後各最多 3 行脈絡；核准後每次至多一份自有候選暫存。 |
+| SDK 請求／輸出／期限 | 實際完整 body 262144 UTF-8 JSON bytes；8192 output tokens、1 candidate、每次生成 120 秒；錯誤分類最多讀 65536 bytes 加一個哨兵 byte。 |
+
+### 獨立離線掃描
+
+需要 Python 3.9 以上；staged 另需支援本規格唯讀選項的 Git。從儲存庫工作目錄執行：
+
+```sh
+python3 scripts/check_sensitive_content.py --help
+python3 scripts/check_sensitive_content.py staged
+python3 scripts/check_sensitive_content.py artifacts --path "/example/new-publish-directory"
+python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'
+```
+
+掃描不是模型工具，不接入產品啟動或聊天；不需要 Key、不連網、不修改 index／設定／原檔、不建立掃描內容副本或清理殘留。沒有 allowlist、忽略註解或自動修復。測試只使用合成資料與隔離 Git，資料保留，不使用遞迴清理。
+
+- `staged` 掃完整有效 index 的原始 blob，涵蓋未變動的已追蹤檔案與強制加入；不讀工作樹版本、HEAD 內容、歷史或未追蹤檔。支援巢狀呼叫、linked worktree、相對／絕對替代 index 及 commit 暫時 index。前後 entries 必須相同，變動不重掃。
+- `artifacts` 掃指定發布目錄內的全部普通檔案，包括 DLL、PDB、相依套件、隱藏與非 UTF-8 檔案。根與沿途不跟隨連結；目錄集合、檔案身分、長度與時間前後核對。敏感普通檔仍完整掃；敏感目錄記錄命中但不進入，結果為未完整。連結、特殊項目及壓縮後綴亦非零停止。
+- 產物根至少須有普通檔案 `AIAgent.Cli.dll`、`AIAgent.Cli.deps.json`、`AIAgent.Cli.runtimeconfig.json`、`appsettings.json`；存在不代表依賴齊全或互動功能已通過。
+
+規則固定為 BUD-S001 敏感相對名稱、BUD-S002 指定的 Google Key 外形、BUD-S003 指定私鑰起始標記、BUD-S004 候選暫存名稱、BUD-S005 不合規的 `.env.example`。普通與二進位內容都檢查連續 ASCII／UTF-16LE／BE 特徵，涵蓋兩種位移及跨區塊。完整清單見規格第 7 節；不在來源或報告中放入可命中的完整合成憑證。
+
+只有 staged 的完全小寫 `.env.example` 可使用規格限定的嚴格 UTF-8 賦值格式；值只能是空值或精確佔位文字。外層敏感目錄、其他內容規則仍生效；artifacts 仍阻擋此檔。這不改變產品工具對 `.env.example` 的拒絕。
+
+掃描上限為 10000 項、單檔 64 MiB、總量 1 GiB、相對 path 4096 OS bytes、64 層深度；相同 blob／硬連結的不同名稱分別計量。區塊 65536 bytes、重疊 256 bytes。範例檔另限 131072 bytes、每實體行含行尾 4096 bytes、200 筆賦值；非法編碼賦值也占額度。Git 子程序各限 30 秒，診斷有界排空；不啟動 filter、hook、pager、credential helper 或 lazy fetch，並關閉繼承的 trace 目標。
+
+| 退出碼 | 結果 |
+|---|---|
+| 0 | `passed`：觀察範圍完整且固定規則無命中。 |
+| 1 | `blocked`：觀察範圍完整且有命中。 |
+| 2 | `incomplete` 或參數錯誤：包含超限、異動、依賴／I/O／協定錯誤、取消或輸出失敗；已有命中也不能降成 1。 |
+
+診斷只含 ASCII 固定碼、六位 item 序號、數值與摘要，不列 path、OID、內容、命中片段、原始 stderr 或 traceback。item 依本次原始相對 path bytes 排序，變更清單後不保證對應同一項目。參數解析失敗只印固定錯誤碼；stdout 失效時非零退出，不為補印錯誤再次輸出。
+
+### 選用 pre-commit hook
+
+提供可執行的 `.githooks/pre-commit`，只執行 staged 檢查。產品、建置、測試及掃描不自動安裝；掃描非零、缺 Python 或腳本均中止正常提交。Git 本身可能更新 index 的 stat cache；hook 不更改準備提交的 mode／OID／stage／path。
+
+啟用前先在本機檢查有效設定及既有 hook，不將可能含個人路徑的輸出貼入報告：
+
+```sh
+git config --show-origin --get-all core.hooksPath
+git rev-parse --git-path hooks/pre-commit
+```
+
+`git config --get-all` 的退出 1 表示沒有該設定；其他錯誤須先處理。檢視上述位置是否已有 pre-commit。若已有任何自訂設定或 hook，保留原內容，由使用者人工整合獨立 staged 命令；不要直接覆蓋。**只有確認無衝突後，由使用者自行執行：**
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+停用亦由使用者處理：只有設定確由這次啟用建立且目前仍為 `.githooks` 時，才移除對應本機設定；已有其他設定則還原原值，不盲目 unset。hook 可被 `--no-verify`、改設定或未安裝繞過；沒有 CI、pre-push 或遠端保證。未啟用仍須直接掃描及人工檢查。
+
+### 發布與人工驗收
+
+每次使用全新隔離目錄，將下列佔位路徑換成實際位置；每一步成功才執行下一步：
+
+```sh
+dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-self-contained -p:UseAppHost=false -o "/example/new-publish-directory"
+python3 scripts/check_sensitive_content.py artifacts --path "/example/new-publish-directory"
+dotnet "/example/new-publish-directory/AIAgent.Cli.dll" --help
+```
+
+這些命令只做本機產物驗收，不上傳、封裝或簽章；失敗保留產物並停止分發。任何內容改動須重查，另封裝後不能沿用目錄通過宣稱包內全部已掃。固定規則不識別所有秘密、分割／混淆／加密內容、圖片文字或壓縮內部，也不保證回答正確或作業系統沙盒安全。
+
+人工門檻分開記錄日期、OS／架構、終端機／模型與通過／失敗／未驗證項目：
+
+- 真人終端機：以假 Key／隔離假檔確認中文輸入法、貼上／刪除、長行折行、完整差異／行尾、不回顯、拒絕／取消後續回合、clear 與退出恢復。
+- 真實 Gemini：使用者自行隱藏輸入真實 Key，依規格第 12.3 節逐項驗證聊天超過五回合、clear、列檔／讀檔、建檔、BOM／行尾替換、拒絕、外部衝突、取消及認證切換。只記安全分類與數值；未觸發分支填未驗證，不保存 Key 或原始 SDK／終端機內容。
+- 提交／分享／分發：另檢查實際 index、未追蹤／未暫存內容、文件、PR／Issue、截圖、錄影、附件及最終包裝；掃描通過不能取代人工判斷。疑似憑證洩漏先停止分享，由使用者撤銷／更換並檢查用量，再另行確認歷史與副本處置。
+
+### 第 07 份驗收對照
+
+| 驗收 | 實作／測試與證據邊界 |
+|---|---|
+| BUD-AC-001～008 | `BudgetWorkflowTests`／`BudgetUsageTests`：真實 SDK 設定、本機指令、第五次整批停止、用量逐欄／缺值／溢位、clear／敏感重設／換 Key、完整工具歷史；保留既有逾時及用量計數溢位回歸。 |
+| BUD-AC-009～012 | `BudgetBoundaryTests`／`BudgetWorkflowTests`：UTF-16、檔案／候選／參數、完整預覽、列檔／結果／快照，以及含歷史／簽章／四工具／真實寫入的 SDK body 邊界。 |
+| BUD-AC-013～020 | `BudgetWorkflowTests` 加既有 `Edit*`／`Agent*`：真實磁碟與 SDK 假 handler、建立／讀取／替換、逐筆拒絕、本機結果、發布取消／故障、單一路徑清理、敏感整批；既有短 Key／拼接／認證收尾測試均保留。 |
+| BUD-AC-021～033 | Python `unittest`：嚴格 CLI、完整 index／原始 blob、特殊 bytes 名稱、部分暫存雙向、刪除／重新命名、連結／未合併／gitlink／缺失物件、linked worktree／替代 index、trace／replace、編碼跨塊、範例文法與限額、異動／子程序／輸出故障。 |
+| BUD-AC-034～039 | Python 真實發布目錄／Git commit 與可控競態：必要檔／二進位、敏感目錄／連結／FIFO／壓縮後綴、換身分／根／集合、唯讀、opt-in hook、安全及失敗提交、缺依賴、Git 暫時 index。 |
+| BUD-AC-040～044 | 本節獨立命令／hook／發布限制與人工清單、完整回歸、當次本機 Release 及分層結果紀錄；不把文件表格列數當測試數。 |
+| BUD-AC-045 | 保留全部原 PTY 組；新增中文／emoji／BOM／混合行尾的完整預覽、無效核准、第二筆拒絕／空白／Ctrl+C／EOF，核對第一筆 Verified／磁碟 bytes／用量及後續回合。原有發布前後同步取消仍執行。 |
+| BUD-AC-046～049 | 真人／真實服務／人工提交分享及第三階段完成門檻，尚未驗證；不得以離線或 PTY 代替。 |
+| BUD-AC-050 | 規格原撰寫階段的文件驗收；不是本次新增產品測試數。 |
+
+### 第 07 份實作驗證紀錄（2026-10-22）
+
+基線為 `b8918f7` 加本機未提交變更；平台 macOS arm64，.NET SDK 10.0.100、Python 3.9.6、Git 2.54.0。第 06 份以上各節保留當時歷史紀錄，不作第 07 份當次結果。以下只記安全分類與數量，未保存原始請求、憑證、命中內容或終端機轉錄。
+
+| 當次命令／類別 | 退出碼與實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原成功。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；產品、測試與 host，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；289 通過、0 失敗、0 略過，包含原 269 與新增 20 項 BUDAC 測試。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；啟動用法通過，沒有模型請求。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33 通過、0 失敗、0 略過；實際 Git／hook／產物與受控故障皆離線。`-B` 避免測試匯入留下 bytecode。 |
+| `python3 tests/terminal_smoke.py` | 0；47 組通過，保留原 43 組並新增 4 組 BUD-AC-045；不是真人操作。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --verify-no-changes` | 0；新增 Budget 測試另以 test project 的 whitespace／include／verify-no-changes 檢查通過。 |
+| `git diff --check`、新檔 no-index 空白與 C# 行尾檢查 | 0；新 C# 及變更 host 為 CRLF、無檔尾換行。 |
+| `python3 scripts/check_sensitive_content.py staged`（本專案） | 0；當時實際 index 115 檔、0 命中。未暫存的本次變更不在此結果內。 |
+| 同一 staged 命令（隔離 Git 的當前來源複本） | 0；128 檔、0 命中，包含本次新增／修改內容；不修改本專案 index／HEAD／hook 設定，也不等於真正提交前的 index 驗收。 |
+| `dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-self-contained -p:UseAppHost=false -o /private/tmp/aiagent-stage07-release-LHENCq` | 0；全新本機 framework-dependent、非單檔輸出。 |
+| `python3 scripts/check_sensitive_content.py artifacts --path /private/tmp/aiagent-stage07-release-LHENCq` | **1／blocked**；14 檔、1 命中，item=000005、BUD-S003。相依 DLL 含規定外形的連續 UTF-16 標記；不代表已確認有真實私鑰，但規格沒有 vendor 豁免，不能放行。產物保留。 |
+| 同一 Release 輸出 DLL 的 `--help` | **未執行**；前一步非零，依 BUD-070 停止該次產物驗收。BUD-AC-043 尚未通過。 |
+| BUD-AC-046／047／048 | 真人終端機、真實 Gemini、人工提交／分享／最終分發檢查均未驗證；x64 未驗證，未對外發布。 |
+| BUD-AC-049 | 未完成：本機產物阻擋與必要人工／服務證據未齊，不宣稱第 07 份所有驗收或第三階段整體完成。 |
+
+獨立唯讀審查找出 hook 在掃描器前直接呼叫 Git 會繼承 trace、繞過受限子程序層；先以隔離回歸重現，再移除多餘前置呼叫。Git 以工作樹根作為正常 pre-commit 的工作目錄，hook 以引用過的相對路徑呼叫 Python，由同一受限執行層完成定位。修正後 33 項 Python 回歸通過，含實際 `git commit --only` 暫時 index 及 hook trace 測試；無待處理的審查問題。
+
+沒有修改總規格、01～07 規格、C# 產品實作、SDK／套件／設定、公開 LLM 契約、工具 Schema 或排除規則；沒有提交、推送、自動安裝 hook 或批次清理。掃描器及自動回歸已實作，但現行固定規則下的 Release 產物尚未取得通過結果；若需調整此分發限制，須另行確認規格，不能以目錄忽略或刪除相依 DLL 繞過。
+
 ## 後續階段
 
-第 06 份已接續單檔寫入、預覽核准、衝突與故障處理；第 07 份保留整體限制／成本、人工驗收及提交／發布掃描。不增加本機讀寫指令、shell、搜尋、批次交易或復原功能。
-
-**真實 Gemini API 未驗證。** CLI-AC-033～035 需使用者另外操作。自動測試與 PTY 不取得真實 Key，也不證明服務可用、回答正確或已讀寫檔案。
+第 07 份補齊離線掃描與整合驗收後，仍須完成真人／服務及人工分享檢查，才能宣告第三階段整體完成。後續搜尋、摘要、金額預算、App 或其他平台須另訂規格。

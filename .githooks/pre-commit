@@ -1,0 +1,19 @@
+#!/bin/sh
+# Opt-in, read-only. Preserve Git's effective index, including temporary indexes.
+fail() {
+    printf '[error] code=%s\n' "$1"
+    exit 2
+}
+
+command -v python3 >/dev/null 2>&1 || fail dependency_unavailable
+# Git invokes a non-bare pre-commit hook at the worktree root. Let the Python
+# entry do all Git discovery through its sanitized, bounded subprocess layer.
+root=.
+script="$root/scripts/check_sensitive_content.py"
+[ -f "$script" ] || fail dependency_unavailable
+python3 -B "$script" staged 2>/dev/null
+result=$?
+case "$result" in
+    0|1|2) exit "$result" ;;
+    *) fail dependency_unavailable ;;
+esac

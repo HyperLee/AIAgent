@@ -163,6 +163,7 @@ def main():
     print("PTY-redirection-help-arguments: PASS", flush=True)
     chat_cases(["dotnet", str(args.host.resolve())])
     edit_cases(["dotnet", str(args.host.resolve())])
+    budget_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -443,6 +444,47 @@ def edit_cases(host):
             print("EDIT-AC-042-" + scenario + ": PASS", flush=True)
         finally:
             os.close(write_fd)
+            terminal.close()
+
+
+def budget_cases(host):
+    """BUD-AC-045: actual PTY handoff, Unicode preview, partial completion."""
+    ready = b"OFFLINE_APPROVAL_READY"
+    expected = "\ufeff中文\r\n😀\n尾\r終".encode()
+    for decision in ("no", "blank", "CtrlC", "EOF"):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-budget-pty-"))
+        terminal = TerminalProcess(host + ["edit-budget"], workspace)
+        try:
+            terminal.wait_for(CONFIRM)
+            terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT)
+            terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT)
+            terminal.send("建立中文😀\r\n".encode())
+            terminal.wait_for(ready)
+            check("中文.md".encode() in terminal.output and all(marker in terminal.output for marker in
+                  (b"[CRLF]", b"[LF]", b"[CR]", b"[EOF]")), "BUD-AC-045-complete-unicode-preview")
+            terminal.send("同意😀\r\n".encode())
+            terminal.wait_for(ready, 2)
+            check(list(workspace.iterdir()) == [], "BUD-AC-045-invalid-is-not-approval")
+            terminal.send(b"yes\r\n")
+            terminal.wait_for(ready, 3)
+            check((workspace / "中文.md").read_bytes() == expected, "BUD-AC-045-first-verified")
+            terminal.send({"no": b"no\r\n", "blank": b"\r\n", "CtrlC": b"\x03", "EOF": b"\x04"}[decision])
+            if decision != "EOF":
+                terminal.wait_for(CHAT_PROMPT, 2)
+                terminal.send(b"/clear\r")
+                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.send("下一回合\r".encode())
+                terminal.wait_for(CHAT_PROMPT, 4)
+                terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check((workspace / "中文.md").read_bytes() == expected and not (workspace / "second.md").exists(),
+                  "BUD-AC-045-retain-partial-completion")
+            check("已寫入並核對".encode() in terminal.output and "生成 1 次；傳輸嘗試 1 次".encode() in terminal.output,
+                  "BUD-AC-045-local-fact-and-usage")
+            print("BUD-AC-045-unicode-partial-" + decision + ": PASS", flush=True)
+        finally:
             terminal.close()
 
 

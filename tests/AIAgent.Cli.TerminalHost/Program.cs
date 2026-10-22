@@ -52,8 +52,13 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
                     Console.WriteLine("OFFLINE_EDIT_GENERATING");
                     await gate!.ReadExactlyAsync(new byte[1], cancellationToken);
                 }
-                using var editArguments = JsonDocument.Parse("{\"path\":\"new.md\",\"content\":\"Hello\\n\"}");
-                LlmToolCall[] editCalls = [new(0, null, "create_file", editArguments.RootElement)];
+                using var editArguments = scenario == "edit-budget"
+                    ? JsonSerializer.SerializeToDocument(new { path = "中文.md", content = "\uFEFF中文\r\n😀\n尾\r終" })
+                    : JsonDocument.Parse("{\"path\":\"new.md\",\"content\":\"Hello\\n\"}");
+                using var secondArguments = JsonSerializer.SerializeToDocument(new { path = "second.md", content = "second" });
+                LlmToolCall[] editCalls = scenario == "edit-budget"
+                    ? [new(0, null, "create_file", editArguments.RootElement), new(1, null, "create_file", secondArguments.RootElement)]
+                    : [new(0, null, "create_file", editArguments.RootElement)];
                 return new(LlmStatus.ToolCalls, LlmErrorCode.None, "", editCalls, LlmMessage.FromModel(new object(), editCalls), new(1, 2, null, 0, 3), true, false);
             }
             if (scenario == "failure") throw new IOException("FAKE_LOCAL_FAILURE_ONLY");
