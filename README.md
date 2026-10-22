@@ -1,8 +1,8 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～05：啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、工作區唯讀服務，以及正式聊天的工具登錄與 Agent 循環。可透過自然語言要求受限列檔與 UTF-8 讀檔，每回合最多五次生成；真實 Gemini 與真人終端機尚未驗證。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06：啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具與 Agent 循環，以及單檔建立／精確替換、差異預覽與逐次核准。每回合最多五次生成；真實 Gemini 與真人終端機尚未驗證。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md) 與 [05：Agent 工具循環](specs/05-agent-loop.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md) 與 [06：檔案編輯與核准](specs/06-file-edit-and-approval.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -13,9 +13,10 @@
 | 03：CLI 與 Context | 文字聊天、指令、5 回合歷史、取消、換 Key 與用量累計。 | 已實作；真人終端機與真實 Gemini 驗收尚未執行。 |
 | 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作，並由第 05 份接入正式聊天。 |
 | 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作；離線與 PTY 證據見下方，真人／真實服務未驗證。 |
-| 06～07 | 檔案寫入、差異預覽與確認、衝突處理及整體驗收。 | 尚未實作。 |
+| 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作；當次離線與 PTY 證據見下方。 |
+| 07：整體驗收 | 成本整合、完整人工清單、提交與發布掃描。 | 尚未實作。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式只提供 `list_files`、`read_file`，不提供建立、修改或刪除檔案。第二階段的真人操作與真實 Gemini 往返仍需分別驗收；第三階段寫入與確認仍交第 06～07 份。
+子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。真人操作與真實 Gemini 往返仍需分別驗收；第三階段整體交付仍須第 07 份。
 
 ## 建置與啟動
 
@@ -61,11 +62,11 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 | 一般文字 | 保留原始首尾空白，啟動最多五次生成的回合；生成及工具處理期間不接受下一則訊息。 |
 | 空白 | 不送出，重新提示。 |
 | `/help` | 顯示聊天指令與目前能力；啟動參數 `--help` 只顯示啟動用法。 |
-| `/clear` | 清除對話、讀取快照及最近本機結果，保留 Key、工作區、模型及程序累計。 |
+| `/clear` | 清除對話、快照、核准記憶體及最近本機結果，保留 Key、工作區、模型及程序累計；不復原已寫檔案。 |
 | `/exit`、EOF、Ctrl+D | 正常退出；部分輸入會丟棄。 |
 | 等待輸入／認證選擇／Key 輸入時 Ctrl+C | 退出 130。 |
-| 生成／工具處理中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
-| 生成／工具處理中 Ctrl+D | 取消並等待收尾，正常退出。 |
+| 生成／工具處理／核准中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
+| 生成／工具處理／核准中 Ctrl+D | 取消並等待收尾，正常退出。 |
 
 指令在 Trim 後區分大小寫且完整匹配；`/CLEAR`、`/help extra`、`/tmp/a` 皆為未知指令，不送模型。生成、工具處理、取消及收尾期間的普通按鍵（包含 `/exit`）會丟棄，不能排隊；外部 SIGINT 依相同聊天狀態路由。
 
@@ -85,12 +86,12 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 |---|---|
 | Core | `ChatApplication` 狀態機、`AgentRunner`、完整回合驗證、`ConversationContext` 與用量累計；新增契約為 internal，不依賴 SDK 型別。 |
 | Llm | session 綁定的 `GeminiClient`、SDK 轉換、受控 HTTP 傳輸、協定保存、回應與錯誤分類。 |
-| Tools | 固定唯讀 Schema、Registry、嚴格參數解析與安全結果轉接。 |
-| Workspace | 依固定工作區及當前政策驗證路徑、種類、連結與內容；有界列檔／讀取、明確 JSON 投影及記憶體快照。 |
+| Tools | 固定四工具 Schema、Registry、各工具嚴格參數解析與安全結果轉接。 |
+| Workspace | 依固定工作區及當前政策驗證路徑、種類、連結與內容；有界列檔／讀取、記憶體快照與候選、核准後安全發布／核對及明確 JSON 投影。 |
 | Security | 當前 Key 的 Ordinal 完整子字串檢查、整次拒絕、顯示遮蔽與已知憑證欄位遮蔽。 |
 | Configuration／Cli | 嚴格設定、固定工作區、隱藏輸入、單一終端機讀取者、busy 控制觀察及安全純文字顯示。 |
 
-`AgentRunner` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。正式請求固定依序提供 `list_files` 與 `read_file`，所有工作區 I/O 都經過既有服務。
+`AgentRunner` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。正式請求固定依序提供 `list_files`、`read_file`、`create_file`、`replace_text`，所有工作區 I/O 都經過同一服務。
 
 `Completed` 與合法 `ToolCalls` 才會提供可續傳的 `ModelMessage`。模型紀錄完整保存 Content、part 順序、工具 ID、thought parts 與簽章；顯示文字只串接非 thought 的 text parts。模型訊息不可公開序列化、列印內容或跨 client／session 續用。
 
@@ -307,8 +308,60 @@ busy 範圍涵蓋生成、工具、配對、用量及收尾。Ctrl+C 取消同�
 
 實作決策沿用已確認計畫：在目前 checkout 工作，不提交或推送；實際回應 JSON 的重複欄位統一在 SDK 轉換前拒絕；生成前取消零呼叫，提交後 busy 取消不回溯成功歷史。未新增套件、設定、後續規格或持久化工具鏈，沒有寫入工具或批次刪除，隔離測試資料保留。
 
+## 第 06 份檔案編輯與逐次核准
+
+`create_file(path, content)` 只建立不存在的檔案，父目錄必須已存在；不覆蓋既有項目或建立目錄。空內容可建立 0-byte 檔案，明確輸入的開頭 U+FEFF 會成為 BOM，不補換行。
+
+`replace_text(path, old_text, new_text)` 要求同一活動工作區有成功 `read_file` 快照。舊文字必須非空且 Ordinal 精確匹配一處，重疊匹配也計入；新文字可以為空。保留 BOM 與未修改部分的精確 bytes，不做 Unicode、換行或整檔格式化。快照缺失時須由模型明確重新讀檔，不從歷史重建；成功或未確認寫入後不自動發布新快照。
+
+每次操作由本機產生完整單一 hunk，列出操作、相對路徑、原始／候選 bytes 與 BOM，保留前後各三行脈絡。CRLF／LF／CR／EOF 有明確標記；Tab、反斜線、方括號及 Unicode 格式字元會跳脫。完整預覽與首次提示最多 65536 UTF-8 bytes，超限即拒絕，不裁切變更。各編輯參數另有 131072 UTF-16 單位與 131072 UTF-8 bytes 上限，完整檔案含 BOM 最多 131072 bytes。
+
+提示為 `套用此變更？[y/N]`，輸入不回顯。只有該次預覽顯示完畢、清除舊輸入並啟用確認讀取後的 y／yes 可同意；大小寫及首尾空白可接受。n／no／空白拒絕，其他值重問同一候選。核准期間 `/clear`、`/exit` 只是無效選擇；使用 Ctrl+C 取消回合，Ctrl+D／EOF 正常停止。拒絕會立即停止本回合其餘工具及生成，不請模型換種寫法再次核准；同批多筆仍各自核准。
+
+核准後重新比對根、沿途身分、目標、完整原始 bytes 與快照保存的 Device／Identity／完整 mode。使用同目錄、排他建立的一份暫存，寫入期間為 0600；新檔發布後亦為 0600，替換只在完整寫入及 flush 後於自有 handle 設定原檔的 0777 權限位元。帶 setuid／setgid／sticky 的原檔拒絕。新檔以 macOS 排他 rename 發布，替換用原生 rename，沒有 copy／link fallback、原目標先刪除或備份。
+
+發布成功且目標身分、mode、全部 bytes 與關閉均通過，才顯示「已寫入並核對」。發布結果不明時顯示「寫入結果未確認；停止後續操作」，最多一次安全有界查核，不重試、不反向還原。核准前不建立暫存；發布前取消會清理已持有的單一暫存。發布後取消仍完成查核及清理，已核對事實不因取消、模型失敗或 Response 無法安全建立而消失。先寫 A 再拒絕 B 時，A 仍已寫入。
+
+清理只處理本次精確持有且身分仍相符的暫存路徑；不刪換成他人項目的路徑。清理失敗保留寫入事實、退出 1，僅提示需人工處理，不列出暫存名稱或自動掃描殘留。`/clear` 與取消均不復原檔案。替換不保證保留 owner／group、ACL、xattr、resource fork、建立時間或硬連結關係；flush 不等於父目錄同步或斷電持久性。仍有應用層 TOCTOU／硬連結／掛載限制。
+
+### 第 06 份離線驗收對照
+
+| 驗收 | 測試與證據 |
+|---|---|
+| EDIT-AC-001～005 | `EditContractTests`、`EditBoundaryTests`、`EditLifecycleTests`、`EditChatTests`：internal 契約、合法狀態、四工具順序／Schema、嚴格參數及字面路徑。既有 wire 重複欄位與敏感整批檢查回歸保留。 |
+| EDIT-AC-006～012 | `EditWorkspaceTests`、`EditBoundaryTests`、`EditLifecycleTests`：真實建立／替換、BOM／換行／mode、重疊與 NoChange、編碼／控制字元、完整候選上限、65536／65537 預覽邊界、hunk／脈絡／EOF 與跳脫。 |
+| EDIT-AC-013～017 | `EditApprovalTests`、`EditWorkspaceTests`、`EditChatTests` 及 PTY：單一讀取者、舊輸入丟棄、選擇、同 session 綁定、拒絕停止、取消／Clear 及寫入後快照失效。快照淘汰／換 Key／釋放沿用既有回歸。 |
+| EDIT-AC-018～024 | `EditBoundaryTests`、`EditFaultTests`、`EditLifecycleTests`：相同 bytes 的 inode／mode 衝突、非法基準失效、發布前 metadata 重驗、真正排他 rename、暫存故障、特殊 mode 及發布後核對失敗。 |
+| EDIT-AC-025～030、040 | `EditFaultTests`、`EditAgentIntegrationTests`、`EditChatTests`：安全投影失敗保留 Verified、NotApplied／Verified／Unconfirmed 各自的清理失敗、取消／Clear／Dispose、並行拒絕與核准 I/O／busy 恢復失敗優先序。 |
+| EDIT-AC-031～035、039 | `EditAgentIntegrationTests`、`EditLifecycleTests`：第五次零寫入、真實 Chat＋SDK 假 handler＋工作區往返、同批 read→replace／逐筆核准、寫後模型失敗、五完整回合及實際 SDK body 262144／262145 bytes。 |
+| EDIT-AC-036～038、041 | 新增 Key 拼接／固定預覽短 Key／格式字元案例，加上完整 01～05 的敏感資料、配對、取消、用量、help、格式與空白回歸。 |
+| EDIT-AC-042 | 測試 host 與 PTY：y／yes、拒絕／空白／無效選擇、預輸入、CRLF、Ctrl+C／SIGINT／EOF、預覽期間丟棄及明確同步的發布前後取消。 |
+| EDIT-AC-043～045 | 真人終端機、真實 Gemini 未執行；第 07 份掃描與整體交付尚未實作。 |
+
+### 第 06 份實作驗證紀錄（2026-10-22）
+
+以下為 macOS arm64、.NET SDK 10.0.100 的當次驗證；測試使用假 Key、假模型／HTTP handler、可控制 I/O 與保留的隔離工作區。驗收編號與測試方法／PTY 組數分開計算。
+
+| 命令／類別 | 退出碼與實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴成功還原。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；3 個專案，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；269 通過、0 失敗、0 略過，含既有 216 項與新增 53 項執行案例。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；啟動用法及階段能力提示通過。 |
+| `python3 tests/terminal_smoke.py` | 0；原有 30 組與新增 13 組，合計 43 組 PTY 通過；工具進入、預覽、暫存及發布均使用明確同步點。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --verify-no-changes` | 0；變更測試及 test host 另外以相同格式規則檢查。 |
+| `git diff --check` | 0；全部新增檔案另做 no-index 空白檢查。 |
+| 變更範圍／文件檢查 | 總規格與 01～06 規格、設定、專案／套件版本、公開 LLM 契約、格式及排除規則未改動；變更 C# 皆為 CRLF 且無檔尾換行，README 本機連結與程式碼區塊通過。 |
+| EDIT-AC-043：真人終端機 | 未執行，不以 PTY 代替。 |
+| EDIT-AC-044：真實 Gemini | 未執行，不取得或儲存真實 Key。 |
+| EDIT-AC-045：第 07 份交付 | 尚未實作，不列為本階段完成。 |
+
+獨立唯讀審查發現三項重要問題，均先建立失敗回歸再修正：已有快照的沿途目錄在候選建立前失效時，必須清除基準並停止本回合；發布前最後一次暫存檢查須比較完整身分、長度、修改時間與 mode；核准讀取遇到 EOF 後的 Ctrl+C 不得覆蓋正常停止。修正後重新執行上述完整驗收，無待處理審查項目。PTY 亦補上工具實際進入的同步點，避免以進度顯示誤判工具已受理。
+
+既有規格、設定、SDK／測試套件、公開 LLM 契約與 Git 排除規則保留；沒有新增認證來源或 hooks，沒有提交、推送或批次清理。x64、真人終端機與真實 Gemini 未驗證，不以假 handler 或 PTY 代替。
+
 ## 後續階段
 
-第 04～05 份已完成唯讀服務與工具循環的離線整合；第 06～07 份接續寫入確認、衝突與整體交付。本階段不提供寫入工具，也沒有新增本機讀檔指令。
+第 06 份已接續單檔寫入、預覽核准、衝突與故障處理；第 07 份保留整體限制／成本、人工驗收及提交／發布掃描。不增加本機讀寫指令、shell、搜尋、批次交易或復原功能。
 
 **真實 Gemini API 未驗證。** CLI-AC-033～035 需使用者另外操作。自動測試與 PTY 不取得真實 Key，也不證明服務可用、回答正確或已讀寫檔案。

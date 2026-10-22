@@ -4,6 +4,7 @@ using System.Text;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
+using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Cli;
 
@@ -56,8 +57,15 @@ internal static class ChatDisplay
         var name = message.ToolName ?? "未知工具";
         if (message.Kind == AgentEventKind.ExecutingTool) return "[工具] " + name + "：開始處理";
         var result = message.Operation!;
+        if (result.WriteState == FileWriteState.Verified)
+            return "[本機結果] 已寫入並核對：" + FileChangePreviewBuilder.EscapePath(result.VerifiedPath!) + "，" + Number(result.VerifiedByteCount!.Value) + " bytes" +
+                (result.CleanupFailed ? "；內部暫存清理未完成；需人工處理" : "");
+        if (result.WriteState == FileWriteState.Unconfirmed)
+            return "[本機結果] 寫入結果未確認；停止後續操作" + (result.CleanupFailed ? "；內部暫存清理未完成；需人工處理" : "");
+        if (result.CleanupFailed) return "[本機結果] 內部暫存清理未完成；需人工處理";
+        if (result.ErrorCode == "approval_declined") return "[本機結果] 未套用此變更";
         if (result.Status != ToolStatus.Success) return "[本機結果] " + name + "：" + result.Status + "／" + result.ErrorCode;
-        if (result.ByteCount is { } bytes) return "[本機結果] 已讀取：" + result.RelativePath + "，" + Number(bytes) + " bytes";
+        if (result.ByteCount is { } bytes) return "[本機結果] 已讀取：" + FileChangePreviewBuilder.EscapePath(result.RelativePath!) + "，" + Number(bytes) + " bytes";
         if (result.ReturnedEntries is null) return "[本機結果] " + name + "：Success；結果無法安全回填";
         return "[本機結果] 已列出安全項目：" + Number(result.ReturnedEntries ?? 0) + " 筆" +
             (result.Truncated ? "；僅回傳部分安全項目" : "") + "；已套用安全過濾";
@@ -66,6 +74,10 @@ internal static class ChatDisplay
     private static string TurnText(ChatEvent message) => message.StopReason switch
     {
         AgentStopReason.TurnCancelled => "已取消本回合。",
+        AgentStopReason.ApprovalDeclined => "已拒絕此變更；本回合停止。",
+        AgentStopReason.FileConflict => "檔案或路徑已變動；停止本回合，請重新讀檔。",
+        AgentStopReason.FileWriteFailed => "檔案寫入未完成；本回合已停止。",
+        AgentStopReason.WriteUnconfirmed => "寫入結果未確認；停止後續操作。",
         AgentStopReason.GenerationLimit => "已達每回合五次生成上限；剩餘工具未執行。",
         AgentStopReason.SensitiveData => "工具流程含敏感資訊或無法安全回填；本回合已停止。",
         AgentStopReason.InvalidProtocol => "模型或工具配對無法驗證；本回合已停止。",

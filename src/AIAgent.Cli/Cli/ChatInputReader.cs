@@ -19,6 +19,17 @@ internal sealed class ChatInputReader(ITerminal terminal)
         }
     }
 
+    internal void DiscardBufferedInput(Action<ChatControlSignal> onSignal)
+    {
+        while (terminal.TryReadBufferedKey() is { } key)
+        {
+            // Consume CR/LF through the same state as active reads, without blocking.
+            _skipLineFeed = key.KeyChar == '\r';
+            if (HiddenKeyReader.IsControl(key, ConsoleKey.C, '\u0003')) onSignal(ChatControlSignal.CancelTurn);
+            else if (HiddenKeyReader.IsControl(key, ConsoleKey.D, '\u0004')) onSignal(ChatControlSignal.EndOfInput);
+        }
+    }
+
     internal ChatInputResult Read(CancellationToken cancellationToken)
     {
         var buffer = new char[MaxInputCodeUnits];

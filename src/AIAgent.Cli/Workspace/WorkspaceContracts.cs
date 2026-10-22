@@ -9,11 +9,14 @@ internal interface IWorkspaceFiles : IAsyncDisposable
     IReadSnapshotStore Snapshots { get; }
     Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken cancellationToken);
+    Task<WorkspaceWriteResult> CreateFileAsync(string path, string content, CancellationToken cancellationToken);
+    Task<WorkspaceWriteResult> ReplaceTextAsync(string path, string oldText, string newText, CancellationToken cancellationToken);
 }
 
 internal interface IWorkspaceFilesFactory
 {
     IWorkspaceFiles Create(BootstrapSession session);
+    FileChangeApprovalBridge? ApprovalBridge => null;
 }
 
 internal interface IReadSnapshotStore
@@ -31,13 +34,19 @@ internal enum WorkspaceErrorCode
     None, InvalidPath, OutsideWorkspace, SensitivePath, SymbolicLink,
     NotFound, WrongEntryType, AccessDenied, FileTooLarge, InvalidUtf8,
     BinaryContent, ResultTooLarge, SensitiveContent, PathChanged,
-    WorkspaceUnavailable, IoFailure, Unavailable
+    WorkspaceUnavailable, IoFailure, Unavailable, AlreadyExists, SnapshotRequired, EmptyOldText,
+    TextNotFound, AmbiguousMatch, NoChange, EditTooLarge, PreviewTooLarge, BomChangeNotAllowed,
+    UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure
 }
 
 internal static class WorkspaceLimits
 {
     internal const int MaxRelativePathCodeUnits = 4096;
     internal const int MaxFileBytes = 131072;
+    internal const int MaxEditArgumentCodeUnits = 131072;
+    internal const int MaxEditArgumentBytes = 131072;
+    internal const int MaxPreviewBytes = 65536;
+    internal const int PreviewContextLines = 3;
     internal const int MaxListEntries = 200;
     internal const int MaxScannedEntries = 4096;
     internal const int MaxToolResultBytes = 196608;
@@ -77,9 +86,14 @@ internal sealed class WorkspaceReadSnapshot
     internal long OriginalByteCount => _original.LongLength;
     internal bool HasUtf8Bom { get; }
     internal string Sha256Hex { get; }
-    internal WorkspaceReadSnapshot(string relativePath, byte[] original, bool hasUtf8Bom)
+    internal ulong OriginalDevice { get; }
+    internal ulong OriginalIdentity { get; }
+    internal UnixFileMode OriginalMode { get; }
+    internal WorkspaceReadSnapshot(string relativePath, byte[] original, bool hasUtf8Bom,
+        ulong originalDevice = 0, ulong originalIdentity = 0, UnixFileMode originalMode = 0)
     {
         RelativePath = relativePath;
+        OriginalDevice = originalDevice; OriginalIdentity = originalIdentity; OriginalMode = originalMode;
         _original = original.ToArray();
         HasUtf8Bom = hasUtf8Bom;
         Sha256Hex = Convert.ToHexStringLower(SHA256.HashData(_original));

@@ -1,4 +1,5 @@
 using AIAgent.Cli.Tools;
+using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Core;
 
@@ -6,7 +7,7 @@ internal enum AgentTurnStatus { Completed, Cancelled, Stopped, Failed }
 internal enum AgentStopReason
 {
     None, ModelOutcome, TurnCancelled, GenerationLimit, SensitiveData, InvalidProtocol,
-    WorkspaceUnavailable, RunnerUnavailable, LocalFailure
+    WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 
@@ -21,6 +22,11 @@ internal sealed class LocalToolOutcome(int generationNumber, int partIndex, stri
     internal long? ByteCount { get; } = result.ByteCount;
     internal int? ReturnedEntries { get; } = result.ReturnedEntries;
     internal bool Truncated { get; } = result.Truncated;
+    internal FileWriteState? WriteState { get; } = result.WriteState;
+    internal string? VerifiedPath { get; } = result.VerifiedPath;
+    internal long? VerifiedByteCount { get; } = result.VerifiedByteCount;
+    internal bool? VerifiedHasUtf8Bom { get; } = result.VerifiedHasUtf8Bom;
+    internal bool CleanupFailed { get; } = result.CleanupFailed;
     public override string ToString() => "[LocalToolOutcome]";
 }
 

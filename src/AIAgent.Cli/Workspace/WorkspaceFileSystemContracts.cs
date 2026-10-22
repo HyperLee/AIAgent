@@ -16,4 +16,27 @@ internal interface IWorkspaceReadFile : IAsyncDisposable
 {
     Stream Stream { get; }
     WorkspaceNodeState GetState();
+    UnixFileMode GetMode();
+}
+
+internal interface IWorkspaceWriteFileSystem : IWorkspaceReadFileSystem
+{
+    UnixFileMode GetMode(string fullPath);
+    IWorkspaceStagedFile CreateStagedFile(string fullPath);
+    void PublishNew(string stagedPath, string targetPath);
+    void PublishReplacement(string stagedPath, string targetPath);
+    void DeleteOwnedStagedFile(string fullPath);
+}
+
+internal interface IWorkspaceStagedFile : IAsyncDisposable
+{
+    Stream Stream { get; }
+    WorkspaceNodeState GetState();
+    void SetMode(UnixFileMode mode);
+    void FlushToDisk();
+}
+
+internal sealed class WorkspacePublishException(WorkspaceErrorCode code) : IOException("檔案發布無法完成")
+{
+    internal WorkspaceErrorCode Code { get; } = code;
 }

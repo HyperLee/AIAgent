@@ -189,6 +189,7 @@ internal sealed class LiveTerminal : ITerminal
         finally { Interlocked.Decrement(ref _readers); }
     }
     internal void Text(string text) { foreach (var c in text) _keys.Add(new(c, ConsoleKey.NoName, false, false, false)); }
+    public ConsoleKeyInfo? TryReadBufferedKey() => _keys.TryTake(out var key) ? key : null;
     public void DiscardBufferedInput() { while (_keys.TryTake(out _)) { } }
     public void Write(string text) => Output += text;
     private sealed class EmptyScope : IDisposable { public void Dispose() { } }

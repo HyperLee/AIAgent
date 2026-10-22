@@ -17,6 +17,8 @@ internal sealed class SystemTerminal : ITerminal
         }
     }
 
+    public ConsoleKeyInfo? TryReadBufferedKey() => Console.KeyAvailable ? Console.ReadKey(intercept: true) : null;
+
     public void Write(string text) => Console.Write(text);
 
     public void DiscardBufferedInput()

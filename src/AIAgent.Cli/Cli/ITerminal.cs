@@ -6,5 +6,6 @@ internal interface ITerminal
     IDisposable BeginInput();
     ConsoleKeyInfo? ReadKey(CancellationToken cancellationToken);
     void DiscardBufferedInput();
+    ConsoleKeyInfo? TryReadBufferedKey() => null;
     void Write(string text);
 }

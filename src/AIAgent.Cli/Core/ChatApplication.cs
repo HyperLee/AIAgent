@@ -15,6 +15,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
     private IWorkspaceFiles? _workspace;
     private ToolRegistry? _registry;
     private AgentRunner? _runner;
+    private IDisposable? _busyObserver;
     private ChatState _state = ChatState.AwaitingInput;
     private StopReason _stopReason;
     private bool _cancelTurn;
@@ -59,10 +60,11 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/clear：清除對話與讀取快照，保留累計；/exit：退出。\n" +
-                        "目前支援受限列檔與 UTF-8 讀檔；選取內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
-                        "等待輸入時 Ctrl+C 退出；生成或工具處理中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
-                        "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。"));
+                    interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/clear：清除對話、快照與核准記憶體，保留累計；不復原已寫檔案；/exit：退出。\n" +
+                        "支援列檔、UTF-8 讀檔、建立與唯一精確替換；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
+                        "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
+                        "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
+                        "替換保留普通權限位元，不保證 owner、ACL、xattr 或硬連結關係；取消不復原已寫內容。"));
                     continue;
                 }
                 if (command == "/clear")
@@ -126,7 +128,8 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
         var keyHandoff = false;
         try
         {
-            using var observer = interaction.ObserveBusyInput(HandleSignal);
+            _busyObserver = interaction.ObserveBusyInput(HandleSignal);
+            using var approvalBinding = workspaceFilesFactory.ApprovalBridge?.Bind(_session!, ConfirmChangeAsync);
             var result = await _runner!.RunAsync(context.BuildMessages(user), cancellation.Token);
             var status = result.Status;
             var reason = result.StopReason;
@@ -135,7 +138,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 if (result.RequiresContextReset) ClearConversationState();
                 // Cancellation and final publication use the same CLI decision point.
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
-                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable))
+                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
                 else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
                 {
@@ -172,6 +175,8 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
         }
         finally
         {
+            try { StopBusyObserver(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
             lock (_gate)
             {
                 _turnCancellation = null; _turnSignal = null;
@@ -180,9 +185,53 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
         }
     }
 
+    private void StopBusyObserver()
+    {
+        IDisposable? observer;
+        lock (_gate) { observer = _busyObserver; _busyObserver = null; }
+        observer?.Dispose();
+    }
+
+    private async ValueTask<FileApprovalDecision> ConfirmChangeAsync(FileChangePreview preview, CancellationToken token)
+    {
+        var decision = FileApprovalDecision.Unavailable;
+        try
+        {
+            lock (_gate)
+            {
+                if (_turnCancellation is null || _session is null || _stopReason != StopReason.None || _cancelTurn || token.IsCancellationRequested)
+                    return FileApprovalDecision.Cancelled;
+                _state = ChatState.AwaitingApproval;
+            }
+            StopBusyObserver();
+            token.ThrowIfCancellationRequested();
+            decision = await interaction.ConfirmAsync(preview, token);
+            if (!Enum.IsDefined(decision)) decision = FileApprovalDecision.Unavailable;
+            if (decision == FileApprovalDecision.EndOfInput) HandleSignal(ChatControlSignal.EndOfInput);
+            else if (decision == FileApprovalDecision.Cancelled) HandleSignal(ChatControlSignal.CancelTurn);
+            else if (decision == FileApprovalDecision.Unavailable) HandleSignal(ChatControlSignal.Unavailable);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { decision = FileApprovalDecision.Cancelled; }
+        catch (Exception) { RequestStop(StopReason.Failure); decision = FileApprovalDecision.Unavailable; }
+        finally
+        {
+            try
+            {
+                if (!Stopping) _busyObserver = interaction.ObserveBusyInput(HandleSignal);
+                lock (_gate)
+                {
+                    _state = _stopReason != StopReason.None ? ChatState.Stopping : _cancelTurn ? ChatState.Cancelling : ChatState.ExecutingTools;
+                }
+            }
+            catch (Exception) { RequestStop(StopReason.Failure); decision = FileApprovalDecision.Unavailable; }
+        }
+        return decision;
+    }
+
     private (ToolRegistry Registry, AgentRunner Runner) CreateAgent(BootstrapSession session, ILlmClient client, IWorkspaceFiles workspace)
     {
-        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
+        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy),
+            new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy)], session.Policy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent));
     }
 
@@ -274,7 +323,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
             if (_finalized) return;
             if (signal == ChatControlSignal.EndOfInput) RequestStop(StopReason.Normal);
             else if (signal == ChatControlSignal.Unavailable) RequestStop(StopReason.Failure);
-            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.Cancelling)
+            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

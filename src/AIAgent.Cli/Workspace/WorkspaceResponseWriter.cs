@@ -40,6 +40,17 @@ internal static class WorkspaceResponseWriter
             writer.WriteEndObject();
         }, out response, out error);
 
+    internal static bool TryCreateResponse(WorkspaceWriteResult result, ISensitiveDataPolicy policy,
+        out JsonElement response, out WorkspaceErrorCode error) => TryWrite(result.Status, result.ErrorCode, policy, writer =>
+        {
+            if (result.Data is not { } data) return;
+            Property(writer, policy, "data"); writer.WriteStartObject();
+            Text(writer, policy, "path", data.Path);
+            Property(writer, policy, "byte_count"); writer.WriteNumberValue(data.ByteCount);
+            Property(writer, policy, "has_utf8_bom"); writer.WriteBooleanValue(data.HasUtf8Bom);
+            writer.WriteEndObject();
+        }, out response, out error);
+
     private static bool TryWrite(WorkspaceStatus status, WorkspaceErrorCode code, ISensitiveDataPolicy policy,
         Action<Utf8JsonWriter> writeData, out JsonElement response, out WorkspaceErrorCode error)
     {

@@ -1,5 +1,8 @@
+using System.Text;
+
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Security;
+using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Cli;
 
@@ -47,6 +50,76 @@ internal sealed class ConsoleChatInteraction(ITerminal terminal) : IChatInteract
         catch (OperationCanceledException) { return ChatInputResult.End(ChatInputStatus.Cancelled); }
         catch (Exception) { return ChatInputResult.End(ChatInputStatus.Unavailable); }
     }));
+
+    public ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(Read(cancellationToken, token =>
+    {
+        var decision = FileApprovalDecision.Cancelled;
+        FileApprovalDecision? pending = null;
+        void Signal(ChatControlSignal signal)
+        {
+            var incoming = signal switch
+            {
+                ChatControlSignal.Unavailable => FileApprovalDecision.Unavailable,
+                ChatControlSignal.EndOfInput => FileApprovalDecision.EndOfInput,
+                _ => FileApprovalDecision.Cancelled
+            };
+            pending = pending is { } previous ? MergeApprovalControl(previous, incoming) : incoming;
+        }
+        try
+        {
+            if (_policy is null || !_policy.CanSendOrUse(preview.DisplayBlock, ContentBoundary.WriteCandidate) ||
+                new UTF8Encoding(false, true).GetByteCount(preview.DisplayBlock) > WorkspaceLimits.MaxPreviewBytes)
+                return FileApprovalDecision.Unavailable;
+            Write(preview.DisplayBlock);
+            _reader.DiscardBufferedInput(Signal);
+            while (true)
+            {
+                if (pending is { } control) { decision = control; break; }
+                token.ThrowIfCancellationRequested();
+                var input = _reader.Read(token);
+                Write("\n");
+                if (input.Status != ChatInputStatus.Submitted && input.Status != ChatInputStatus.Invalid)
+                {
+                    decision = input.Status switch
+                    {
+                        ChatInputStatus.Cancelled => FileApprovalDecision.Cancelled,
+                        ChatInputStatus.EndOfInput => FileApprovalDecision.EndOfInput,
+                        _ => FileApprovalDecision.Unavailable
+                    };
+                    break;
+                }
+                var text = input.Text?.Trim();
+                if (input.Status == ChatInputStatus.Submitted)
+                {
+                    if (string.Equals(text, "y", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "yes", StringComparison.OrdinalIgnoreCase))
+                    { decision = FileApprovalDecision.Approved; break; }
+                    if (text?.Length == 0 || string.Equals(text, "n", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "no", StringComparison.OrdinalIgnoreCase))
+                    { decision = FileApprovalDecision.Declined; break; }
+                }
+                const string retry = "請輸入 y／yes 或 n／no。\n" + FileChangePreviewBuilder.Prompt;
+                if (!_policy.CanSendOrUse(retry, ContentBoundary.WriteCandidate)) { decision = FileApprovalDecision.Unavailable; break; }
+                Write(retry);
+                _reader.DiscardBufferedInput(Signal);
+            }
+            _reader.DiscardBufferedInput(Signal);
+            if (pending is { } finalControl) decision = MergeApprovalControl(decision, finalControl);
+            if (token.IsCancellationRequested) decision = MergeApprovalControl(decision, FileApprovalDecision.Cancelled);
+            if (decision is FileApprovalDecision.Approved or FileApprovalDecision.Declined)
+                Write(decision == FileApprovalDecision.Approved ? "已接受此候選；正在重新檢查。\n" : "未套用此變更。\n");
+            return decision;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        { return MergeApprovalControl(decision, pending ?? FileApprovalDecision.Cancelled); }
+        catch (Exception) { return FileApprovalDecision.Unavailable; }
+    }));
+
+    private static FileApprovalDecision MergeApprovalControl(FileApprovalDecision current, FileApprovalDecision incoming)
+    {
+        if (current == FileApprovalDecision.Unavailable || incoming == FileApprovalDecision.Unavailable) return FileApprovalDecision.Unavailable;
+        if (current == FileApprovalDecision.EndOfInput || incoming == FileApprovalDecision.EndOfInput) return FileApprovalDecision.EndOfInput;
+        if (current == FileApprovalDecision.Cancelled || incoming == FileApprovalDecision.Cancelled) return FileApprovalDecision.Cancelled;
+        return current;
+    }
 
     public ValueTask<KeyReplacementChoice> ChooseKeyReplacementAsync(CancellationToken cancellationToken) => new(Read(cancellationToken, token =>
     {
@@ -110,6 +183,7 @@ internal sealed class ConsoleChatInteraction(ITerminal terminal) : IChatInteract
         public IDisposable BeginInput() => source.BeginInput();
         public ConsoleKeyInfo? ReadKey(CancellationToken cancellationToken) => owner._reader.ReadKey(cancellationToken);
         public void DiscardBufferedInput() => source.DiscardBufferedInput();
+        public ConsoleKeyInfo? TryReadBufferedKey() => source.TryReadBufferedKey();
         public void Write(string text) => owner.Write(text);
     }
 
@@ -119,17 +193,18 @@ internal sealed class ConsoleChatInteraction(ITerminal terminal) : IChatInteract
         private readonly ITerminal _terminal;
         private readonly CancellationTokenSource _stop = new();
         private readonly Task _worker;
+        private readonly Action<ChatControlSignal> _signal;
         private bool _disposed;
         internal BusyScope(ConsoleChatInteraction owner, ITerminal terminal, Action<ChatControlSignal> signal)
         {
-            _owner = owner; _terminal = terminal;
+            _owner = owner; _terminal = terminal; _signal = signal;
             _worker = Task.Run(() =>
             {
                 try
                 {
                     while (true)
                     {
-                        var input = terminal.ReadKey(_stop.Token);
+                        var input = owner._reader.ReadKey(_stop.Token);
                         if (input is null || HiddenKeyReader.IsControl(input.Value, ConsoleKey.D, '\u0004')) { signal(ChatControlSignal.EndOfInput); break; }
                         if (HiddenKeyReader.IsControl(input.Value, ConsoleKey.C, '\u0003')) signal(ChatControlSignal.CancelTurn);
                     }
@@ -142,7 +217,7 @@ internal sealed class ConsoleChatInteraction(ITerminal terminal) : IChatInteract
         {
             if (_disposed) return;
             _disposed = true;
-            try { _stop.Cancel(); _worker.GetAwaiter().GetResult(); _terminal.DiscardBufferedInput(); }
+            try { _stop.Cancel(); _worker.GetAwaiter().GetResult(); _owner._reader.DiscardBufferedInput(_signal); }
             finally { lock (_owner._gate) _owner._busy = null; _stop.Dispose(); }
         }
     }

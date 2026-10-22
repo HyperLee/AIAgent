@@ -57,7 +57,7 @@ class TerminalProcess:
         while self.output.count(marker) < count:
             self.pump()
             if self.output.count(marker) < count:
-                check(time.monotonic() < deadline and self.process.poll() is None, "PTY-prompt")
+                check(time.monotonic() < deadline and self.process.poll() is None, "PTY-prompt-" + marker.decode("utf-8", errors="replace") + "-" + str(count) + "-exit-" + str(self.process.poll()))
 
     def send(self, data):
         os.write(self.master, data)
@@ -162,6 +162,7 @@ def main():
         completed.close()
     print("PTY-redirection-help-arguments: PASS", flush=True)
     chat_cases(["dotnet", str(args.host.resolve())])
+    edit_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -227,6 +228,7 @@ def chat_cases(host):
         try:
             terminal.send(b"read\r")
             terminal.wait_for("[工具] read_file".encode())
+            terminal.wait_for(b"OFFLINE_TOOL_WAITING")
             terminal.send(b"DISCARDED_TOOL_TEXT/exit")
             if external:
                 os.kill(terminal.process.pid, signal.SIGINT)
@@ -325,6 +327,120 @@ def chat_cases(host):
             terminal.finish(expected)
             check(b"FAKE_PARTIAL_ONLY" not in terminal.output, "CLI-AC-031-partial-discard")
             print("CLI-AC-031-abort-" + ("key" if key_entry else "choice") + "-" + str(expected) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
+
+
+def edit_cases(host):
+    ready = b"OFFLINE_APPROVAL_READY"
+
+    def start(scenario="edit", gate_fd=None):
+        workspace = tempfile.mkdtemp(prefix="aiagent-edit-pty-")
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace,
+                                   () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM)
+        terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT)
+        terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT)
+        return terminal, Path(workspace)
+
+    for choice, applied in ((b"y\r\n", True), (b" YeS \r", True), (b"n\r", False), (b"\r", False)):
+        terminal, workspace = start()
+        try:
+            terminal.send(b"create\r")
+            terminal.wait_for(ready)
+            terminal.send(choice)
+            terminal.wait_for(CHAT_PROMPT, 2)
+            target = workspace / "new.md"
+            check(target.exists() == applied, "EDIT-AC-042-approval-state")
+            if applied:
+                check(target.read_bytes() == b"Hello\n", "EDIT-AC-042-exact-bytes")
+                check("已寫入並核對".encode() in terminal.output, "EDIT-AC-042-verified")
+            terminal.send(b"/clear\r")
+            terminal.wait_for(CHAT_PROMPT, 3)
+            check(target.exists() == applied, "EDIT-AC-042-clear-no-rollback")
+            terminal.send(b"/exit\r")
+            terminal.finish(0)
+            print("EDIT-AC-042-choice-" + ("yes" if applied else "no") + "-" + str(len(choice)) + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    terminal, workspace = start()
+    try:
+        terminal.send(b"create\r")
+        terminal.wait_for(ready)
+        terminal.send(b"/clear\r")
+        terminal.wait_for(ready, 2)
+        terminal.send(b"yes\r")
+        terminal.wait_for(CHAT_PROMPT, 2)
+        check((workspace / "new.md").read_bytes() == b"Hello\n", "EDIT-AC-042-invalid-retry")
+        terminal.send(b"/exit\r")
+        terminal.finish(0)
+        print("EDIT-AC-042-invalid-retry: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in ("CtrlC", "SIGINT", "EOF", "EOF-CtrlC"):
+        terminal, workspace = start()
+        try:
+            terminal.send(b"create\r")
+            terminal.wait_for(ready)
+            if control == "SIGINT":
+                os.kill(terminal.process.pid, signal.SIGINT)
+            else:
+                terminal.send(b"\x04\x03" if control == "EOF-CtrlC" else b"\x04" if control == "EOF" else b"\x03")
+            if control not in ("EOF", "EOF-CtrlC"):
+                terminal.wait_for(CHAT_PROMPT, 2)
+                terminal.send(b"next\r")
+                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(list(workspace.iterdir()) == [], "EDIT-AC-042-cancel-no-write")
+            print("EDIT-AC-042-approval-" + control + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    for scenario, marker in (("edit-busy-gated", b"OFFLINE_EDIT_GENERATING"), ("edit-preview-gated", b"OFFLINE_PREVIEW_PAUSED")):
+        read_fd, write_fd = os.pipe()
+        terminal, workspace = start(scenario, read_fd)
+        os.close(read_fd)
+        try:
+            terminal.send(b"create\r")
+            terminal.wait_for(marker)
+            terminal.send(b"yes\r\n")
+            os.write(write_fd, b"1")
+            terminal.wait_for(ready)
+            terminal.send(b"n\r")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check(list(workspace.iterdir()) == [], "EDIT-AC-042-discard-early-yes")
+            terminal.send(b"/exit\r")
+            terminal.finish(0)
+            print("EDIT-AC-042-" + scenario + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
+
+    for scenario, published in (("edit-stage-gated", False), ("edit-publish-gated", True)):
+        read_fd, write_fd = os.pipe()
+        terminal, workspace = start(scenario, read_fd)
+        os.close(read_fd)
+        try:
+            terminal.send(b"create\r")
+            terminal.wait_for(ready)
+            terminal.send(b"yes\r")
+            terminal.wait_for(b"OFFLINE_EDIT_IO_GATE")
+            terminal.send(b"\x03")
+            terminal.wait_for(b"OFFLINE_EDIT_CANCEL_OBSERVED")
+            os.write(write_fd, b"1")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check((workspace / "new.md").exists() == published, "EDIT-AC-042-publication-boundary")
+            if published:
+                check("已寫入並核對".encode() in terminal.output, "EDIT-AC-042-cancel-keeps-verified")
+            terminal.send(b"/exit\r")
+            terminal.finish(0)
+            print("EDIT-AC-042-" + scenario + ": PASS", flush=True)
         finally:
             os.close(write_fd)
             terminal.close()

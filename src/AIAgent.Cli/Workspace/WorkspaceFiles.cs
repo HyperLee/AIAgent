@@ -5,31 +5,35 @@ using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Workspace;
 
-internal sealed class WorkspaceFilesFactory : IWorkspaceFilesFactory
+internal sealed class WorkspaceFilesFactory(FileChangeApprovalBridge? approvalBridge = null) : IWorkspaceFilesFactory
 {
-    public IWorkspaceFiles Create(BootstrapSession session) => new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem());
+    public FileChangeApprovalBridge ApprovalBridge { get; } = approvalBridge ?? new();
+    public IWorkspaceFiles Create(BootstrapSession session) => new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), ApprovalBridge.ForSession(session));
     public override string ToString() => "[WorkspaceFilesFactory]";
 }
 
 /// <summary>唯一唯讀入口；每次重新驗證，不把模型要求或快照視為磁碟授權。</summary>
-internal sealed class WorkspaceFiles : IWorkspaceFiles
+internal sealed partial class WorkspaceFiles : IWorkspaceFiles
 {
     private readonly object _gate = new();
     private readonly string _root;
     private readonly IWorkspaceReadFileSystem _fileSystem;
     private readonly ReadSnapshotStore _snapshots;
+    private readonly IFileChangeApproval _approval;
     private readonly CancellationTokenSource _lifetime = new();
     private ISensitiveDataPolicy? _policy;
     private TaskCompletionSource? _inFlight;
     private Task? _disposal;
+    private CancellationTokenSource? _activeCancellation;
     public IReadSnapshotStore Snapshots => _snapshots;
 
-    internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem)
+    internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem, IFileChangeApproval? approval = null)
     {
         _root = workspace.RootPath;
         _policy = policy;
         _fileSystem = fileSystem;
-        _snapshots = new(_gate);
+        _approval = approval ?? UnavailableFileChangeApproval.Instance;
+        _snapshots = new(_gate, CancelActiveOperation);
     }
 
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken) =>
@@ -55,6 +59,7 @@ internal sealed class WorkspaceFiles : IWorkspaceFiles
         Func<WorkspaceStatus, WorkspaceErrorCode, T> end, WorkspaceOperation state, CancellationToken external)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(external, _lifetime.Token);
+        lock (_gate) _activeCancellation = linked;
         try { return await operation(state, linked.Token); }
         catch (Exception exception)
         {
@@ -82,7 +87,7 @@ internal sealed class WorkspaceFiles : IWorkspaceFiles
         finally
         {
             TaskCompletionSource? finished;
-            lock (_gate) { finished = _inFlight; _inFlight = null; }
+            lock (_gate) { finished = _inFlight; _inFlight = null; _activeCancellation = null; }
             finished?.TrySetResult();
         }
     }
@@ -135,44 +140,13 @@ internal sealed class WorkspaceFiles : IWorkspaceFiles
     {
         var path = ValidateArgument(rawPath, true);
         lock (_gate) { CheckActive(operation.Generation, token); _snapshots.Remove(path); }
-        var observations = InspectPath(path, WorkspaceNodeKind.File, operation);
-        var initial = observations[^1].State;
-        if (initial.Length > WorkspaceLimits.MaxFileBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
-        CheckActive(operation.Generation, token);
-        Revalidate(observations);
-        WorkspaceReadResult result;
-        WorkspaceReadSnapshot snapshot;
-        await using (var file = _fileSystem.OpenRead(observations[^1].Path))
-        {
-            if (file.GetState() != initial) throw Rejected(WorkspaceErrorCode.PathChanged);
-            var buffer = new byte[WorkspaceLimits.MaxFileBytes + 1];
-            var count = 0;
-            while (count < buffer.Length)
-            {
-                CheckActive(operation.Generation, token);
-                var received = await file.Stream.ReadAsync(buffer.AsMemory(count, buffer.Length - count), token);
-                CheckActive(operation.Generation, token);
-                if (received == 0) break;
-                count += received;
-                if (count > WorkspaceLimits.MaxFileBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
-            }
-            CheckActive(operation.Generation, token);
-            var original = buffer.AsSpan(0, count).ToArray();
-            var hasBom = original.AsSpan().StartsWith(new byte[] { 239, 187, 191 });
-            string content;
-            try { content = new UTF8Encoding(false, true).GetString(original, hasBom ? 3 : 0, count - (hasBom ? 3 : 0)); }
-            catch (DecoderFallbackException) { throw Rejected(WorkspaceErrorCode.InvalidUtf8); }
-            CheckActive(operation.Generation, token);
-            if (content.Any(character => char.IsControl(character) && character is not ('\t' or '\n' or '\r')))
-                throw Rejected(WorkspaceErrorCode.BinaryContent);
-            CheckSensitive(content, ContentBoundary.ToolResult);
-            result = WorkspaceReadResult.Success(new(path, content, count, hasBom));
-            if (!WorkspaceResponseWriter.TryCreateResponse(result, _policy!, out _, out var error)) throw Rejected(error);
-            Revalidate(observations);
-            if (file.GetState() != initial || count != initial.Length) throw Rejected(WorkspaceErrorCode.PathChanged);
-            snapshot = new WorkspaceReadSnapshot(path, original, hasBom);
-        }
-        Revalidate(observations);
+        var file = await ReadVerifiedFileAsync(path, operation, token);
+        var result = WorkspaceReadResult.Success(new(path, file.Content, file.Bytes.LongLength, file.HasBom));
+        if (!WorkspaceResponseWriter.TryCreateResponse(result, _policy!, out _, out var error)) throw Rejected(error);
+        Revalidate(file.Observations);
+        if (_fileSystem is IWorkspaceWriteFileSystem modes && modes.GetMode(Path.Combine(_root, path)) != file.Mode)
+            throw Rejected(WorkspaceErrorCode.PathChanged);
+        var snapshot = new WorkspaceReadSnapshot(path, file.Bytes, file.HasBom, file.State.Device, file.State.Identity, file.Mode);
         lock (_gate)
         {
             CheckActive(operation.Generation, token);
@@ -251,6 +225,14 @@ internal sealed class WorkspaceFiles : IWorkspaceFiles
         if (IsInactive(generation, token)) throw new OperationCanceledException();
     }
     private static WorkspaceFailure Rejected(WorkspaceErrorCode code) => new(WorkspaceStatus.Rejected, code);
+
+    private void CancelActiveOperation()
+    {
+        CancellationTokenSource? active;
+        lock (_gate) active = _activeCancellation;
+        try { active?.Cancel(); }
+        catch (ObjectDisposedException) { }
+    }
 
     public ValueTask DisposeAsync()
     {

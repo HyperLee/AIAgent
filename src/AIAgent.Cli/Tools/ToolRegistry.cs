@@ -33,22 +33,37 @@ internal sealed class ToolRegistry
 
     internal async Task<ToolExecutionResult> DispatchAsync(LlmToolCall call, CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested) return ToolResponseWriter.Create(ToolStatus.Cancelled, "none", _policy);
-        if (IsSensitive(call)) return ToolResponseWriter.Create(ToolStatus.Rejected, "sensitive_arguments", _policy);
-        if (!_tools.TryGetValue(call.Name, out var tool)) return ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy);
-        if (!ToolArguments.TryPath(call.Arguments, out _)) return ToolResponseWriter.Create(ToolStatus.Rejected, "invalid_arguments", _policy);
+        if (cancellationToken.IsCancellationRequested) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Cancelled, "none", _policy));
+        if (IsSensitive(call)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "sensitive_arguments", _policy));
+        if (!_tools.TryGetValue(call.Name, out var tool)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy));
         var result = await tool.ExecuteAsync(call.Arguments, cancellationToken);
         if (result is null) throw new InvalidOperationException("工具結果不存在");
         if (result.Response is not { } response || SensitiveJson.Contains(response, _policy, ContentBoundary.ToolResult) ||
             result.RelativePath is { } path && !_policy.CanSendOrUse(path, ContentBoundary.ToolResult))
-            return new(result.Status, result.ErrorCode, null);
+            return result.WithoutResponse();
         return result;
     }
+    internal ToolExecutionResult PreserveWriteKind(LlmToolCall call, ToolExecutionResult result) =>
+        result.WriteState is null && _tools.ContainsKey(call.Name) && call.Name is "create_file" or "replace_text"
+            ? EditToolProjection.NotApplied(result) : result;
     public override string ToString() => "[ToolRegistry]";
 }
 
 internal static class ToolArguments
 {
+    internal static bool TryStrings(JsonElement arguments, string[] names, out string[] values)
+    {
+        values = new string[names.Length];
+        if (arguments.ValueKind != JsonValueKind.Object) return false;
+        var seen = new bool[names.Length]; var count = 0;
+        foreach (var property in arguments.EnumerateObject())
+        {
+            var index = Array.FindIndex(names, name => string.Equals(name, property.Name, StringComparison.Ordinal));
+            if (index < 0 || seen[index] || property.Value.ValueKind != JsonValueKind.String) return false;
+            seen[index] = true; count++; values[index] = property.Value.GetString()!;
+        }
+        return count == names.Length;
+    }
     internal static bool TryPath(JsonElement arguments, out string path)
     {
         path = "";

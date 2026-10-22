@@ -1,5 +1,6 @@
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
+using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Core;
 
@@ -147,16 +148,22 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
 
                 AddOperation(call, result);
                 if (result.Response is null) _reset = true;
-                var reason = localFailure || _eventFailed || result.ErrorCode == "unavailable" ? AgentStopReason.LocalFailure
+                var reason = localFailure || _eventFailed || result.CleanupFailed || result.ErrorCode == "unavailable" ? AgentStopReason.LocalFailure
+                    : result.WriteState == FileWriteState.Unconfirmed ? AgentStopReason.WriteUnconfirmed
                     : result.Response is null || result.ErrorCode is "sensitive_arguments" or "sensitive_content" ? AgentStopReason.SensitiveData
                     : result.ErrorCode == "workspace_unavailable" ? AgentStopReason.WorkspaceUnavailable
-                    : result.Status == ToolStatus.Cancelled || Cancelled ? AgentStopReason.TurnCancelled : AgentStopReason.None;
+                    : result.Status == ToolStatus.Cancelled || Cancelled ? AgentStopReason.TurnCancelled
+                    : result.ErrorCode == "approval_declined" ? AgentStopReason.ApprovalDeclined
+                    : result.ErrorCode == "conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
+                    : result.WriteState is not null && (result.Status == ToolStatus.Failed || result.StopAfterOperation || result.ErrorCode == "publish_unsupported") ? AgentStopReason.FileWriteFailed
+                    : AgentStopReason.None;
                 if (reason != AgentStopReason.None)
                 {
                     if (result.ErrorCode == "sensitive_arguments") _reset = true;
                     AddRemaining(calls, index + 1, reason == AgentStopReason.TurnCancelled ? "turn_cancelled" : "turn_stopped");
                     return Finish(reason == AgentStopReason.TurnCancelled ? AgentTurnStatus.Cancelled :
-                        reason == AgentStopReason.WorkspaceUnavailable ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
+                        reason is AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed ||
+                        reason == AgentStopReason.FileWriteFailed && result.Status == ToolStatus.Rejected ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
                 }
                 results.Add(new(call.PartIndex, call.CallId, call.Name, result.Response!.Value));
             }
@@ -179,6 +186,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
 
         private void AddOperation(LlmToolCall call, ToolExecutionResult result)
         {
+            result = registry.PreserveWriteKind(call, result);
             var operation = new LocalToolOutcome(_generations, call.PartIndex, registry.SafeName(call.Name), result);
             _operations.Add(operation);
             if (_eventFailed) return;
@@ -209,7 +217,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
         private AgentTurnResult Finish(AgentTurnStatus status, AgentStopReason reason, string text = "",
             IReadOnlyList<LlmMessage>? completed = null)
         {
-            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable))
+            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed))
             { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; text = ""; completed = null; }
             if (_eventFailed) { status = AgentTurnStatus.Failed; reason = AgentStopReason.LocalFailure; text = ""; completed = null; }
             return new(status, reason, _modelStatus, _modelError, text,

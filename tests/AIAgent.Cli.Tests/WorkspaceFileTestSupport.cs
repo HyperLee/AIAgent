@@ -24,6 +24,7 @@ internal sealed class ControlledWorkspaceFileSystem : IWorkspaceReadFileSystem
     internal sealed class Node(WorkspaceNodeState state, byte[]? bytes = null)
     {
         internal WorkspaceNodeState State { get; set; } = state;
+        internal UnixFileMode Mode { get; set; } = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         internal byte[] Bytes { get; set; } = bytes ?? [];
     }
     internal Dictionary<string, Node> Nodes { get; } = new(StringComparer.Ordinal) { ["/ws"] = new(new(WorkspaceNodeKind.Directory, Identity: 1)) };
@@ -67,6 +68,7 @@ internal sealed class ControlledWorkspaceFileSystem : IWorkspaceReadFileSystem
         internal bool Disposed { get; private set; }
         public Stream Stream => Input;
         internal Handle(ControlledWorkspaceFileSystem owner, Node node) { _owner = owner; _node = node; Input = new(node.Bytes, owner); }
+        public UnixFileMode GetMode() => _node.Mode;
         public WorkspaceNodeState GetState() { _owner.OnHandleState?.Invoke(); return _node.State; }
         public ValueTask DisposeAsync()
         {

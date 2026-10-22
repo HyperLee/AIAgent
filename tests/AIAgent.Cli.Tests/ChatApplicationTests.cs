@@ -98,7 +98,7 @@ public sealed class ChatApplicationTests
         Assert.AreEqual(1, fixture.Client.Requests.Count);
         var request = fixture.Client.Requests[0];
         Assert.AreEqual("test instruction", request.SystemInstruction);
-        Assert.IsTrue(request.Tools.Select(tool => tool.Name).SequenceEqual(new[] { "list_files", "read_file" }));
+        Assert.IsTrue(request.Tools.Select(tool => tool.Name).SequenceEqual(new[] { "list_files", "read_file", "create_file", "replace_text" }));
         Assert.AreEqual(1, request.Messages.Count);
         Assert.AreEqual("  安全問題  ", request.Messages[0].UserText);
         Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));

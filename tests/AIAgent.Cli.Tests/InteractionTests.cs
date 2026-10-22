@@ -17,7 +17,7 @@ public sealed class InteractionTests
             interaction.EnsureAvailable();
             var accepted = await interaction.ConfirmWorkspaceAsync(new("/actual workspace"), new(null), default);
             Assert.IsTrue(accepted == (answer.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) || answer.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)), "AC-006");
-            Assert.IsTrue(terminal.Output.Contains("/actual workspace", StringComparison.Ordinal) && terminal.Output.Contains("尚未設定模型", StringComparison.Ordinal) && terminal.Output.Contains("本機聊天與選取的檔案內容可能傳送至 Gemini；支援受限列檔與 UTF-8 讀檔", StringComparison.Ordinal) && terminal.Output.Contains("使用此工作區？[y/N]", StringComparison.Ordinal), "AC-006");
+            Assert.IsTrue(terminal.Output.Contains("/actual workspace", StringComparison.Ordinal) && terminal.Output.Contains("尚未設定模型", StringComparison.Ordinal) && terminal.Output.Contains("本機聊天與選取的檔案內容可能傳送至 Gemini；支援受限列檔、UTF-8 讀檔及逐筆預覽核准的建立／精確替換", StringComparison.Ordinal) && terminal.Output.Contains("使用此工作區？[y/N]", StringComparison.Ordinal), "AC-006");
             Assert.IsTrue(terminal.ScopeCount == 0, "AC-009");
         }
     }

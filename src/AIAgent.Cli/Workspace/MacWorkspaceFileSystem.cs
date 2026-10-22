@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 namespace AIAgent.Cli.Workspace;
 
 /// <summary>macOS 的無跟隨種類檢查；不以「非目錄」推論普通檔案。</summary>
-internal sealed class MacWorkspaceFileSystem : IWorkspaceReadFileSystem
+internal sealed class MacWorkspaceFileSystem : IWorkspaceWriteFileSystem
 {
     public WorkspaceNodeState Inspect(string fullPath)
     {
@@ -32,6 +32,72 @@ internal sealed class MacWorkspaceFileSystem : IWorkspaceReadFileSystem
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         try { return new ReadFile(new FileStream(handle, FileAccess.Read, 4096, isAsync: true)); }
         catch { handle.Dispose(); throw; }
+    }
+
+    public UnixFileMode GetMode(string fullPath)
+    {
+        EnsureSupported();
+        var code = RuntimeInformation.ProcessArchitecture == Architecture.X64
+            ? StatPathX64(fullPath, out var state) : StatPath(fullPath, out state);
+        if (code != 0) ThrowError(Marshal.GetLastPInvokeError());
+        return (UnixFileMode)(state.Mode & 0x0fff);
+    }
+
+    public IWorkspaceStagedFile CreateStagedFile(string fullPath)
+    {
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+        EnsureSupported();
+        var stream = new FileStream(fullPath, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+        });
+        return new StagedFile(stream);
+    }
+
+    public void PublishNew(string stagedPath, string targetPath)
+    {
+        EnsureSupported();
+        int result;
+        try { result = RenameExclusive(stagedPath, targetPath, 0x00000004); }
+        catch (Exception exception) when (exception is EntryPointNotFoundException or DllNotFoundException)
+        { throw new WorkspacePublishException(WorkspaceErrorCode.PublishUnsupported); }
+        if (result == 0) return;
+        var error = Marshal.GetLastPInvokeError();
+        if (error == 17) throw new WorkspacePublishException(WorkspaceErrorCode.Conflict);
+        if (error is 18 or 22 or 45 or 78 or 102) throw new WorkspacePublishException(WorkspaceErrorCode.PublishUnsupported);
+        ThrowError(error);
+    }
+
+    public void PublishReplacement(string stagedPath, string targetPath)
+    {
+        EnsureSupported();
+        if (Rename(stagedPath, targetPath) != 0) ThrowError(Marshal.GetLastPInvokeError());
+    }
+
+    public void DeleteOwnedStagedFile(string fullPath) => File.Delete(fullPath);
+
+    private sealed class StagedFile(FileStream stream) : IWorkspaceStagedFile
+    {
+        public Stream Stream => stream;
+        public WorkspaceNodeState GetState()
+        {
+            var code = RuntimeInformation.ProcessArchitecture == Architecture.X64
+                ? StatHandleX64(stream.SafeFileHandle, out var state) : StatHandle(stream.SafeFileHandle, out state);
+            if (code != 0) ThrowError(Marshal.GetLastPInvokeError());
+            return ConvertState(state);
+        }
+        public void SetMode(UnixFileMode mode)
+        {
+            if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+            File.SetUnixFileMode(stream.SafeFileHandle, mode);
+        }
+        public void FlushToDisk() => stream.Flush(true);
+        public ValueTask DisposeAsync() => stream.DisposeAsync();
+        public override string ToString() => "[WorkspaceStagedFile]";
     }
 
     private static void EnsureSupported()
@@ -64,6 +130,11 @@ internal sealed class MacWorkspaceFileSystem : IWorkspaceReadFileSystem
                 ? StatHandleX64(stream.SafeFileHandle, out var state) : StatHandle(stream.SafeFileHandle, out state);
             if (code != 0) ThrowError(Marshal.GetLastPInvokeError());
             return ConvertState(state);
+        }
+        public UnixFileMode GetMode()
+        {
+            if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+            return File.GetUnixFileMode(stream.SafeFileHandle);
         }
         public ValueTask DisposeAsync() => stream.DisposeAsync();
         public override string ToString() => "[WorkspaceReadFile]";
@@ -98,6 +169,10 @@ internal sealed class MacWorkspaceFileSystem : IWorkspaceReadFileSystem
         internal long Reserved2;
     }
 
+    [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "renamex_np", SetLastError = true)]
+    private static extern int RenameExclusive([MarshalAs(UnmanagedType.LPUTF8Str)] string source, [MarshalAs(UnmanagedType.LPUTF8Str)] string target, uint flags);
+    [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "rename", SetLastError = true)]
+    private static extern int Rename([MarshalAs(UnmanagedType.LPUTF8Str)] string source, [MarshalAs(UnmanagedType.LPUTF8Str)] string target);
     [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "lstat", SetLastError = true)]
     private static extern int StatPath([MarshalAs(UnmanagedType.LPUTF8Str)] string path, out NativeStat state);
     [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "lstat$INODE64", SetLastError = true)]

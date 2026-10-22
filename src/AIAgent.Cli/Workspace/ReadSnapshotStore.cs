@@ -1,7 +1,7 @@
 namespace AIAgent.Cli.Workspace;
 
 /// <summary>與服務共用提交鎖；外部僅能查詢及清除，不能自行提交基準。</summary>
-internal sealed class ReadSnapshotStore(object gate) : IReadSnapshotStore
+internal sealed class ReadSnapshotStore(object gate, Action? onClear = null) : IReadSnapshotStore
 {
     private readonly Dictionary<string, LinkedListNode<WorkspaceReadSnapshot>> _index = new(StringComparer.Ordinal);
     private readonly LinkedList<WorkspaceReadSnapshot> _order = new();
@@ -24,6 +24,7 @@ internal sealed class ReadSnapshotStore(object gate) : IReadSnapshotStore
     public void Clear()
     {
         lock (gate) { InvalidateAllForRootFailure(); Generation++; }
+        onClear?.Invoke();
     }
 
     // Root failure ends the only admitted operation. Drop all baselines without consuming
