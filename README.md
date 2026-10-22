@@ -1,22 +1,46 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、單檔建立／精確替換及逐次核准；每回合最多五次生成。第 07 份本機 Release 掃描仍有 BUD-S003 阻擋；真實 Gemini 與真人終端機尚未驗證，第三階段整體驗收尚未完成。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、單檔建立／精確替換及逐次核准；每回合最多五次生成。
+
+離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
 開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md) 與 [07：預算與整體驗收](specs/07-budget-and-acceptance.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
-| 子規格 | 能力 | 目前狀態 |
-|---|---|---|
-| 01：啟動與 API Key | 啟動參數、工作區確認、隱藏 Key 與非機密設定。 | 已實作。 |
-| 02：Gemini 用戶端 | 模型契約、SDK 轉接、請求限制、錯誤分類與資料保護。 | 已實作。 |
-| 03：CLI 與 Context | 文字聊天、指令、5 回合歷史、取消、換 Key 與用量累計。 | 已實作；真人終端機與真實 Gemini 驗收尚未執行。 |
-| 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作，並由第 05 份接入正式聊天。 |
-| 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作；離線與 PTY 證據見下方，真人／真實服務未驗證。 |
-| 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作；當次離線與 PTY 證據見下方。 |
-| 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 離線實作與驗證見第 07 份紀錄；真人／服務與人工分發門檻未完成。 |
+| 子規格 | 能力 | 功能實作 | 自動驗證 | 整體驗收待辦 |
+|---|---|---|---|---|
+| 01：啟動與 API Key | 啟動參數、工作區確認、隱藏 Key 與非機密設定。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人終端機。 |
+| 02：Gemini 用戶端 | 模型契約、SDK 轉接、請求限制、錯誤分類與資料保護。 | 已實作。 | 真實 SDK 配假 HTTP handler 回歸通過。 | 真實 Gemini。 |
+| 03：CLI 與 Context | 文字聊天、指令、5 回合歷史、取消、換 Key 與用量累計。 | 已實作。 | 離線與 PTY 回歸通過；F5 基本操作通過。 | 真人終端機與真實 Gemini。 |
+| 04：工作區與唯讀工具 | 工作區邊界、第一層列檔、完整 UTF-8 讀取、結果限量、快照及清除串接。 | 已實作並接入正式聊天。 | 離線與工具整合回歸通過。 | 真實 Gemini 列檔／讀檔。 |
+| 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人終端機與真實 Gemini 工具往返。 |
+| 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人與真實 Gemini 寫入／核准。 |
+| 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 整合測試、掃描器及選用 hook 已實作。 | MSTest、Python 與 PTY 回歸通過。 | Release 掃描受阻；真人／服務／人工分發檢查未完成。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」；04～05 已完成唯讀工具整合的離線驗證。正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；第三階段整體交付仍需真人、真實服務與人工提交／分享檢查。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。目前正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+
+<a id="latest-validation"></a>
+
+## 最新驗證摘要（2026-10-23）
+
+以下引用本對話於 2026-10-23 先前實際執行的查核及偵錯設定驗收；本次 README 維護只核對文件，沒有重新執行整套產品驗收。平台為 macOS arm64、.NET SDK 10.0.100、Python 3.9.6。離線產品與 Release 查核基線為 `5fc252c`；F5 驗收使用該基線加上兩份偵錯設定，其內容已提交為 `4df5214`。下表的 index 掃描在 `4df5214` 執行。
+
+| 證據層級 | 命令／情境 | 該次實際結果 |
+|---|---|---|
+| 離線建置 | 測試專案的 restore／build，連同產品與 TerminalHost。 | 退出 0；0 警告、0 錯誤。還原使用暫存 NuGet 套件與 HTTP 快取，只是工具環境設定。 |
+| 離線產品 | `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 退出 0；289 通過、0 失敗、0 略過。 |
+| 離線掃描測試 | `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 退出 0；33 通過、0 失敗、0 略過。 |
+| 自動終端機 | `python3 -B tests/terminal_smoke.py` | 退出 0；47 組 PTY 通過，不是真人操作。 |
+| Debug 啟動用法 | `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 退出 0；未提示 Key、未呼叫模型。 |
+| 格式／空白 | `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` 與 `git diff --check` | 均退出 0。 |
+| VS Code GUI 自動操作 | F5 執行 `build AIAgent.Cli`，命中 `Program.cs` 第 11 行中斷點；在整合終端機確認根工作區並隱藏輸入假 Key，執行 `/help`、`/clear`、`/exit`。 | 建置成功；假 Key 無回顯；指令結果正確，退出碼 0 且終端機回顯恢復。暫時中斷點已移除，未呼叫 Gemini。 |
+| Git index | `python3 -B scripts/check_sensitive_content.py staged` | 退出 0；130 檔、0 命中。只覆蓋該次 index，不含本次尚未暫存的 README 修訂。 |
+| Release 產物 | 以全新隔離目錄執行 framework-dependent、非單檔的 Release publish，再執行 artifacts 掃描。 | publish 退出 0；掃描退出 1／blocked，14 檔、1 命中，item=000005、BUD-S003。 |
+| Release 啟動用法 | 同一產物的 `AIAgent.Cli.dll --help`。 | 未執行；掃描非零後依 BUD-070 停止該次流程，BUD-AC-043 未通過。 |
+| 真人／真實服務／分發 | BUD-AC-046～049；x64 平台。 | 真人終端機、真實 Gemini、人工提交／分享／分發檢查及 x64 均未驗證；第三階段整體驗收未完成。 |
+
+Release 命中位於相依套件 `Google.Apis.Auth.dll` 的 UTF-16 私鑰起始標記字面值；固定外形規則命中不等於已確認存在真實或可用的私鑰。目前規格沒有相依套件豁免，因此仍停止分發，不略過該 DLL 或調寬規則。上述 F5 證據由 GUI 工具自動操作取得，不替代真人輸入法、完整差異／核准或真實 Gemini 驗收。
 
 ## 建置與啟動
 
@@ -53,6 +77,21 @@ dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build
 
 Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工作區檔案來源，不持久化或顯示。請勿把真實 Key 放入程式、文件、測試或命令列。
 
+<a id="vscode-debugging"></a>
+
+## VS Code 偵錯
+
+以 VS Code 開啟儲存庫根目錄 `AIAgent`，並確認可使用 .NET SDK 10.0.100 或 `global.json` 允許的修補版本，以及提供 `coreclr` 偵錯器的 Microsoft C# 延伸模組。專案已提供 [launch.json](.vscode/launch.json) 與 [tasks.json](.vscode/tasks.json)，無須自行輸入組態或任務名稱。
+
+1. 在程式碼設定中斷點，按 **F5** 啟動唯一的 `Debug AIAgent.Cli` 組態。
+2. VS Code 先執行預設建置任務 `build AIAgent.Cli`，以 Debug 組態建置 `src/AIAgent.Cli/AIAgent.Cli.csproj`，包含必要的套件還原。
+3. 建置成功後以 `coreclr` 啟動 `src/AIAgent.Cli/bin/Debug/net10.0/AIAgent.Cli.dll`，互動顯示於**整合終端機**。
+4. 在終端機確認工作區，再隱藏輸入 Key，進入聊天；可先使用 `/help`、`/clear`、`/exit` 檢查本機操作。這些指令不呼叫模型，真實聊天仍須可用 Key 與網路。
+
+設定中的 `cwd` 為 `${workspaceFolder}`、`args` 為空陣列，因此預設工作區就是專案根目錄。工作區確認仍依產品流程執行；若要操作其他工作區，可依前述 CLI 的 `--workspace <path>` 方式另行啟動。Key 不放入偵錯參數、環境變數或兩份 JSON。
+
+`preLaunchTask` 與任務 label 一致；**Cmd+Shift+B** 可單獨執行同一個預設建置任務。偵錯設定關閉例外及模組載入訊息記錄；本機操作與 Key 輸入仍由產品終端機流程管理。2026-10-23 已實際驗證的 F5 範圍見[最新驗證摘要](#latest-validation)。
+
 ## 聊天操作
 
 提示為 `你> `。**輸入期間不回顯；Enter 後顯示安全訊息**。不顯示星號或輸入長度；已知指令只顯示操作結果。一般訊息含當前 Key 時整筆阻擋，原文不顯示或送出。
@@ -82,7 +121,7 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 ## 模組與後續使用方式
 
-| 模組 | 本階段責任 |
+| 模組 | 目前責任 |
 |---|---|
 | Core | `ChatApplication` 狀態機、`AgentRunner`、完整回合驗證、`ConversationContext` 與用量累計；新增契約為 internal，不依賴 SDK 型別。 |
 | Llm | session 綁定的 `GeminiClient`、SDK 轉換、受控 HTTP 傳輸、協定保存、回應與錯誤分類。 |
@@ -187,7 +226,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 ## 第 03 份子規格歷史驗證紀錄（2026-10-20）
 
-以下保留 2026-10-20 第 03 份子規格實作完成時的歷史驗證紀錄。當時後續的 README 維護只檢查文件；本次第 05 份實作的驗證另列，不沿用下表作為新結果。
+以下保留 2026-10-20 第 03 份子規格實作完成時的歷史驗證紀錄。當時後續的 README 維護只檢查文件；第 05 份實作及後續查核的驗證各自另列，不沿用下表作為新結果。
 
 當時新增測試先重現缺少契約／功能，另重現並修正無效認證選擇誤判、提前取消的顯示政策、CRLF 跨 Key 提示及 client 部分建構的釋放問題。獨立唯讀審查另發現顯示使用者訊息期間中斷仍會進入生成的競爭；新增回歸先重現 1 次非預期呼叫，再將停止檢查與狀態切換放入同一鎖內修正。
 
@@ -234,9 +273,9 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 | WS-AC-009～012 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：第一層列檔、Ordinal 排序、200／4096 邊界、容量截斷、例外及資源關閉。 |
 | WS-AC-013～020 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`、`WorkspaceReadIntegrationTests`：UTF-8／BOM／換行、控制字元、大小／JSON 精確邊界、敏感內容及狀態變更。 |
 | WS-AC-021～024、027 | `WorkspaceFilesTests`、`WorkspaceBoundaryTests`：Ordinal 快照、容量／淘汰、失效、Clear／取消、並行、釋放等待及清理失敗。 |
-| WS-AC-025～026、030 | `ChatWorkspaceTests` 及完整既有回歸：真實 ChatApplication 的清除／換 Key／建構失敗清理；第 05 份改為兩個唯讀 Tools，清除／換 Key 仍不額外生成，既有 Gemini 請求限制保留。 |
+| WS-AC-025～026、030 | `ChatWorkspaceTests` 及完整既有回歸：真實 ChatApplication 的清除／換 Key／建構失敗清理；第 05 份接入兩個唯讀工具，第 06 份擴為目前四工具，清除／換 Key 仍不額外生成，既有 Gemini 請求限制保留。 |
 | WS-AC-029 | `WorkspaceReadIntegrationTests`：真實暫存工作區逐檔比較 bytes 與項目，檔案內假指令不觸發額外操作。 |
-| WS-AC-031～034 | 既有 PTY 另記；真人終端機未驗證。真實工具往返與寫入交接留待第 05～07 份。 |
+| WS-AC-031～034 | 既有 PTY 回歸由後續保留；列檔／讀檔／寫入的離線整合已由第 05～07 份承接。真人終端機與真實 Gemini 仍未驗證，最新範圍見上方摘要。 |
 
 ## 第 04 份子規格歷史驗證紀錄（2026-10-21）
 
@@ -261,7 +300,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 ## 第 05 份 Agent 工具循環
 
-正式只登錄 `list_files`、`read_file`，兩者皆要求唯一的 string `path`，根目錄使用 `.`。模型可直接聊天；要操作檔案時，必須提出原生 function call。Markdown、檔案文字或模型附帶文字不會觸發隱藏操作。
+第 05 份實作當時只登錄 `list_files`、`read_file`，兩者皆要求唯一的 string `path`，根目錄使用 `.`；第 06 份已加入建立與替換，目前正式登錄四工具。以下說明第 05 份建立並沿用至今的循環行為，寫入增量見下一節。模型可直接聊天；要操作檔案時，必須提出原生 function call。Markdown、檔案文字或模型附帶文字不會觸發隱藏操作。
 
 Registry 逐一驗證名稱及參數，沿用工作區的路徑、UTF-8、敏感檔案、快照及容量限制。額外、重複或大小寫變體欄位會拒絕；原始 HTTP 回應的重複 JSON 欄位在 SDK dictionary 轉換前拒絕，不採最後值。原始模型 Content、thought signatures、ID 與 part 順序保留，全部結果依原呼叫順序集中回填，逆序或缺失配對不續送。
 
@@ -284,11 +323,12 @@ busy 範圍涵蓋生成、工具、配對、用量及收尾。Ctrl+C 取消同�
 | LOOP-AC-030～034 | AgentAcceptanceTests、AgentChatTests、ToolRegistryTests 及既有用量測試：工具後模型失敗、真實列檔截斷、逐欄統計／溢位，以及含真實工具結果的 262144／262145 body 邊界。 |
 | LOOP-AC-036 | 完整 MSTest 回歸、help、格式及文件檢查；只更新階段增量造成的預期。 |
 | LOOP-AC-037 | macOS PTY 的工具續接、clear 重讀、受控遲到取消、Ctrl+C／SIGINT／EOF、工具後認證與終端機復原。 |
-| LOOP-AC-038～040 | 真人終端機、真實 Gemini 未驗證；寫入／預覽／確認／衝突與最終發布留待第 06～07 份。 |
+| LOOP-AC-038～039 | 真人終端機與真實 Gemini 未驗證，GUI 自動偵錯不替代這兩項。 |
+| LOOP-AC-040 | 寫入／預覽／確認／衝突已由第 06 份實作及離線驗證；第 07 份已提供整合測試與掃描器，Release 及人工交付門檻仍未完成。 |
 
-### 第 05 份實作驗證紀錄（2026-10-21）
+### 第 05 份歷史驗證紀錄（2026-10-21）
 
-以下為本次實作後在 macOS arm64、.NET SDK 10.0.100 的實際結果。原有 160 項回歸與新增 56 項測試案例合計 216 項；這是測試執行數，與 LOOP-AC-001～036 的驗收編號數分開。
+以下保留 2026-10-21 第 05 份實作後在 macOS arm64、.NET SDK 10.0.100 的歷史結果，不作本次 README 維護的新驗證。原有 160 項回歸與新增 56 項測試案例合計 216 項；這是測試執行數，與 LOOP-AC-001～036 的驗收編號數分開。下列未新增寫入工具、未提交等敘述亦指當時工作範圍。
 
 | 命令／類別 | 退出碼與實際結果 |
 |---|---|
@@ -336,11 +376,12 @@ busy 範圍涵蓋生成、工具、配對、用量及收尾。Ctrl+C 取消同�
 | EDIT-AC-031～035、039 | `EditAgentIntegrationTests`、`EditLifecycleTests`：第五次零寫入、真實 Chat＋SDK 假 handler＋工作區往返、同批 read→replace／逐筆核准、寫後模型失敗、五完整回合及實際 SDK body 262144／262145 bytes。 |
 | EDIT-AC-036～038、041 | 新增 Key 拼接／固定預覽短 Key／格式字元案例，加上完整 01～05 的敏感資料、配對、取消、用量、help、格式與空白回歸。 |
 | EDIT-AC-042 | 測試 host 與 PTY：y／yes、拒絕／空白／無效選擇、預輸入、CRLF、Ctrl+C／SIGINT／EOF、預覽期間丟棄及明確同步的發布前後取消。 |
-| EDIT-AC-043～045 | 真人終端機、真實 Gemini 未執行；第 07 份掃描與整體交付尚未實作。 |
+| EDIT-AC-043～044 | 真人終端機與真實 Gemini 未執行；GUI 自動偵錯未涵蓋完整寫入／核准人工驗收。 |
+| EDIT-AC-045 | 第 07 份已提供限制整合測試、提交／產物掃描器及選用 hook；Release 掃描仍受阻，真人／服務／人工分發門檻未完成。 |
 
-### 第 06 份實作驗證紀錄（2026-10-22）
+### 第 06 份歷史驗證紀錄（2026-10-22）
 
-以下為 macOS arm64、.NET SDK 10.0.100 的當次驗證；測試使用假 Key、假模型／HTTP handler、可控制 I/O 與保留的隔離工作區。驗收編號與測試方法／PTY 組數分開計算。
+以下保留 2026-10-22 第 06 份在 macOS arm64、.NET SDK 10.0.100 的歷史驗證，不作本次 README 維護的新驗證；測試使用假 Key、假模型／HTTP handler、可控制 I/O 與保留的隔離工作區。驗收編號與測試方法／PTY 組數分開計算。下列「第 07 份尚未實作」及未新增 hooks、未提交等敘述均指第 06 份驗收當時，目前狀態以上方最新摘要為準。
 
 | 命令／類別 | 退出碼與實際結果 |
 |---|---|
@@ -450,14 +491,16 @@ dotnet "/example/new-publish-directory/AIAgent.Cli.dll" --help
 | BUD-AC-013～020 | `BudgetWorkflowTests` 加既有 `Edit*`／`Agent*`：真實磁碟與 SDK 假 handler、建立／讀取／替換、逐筆拒絕、本機結果、發布取消／故障、單一路徑清理、敏感整批；既有短 Key／拼接／認證收尾測試均保留。 |
 | BUD-AC-021～033 | Python `unittest`：嚴格 CLI、完整 index／原始 blob、特殊 bytes 名稱、部分暫存雙向、刪除／重新命名、連結／未合併／gitlink／缺失物件、linked worktree／替代 index、trace／replace、編碼跨塊、範例文法與限額、異動／子程序／輸出故障。 |
 | BUD-AC-034～039 | Python 真實發布目錄／Git commit 與可控競態：必要檔／二進位、敏感目錄／連結／FIFO／壓縮後綴、換身分／根／集合、唯讀、opt-in hook、安全及失敗提交、缺依賴、Git 暫時 index。 |
-| BUD-AC-040～044 | 本節獨立命令／hook／發布限制與人工清單、完整回歸、當次本機 Release 及分層結果紀錄；不把文件表格列數當測試數。 |
+| BUD-AC-040～042、044 | 本節獨立命令／hook／發布限制與人工清單、完整回歸及分層結果紀錄；不把文件表格列數當測試數。 |
+| BUD-AC-043 | **未通過**：2026-10-23 全新 Release 產物掃描命中 `Google.Apis.Auth.dll` 的 BUD-S003，退出 1／blocked；依規格未繼續執行該產物的 `--help`，詳見最新摘要。 |
 | BUD-AC-045 | 保留全部原 PTY 組；新增中文／emoji／BOM／混合行尾的完整預覽、無效核准、第二筆拒絕／空白／Ctrl+C／EOF，核對第一筆 Verified／磁碟 bytes／用量及後續回合。原有發布前後同步取消仍執行。 |
-| BUD-AC-046～049 | 真人／真實服務／人工提交分享及第三階段完成門檻，尚未驗證；不得以離線或 PTY 代替。 |
+| BUD-AC-046～048 | 真人終端機、真實 Gemini 與人工提交／分享／分發檢查尚未驗證；不得以離線、PTY 或 GUI 自動操作代替。 |
+| BUD-AC-049 | **未完成**：Release 阻擋與必要人工／服務證據尚未補齊，不宣稱第三階段整體完成。 |
 | BUD-AC-050 | 規格原撰寫階段的文件驗收；不是本次新增產品測試數。 |
 
-### 第 07 份實作驗證紀錄（2026-10-22）
+### 第 07 份歷史驗證紀錄（2026-10-22）
 
-基線為 `b8918f7` 加本機未提交變更；平台 macOS arm64，.NET SDK 10.0.100、Python 3.9.6、Git 2.54.0。第 06 份以上各節保留當時歷史紀錄，不作第 07 份當次結果。以下只記安全分類與數量，未保存原始請求、憑證、命中內容或終端機轉錄。
+以下保留 2026-10-22 第 07 份的歷史驗證，不作本次 README 維護的新驗證。當時基線為 `b8918f7` 加本機未提交變更；平台 macOS arm64，.NET SDK 10.0.100、Python 3.9.6、Git 2.54.0。第 06 份以上各節保留各自當時紀錄，不作第 07 份當次結果。以下只記安全分類與數量，未保存原始請求、憑證、命中內容或終端機轉錄；末段未修改產品、未提交等敘述亦限當時工作範圍。
 
 | 當次命令／類別 | 退出碼與實際結果 |
 |---|---|
@@ -483,4 +526,4 @@ dotnet "/example/new-publish-directory/AIAgent.Cli.dll" --help
 
 ## 後續階段
 
-第 07 份補齊離線掃描與整合驗收後，仍須完成真人／服務及人工分享檢查，才能宣告第三階段整體完成。後續搜尋、摘要、金額預算、App 或其他平台須另訂規格。
+目前四工具、限制／用量整合測試、開發掃描器及選用 hook 均已實作，離線與 PTY 回歸已通過；第三階段整體完成仍須處理 Release 掃描阻擋，並補齊真人終端機、真實 Gemini 與人工提交／分享／分發檢查。後續搜尋、摘要、金額預算、App 或其他平台須另訂規格。
