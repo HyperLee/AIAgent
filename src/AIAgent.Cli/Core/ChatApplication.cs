@@ -61,7 +61,7 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
                 if (command == "/help")
                 {
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/clear：清除對話、快照與核准記憶體，保留累計；不復原已寫檔案；/exit：退出。\n" +
-                        "支援列檔、UTF-8 讀檔、建立與唯一精確替換；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
+                        "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range 七工具；文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
                         "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
                         "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
                         "替換保留普通權限位元，不保證 owner、ACL、xattr 或硬連結關係；取消不復原已寫內容。"));
@@ -231,7 +231,9 @@ internal sealed class ChatApplication(IChatInteraction interaction, IChatRuntime
     private (ToolRegistry Registry, AgentRunner Runner) CreateAgent(BootstrapSession session, ILlmClient client, IWorkspaceFiles workspace)
     {
         var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy),
-            new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy)], session.Policy);
+            new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy),
+            new SearchFilesTool(workspace, session.Policy), new SearchTextTool(workspace, session.Policy),
+            new ReadFileRangeTool(workspace, session.Policy)], session.Policy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent));
     }
 

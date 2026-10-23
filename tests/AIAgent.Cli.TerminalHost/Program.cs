@@ -45,6 +45,14 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("search", StringComparison.Ordinal) && _calls == 1)
+            {
+                LlmToolCall[] calls = [
+                    new(0, null, "search_files", JsonSerializer.SerializeToElement(new { path = ".", pattern = "*.md" })),
+                    new(1, null, "search_text", JsonSerializer.SerializeToElement(new { path = ".", query = "二" })),
+                    new(2, null, "read_file_range", JsonSerializer.SerializeToElement(new { path = "notes.md", start_line = 2, end_line = 20 }))];
+                return new(LlmStatus.ToolCalls, LlmErrorCode.None, "", calls, LlmMessage.FromModel(new object(), calls), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("edit", StringComparison.Ordinal) && _calls == 1)
             {
                 if (scenario == "edit-busy-gated")
@@ -93,7 +101,7 @@ internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate)
             return new ObservedWriteWorkspace(new WorkspaceFiles(session.Workspace, session.Policy,
                 new GatedEditFileSystem(scenario, gate!), ApprovalBridge.ForSession(session)));
         var workspace = _factory.Create(session);
-        return scenario == "tool-busy" ? new GatedWorkspace(workspace, gate!) : workspace;
+        return scenario is "tool-busy" or "search-busy" ? new GatedWorkspace(workspace, gate!) : workspace;
     }
 }
 
@@ -101,6 +109,19 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : I
 {
     private bool _waited;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
+    public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
+    public async Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token)
+    {
+        if (!_waited)
+        {
+            _waited = true;
+            using var cancellation = token.Register(() => Console.WriteLine("OFFLINE_SEARCH_CANCEL_OBSERVED"));
+            Console.WriteLine("OFFLINE_SEARCH_WAITING");
+            await gate.ReadExactlyAsync(new byte[1], CancellationToken.None);
+        }
+        return await inner.SearchTextAsync(path, query, filePattern, caseSensitive, contextLines, token);
+    }
+    public Task<WorkspaceRangeReadResult> ReadFileRangeAsync(string path, int startLine, int endLine, CancellationToken token) => inner.ReadFileRangeAsync(path, startLine, endLine, token);
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken token) => inner.ListFilesAsync(path, token);
     public async Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken token)
     {
@@ -157,6 +178,9 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
 internal sealed class ObservedWriteWorkspace(IWorkspaceFiles inner) : IWorkspaceFiles
 {
     public IReadSnapshotStore Snapshots => inner.Snapshots;
+    public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
+    public Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token) => inner.SearchTextAsync(path, query, filePattern, caseSensitive, contextLines, token);
+    public Task<WorkspaceRangeReadResult> ReadFileRangeAsync(string path, int startLine, int endLine, CancellationToken token) => inner.ReadFileRangeAsync(path, startLine, endLine, token);
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken token) => inner.ListFilesAsync(path, token);
     public Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken token) => inner.ReadFileAsync(path, token);
     public async Task<WorkspaceWriteResult> CreateFileAsync(string path, string content, CancellationToken token)

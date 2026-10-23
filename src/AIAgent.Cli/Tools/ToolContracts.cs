@@ -22,6 +22,7 @@ internal sealed class ToolExecutionResult
     internal long? ByteCount { get; }
     internal int? ReturnedEntries { get; }
     internal bool Truncated { get; }
+    internal WorkspaceDiscoverySummary? DiscoverySummary { get; }
 
     internal FileWriteState? WriteState { get; }
     internal string? VerifiedPath { get; }
@@ -33,7 +34,8 @@ internal sealed class ToolExecutionResult
     internal ToolExecutionResult(ToolStatus status, string errorCode, JsonElement? response,
         string? relativePath = null, long? byteCount = null, int? returnedEntries = null, bool truncated = false,
         FileWriteState? writeState = null, string? verifiedPath = null, long? verifiedByteCount = null,
-        bool? verifiedHasUtf8Bom = null, bool cleanupFailed = false, bool stopAfterOperation = false)
+        bool? verifiedHasUtf8Bom = null, bool cleanupFailed = false, bool stopAfterOperation = false,
+        WorkspaceDiscoverySummary? discoverySummary = null)
     {
         if (!Enum.IsDefined(status) || !ToolErrorCodes.IsValid(errorCode) ||
             response is { ValueKind: not JsonValueKind.Object }) throw new ArgumentException("工具結果無效");
@@ -47,6 +49,7 @@ internal sealed class ToolExecutionResult
         WriteState = writeState; VerifiedPath = verifiedPath; VerifiedByteCount = verifiedByteCount;
         VerifiedHasUtf8Bom = verifiedHasUtf8Bom; CleanupFailed = cleanupFailed; StopAfterOperation = stopAfterOperation;
         Status = status; ErrorCode = errorCode; Response = response?.Clone();
+        if (status == ToolStatus.Success && response is not null) DiscoverySummary = discoverySummary;
         if (status == ToolStatus.Success)
         { RelativePath = relativePath; ByteCount = byteCount; ReturnedEntries = returnedEntries; Truncated = truncated; }
     }
@@ -59,6 +62,7 @@ internal sealed class ToolExecutionResult
 internal static class ToolErrorCodes
 {
     internal static bool IsValid(string code) => code is "none" or "unknown_tool" or "invalid_arguments" or
+        "invalid_pattern" or "invalid_query" or "invalid_line_range" or
         "sensitive_arguments" or "generation_limit" or "turn_cancelled" or "turn_stopped" or
         "invalid_path" or "outside_workspace" or "sensitive_path" or "symbolic_link" or "not_found" or
         "wrong_entry_type" or "access_denied" or "file_too_large" or "invalid_utf8" or "binary_content" or

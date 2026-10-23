@@ -65,6 +65,16 @@ internal static class ChatDisplay
         if (result.CleanupFailed) return "[本機結果] 內部暫存清理未完成；需人工處理";
         if (result.ErrorCode == "approval_declined") return "[本機結果] 未套用此變更";
         if (result.Status != ToolStatus.Success) return "[本機結果] " + name + "：" + result.Status + "／" + result.ErrorCode;
+        if (result.DiscoverySummary is { } discovery)
+        {
+            if (discovery.Kind == DiscoveryKind.LineRange)
+                return "[本機結果] 已取得行範圍：" + FileChangePreviewBuilder.EscapePath(result.RelativePath!) + "，" +
+                    (discovery.StartLine is { } start ? "第 " + Number(start) + "～" + Number(discovery.EndLine!.Value) + " 行" : "空內容") +
+                    "；回傳 " + Number(discovery.ContentByteCount!.Value) + " bytes";
+            return "[本機結果] " + (discovery.Kind == DiscoveryKind.FileSearch ? "找到安全檔案：" : "找到文字命中：") +
+                Number(discovery.ReturnedCount) + (discovery.Kind == DiscoveryKind.FileSearch ? " 筆" : " 行") +
+                (result.Truncated ? "；僅回傳部分結果" : "") + "；已套用搜尋範圍限制";
+        }
         if (result.ByteCount is { } bytes) return "[本機結果] 已讀取：" + FileChangePreviewBuilder.EscapePath(result.RelativePath!) + "，" + Number(bytes) + " bytes";
         if (result.ReturnedEntries is null) return "[本機結果] " + name + "：Success；結果無法安全回填";
         return "[本機結果] 已列出安全項目：" + Number(result.ReturnedEntries ?? 0) + " 筆" +

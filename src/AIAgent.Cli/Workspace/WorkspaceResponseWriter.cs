@@ -8,7 +8,7 @@ using AIAgent.Cli.Security;
 namespace AIAgent.Cli.Workspace;
 
 /// <summary>唯一的資料投影；大小與敏感檢查使用將來送出的同一份 JSON。</summary>
-internal static class WorkspaceResponseWriter
+internal static partial class WorkspaceResponseWriter
 {
     internal static bool TryCreateResponse(WorkspaceListResult result, ISensitiveDataPolicy policy,
         out JsonElement response, out WorkspaceErrorCode error) => TryWrite(result.Status, result.ErrorCode, policy, writer =>
@@ -52,12 +52,14 @@ internal static class WorkspaceResponseWriter
         }, out response, out error);
 
     private static bool TryWrite(WorkspaceStatus status, WorkspaceErrorCode code, ISensitiveDataPolicy policy,
-        Action<Utf8JsonWriter> writeData, out JsonElement response, out WorkspaceErrorCode error)
+        Action<Utf8JsonWriter> writeData, out JsonElement response, out WorkspaceErrorCode error,
+        int limit = WorkspaceLimits.MaxToolResultBytes, CancellationToken token = default)
     {
         response = default;
         try
         {
-            using var output = new BoundedOutput();
+            token.ThrowIfCancellationRequested();
+            using var output = new BoundedOutput(limit);
             using (var writer = new Utf8JsonWriter(output, new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
             {
                 writer.WriteStartObject();
@@ -65,6 +67,7 @@ internal static class WorkspaceResponseWriter
                 Text(writer, policy, "error_code", SnakeCase(code.ToString()));
                 writeData(writer); writer.WriteEndObject(); CheckSize(writer);
             }
+            token.ThrowIfCancellationRequested();
             if (output.TooLarge) throw new ProjectionFailure(WorkspaceErrorCode.ResultTooLarge);
             using var document = JsonDocument.Parse(output.GetBuffer().AsMemory(0, (int)output.Length));
             response = document.RootElement.Clone();
@@ -99,8 +102,9 @@ internal static class WorkspaceResponseWriter
     private sealed class ProjectionFailure(WorkspaceErrorCode code) : Exception("資料投影無法發布")
     { internal WorkspaceErrorCode Code { get; } = code; }
 
-    private sealed class BoundedOutput() : MemoryStream(WorkspaceLimits.MaxToolResultBytes)
+    private sealed class BoundedOutput(int limit) : MemoryStream(limit)
     {
+        private readonly int _limit = limit;
         internal bool TooLarge { get; private set; }
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
         public override void Write(ReadOnlySpan<byte> buffer)
@@ -108,7 +112,7 @@ internal static class WorkspaceResponseWriter
             var end = Position + buffer.Length;
             // Never throw during Utf8JsonWriter disposal. The writer checks its logical byte
             // count after each string and at completion; excess bytes are never retained.
-            if (end > WorkspaceLimits.MaxToolResultBytes) { TooLarge = true; return; }
+            if (end > _limit) { TooLarge = true; return; }
             if (end > Length) SetLength(end);
             buffer.CopyTo(GetBuffer().AsSpan((int)Position, buffer.Length));
             Position = end;

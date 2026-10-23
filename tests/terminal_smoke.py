@@ -164,6 +164,7 @@ def main():
     chat_cases(["dotnet", str(args.host.resolve())])
     edit_cases(["dotnet", str(args.host.resolve())])
     budget_cases(["dotnet", str(args.host.resolve())])
+    discovery_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -485,6 +486,50 @@ def budget_cases(host):
                   "BUD-AC-045-local-fact-and-usage")
             print("BUD-AC-045-unicode-partial-" + decision + ": PASS", flush=True)
         finally:
+            terminal.close()
+
+
+def discovery_cases(host):
+    """SEARCH-AC-033: offline summaries, cancellation, EOF and discarded busy input."""
+    for decision in ("complete", "CtrlC", "EOF"):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-search-pty-"))
+        original = "one\r\n二\nlast".encode()
+        (workspace / "notes.md").write_bytes(original)
+        read_fd, write_fd = os.pipe()
+        scenario = "search" if decision == "complete" else "search-busy"
+        terminal = TerminalProcess(host + [scenario, str(read_fd)], workspace, (read_fd,))
+        os.close(read_fd)
+        try:
+            terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/help\r")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check(all(name in terminal.output for name in (b"search_files", b"search_text", b"read_file_range")), "SEARCH-AC-033-help")
+            terminal.send("搜尋中文😀\r".encode())
+            if decision == "complete":
+                terminal.wait_for(CHAT_PROMPT, 3)
+                check(all(text.encode() in terminal.output for text in ("找到安全檔案：1 筆", "找到文字命中：1 行", "第 2～3 行；回傳 8 bytes")), "SEARCH-AC-033-summaries")
+                terminal.send(b"/exit\r")
+            else:
+                terminal.wait_for(b"OFFLINE_SEARCH_WAITING")
+                terminal.send(b"discarded-busy-input\r")
+                terminal.send(b"\x03" if decision == "CtrlC" else b"\x04")
+                terminal.wait_for(b"OFFLINE_SEARCH_CANCEL_OBSERVED")
+                check(terminal.process.poll() is None, "SEARCH-AC-033-waits-for-cleanup")
+                os.write(write_fd, b"x")
+                if decision == "CtrlC":
+                    terminal.wait_for(CHAT_PROMPT, 3)
+                    terminal.send("繼續聊天\r".encode())
+                    terminal.wait_for(CHAT_PROMPT, 4)
+                    terminal.send(b"/exit\r")
+                check("找到文字命中".encode() not in terminal.output and "已取得行範圍".encode() not in terminal.output,
+                      "SEARCH-AC-033-no-late-result")
+                check(b"discarded-busy-input" not in terminal.output, "SEARCH-AC-033-no-queued-input")
+            terminal.finish(0)
+            check((workspace / "notes.md").read_bytes() == original, "SEARCH-AC-033-source-unchanged")
+            print("SEARCH-AC-033-" + decision + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
             terminal.close()
 
 

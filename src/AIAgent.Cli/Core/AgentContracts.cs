@@ -22,6 +22,7 @@ internal sealed class LocalToolOutcome(int generationNumber, int partIndex, stri
     internal long? ByteCount { get; } = result.ByteCount;
     internal int? ReturnedEntries { get; } = result.ReturnedEntries;
     internal bool Truncated { get; } = result.Truncated;
+    internal WorkspaceDiscoverySummary? DiscoverySummary { get; } = result.DiscoverySummary;
     internal FileWriteState? WriteState { get; } = result.WriteState;
     internal string? VerifiedPath { get; } = result.VerifiedPath;
     internal long? VerifiedByteCount { get; } = result.VerifiedByteCount;

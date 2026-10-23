@@ -72,6 +72,19 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
                 catch (WorkspaceFailure rootFailure) { classified = rootFailure; }
             }
             if (IsInactive(state.Generation, linked.Token)) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
+            if (state.Discovery is { } scan && (classified is not (WorkspaceFailure or OperationCanceledException) ||
+                classified is WorkspaceFailure
+                {
+                    Code: WorkspaceErrorCode.PathChanged or WorkspaceErrorCode.NotFound or
+                    WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.WrongEntryType
+                }))
+            {
+                try { RevalidateDiscovery(scan, state, linked.Token); }
+                catch (WorkspaceFailure observationFailure) { classified = observationFailure; }
+                catch (OperationCanceledException) { return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None); }
+                catch (Exception) { _snapshots.InvalidateAllForRootFailure(); }
+            }
+            if (IsInactive(state.Generation, linked.Token)) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
             if (classified is WorkspaceFailure failure) return end(failure.Status, failure.Code);
             if (classified is OperationCanceledException) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
             return end(classified is UnauthorizedAccessException ? WorkspaceStatus.Failed :
@@ -208,10 +221,15 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
 
     private void Revalidate(List<PathObservation> observations)
     {
-        if (InspectRoot() != observations[0].State) throw Rejected(WorkspaceErrorCode.PathChanged);
+        if (InspectRoot() != observations[0].State)
+        { _snapshots.InvalidateAllForRootFailure(); throw Rejected(WorkspaceErrorCode.PathChanged); }
         foreach (var observation in observations.Skip(1))
         {
-            if (_fileSystem.Inspect(observation.Path) != observation.State) throw Rejected(WorkspaceErrorCode.PathChanged);
+            WorkspaceNodeState actual;
+            try { actual = _fileSystem.Inspect(observation.Path); }
+            catch { InvalidateObservation(observation.Path, observation.State); throw; }
+            if (actual != observation.State)
+            { InvalidateObservation(observation.Path, observation.State); throw Rejected(WorkspaceErrorCode.PathChanged); }
         }
     }
     private void CheckSensitive(string text, ContentBoundary boundary)
@@ -276,6 +294,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     {
         internal long Generation { get; } = generation;
         internal bool RootChecked { get; set; }
+        internal DiscoveryScan? Discovery { get; set; }
     }
 
     private sealed class PathObservation(string path, WorkspaceNodeState state)

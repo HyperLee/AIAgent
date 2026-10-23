@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、單檔建立／精確替換及逐次核准；每回合最多五次生成。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換及逐次核准；每回合最多五次生成。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md) 與 [07：預算與整體驗收](specs/07-budget-and-acceptance.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md) 與 [08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -17,12 +17,64 @@
 | 05：工具循環 | 工具 Schema、登錄、派送、配對與每回合 5 次生成上限。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人終端機與真實 Gemini 工具往返。 |
 | 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人與真實 Gemini 寫入／核准。 |
 | 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 整合測試、掃描器及選用 hook 已實作。 | MSTest、Python 與 PTY 回歸通過。 | Release 掃描受阻；真人／服務／人工分發檢查未完成。 |
+| 08：程式碼搜尋與局部讀檔 | 安全檔名 glob、跨檔字面搜尋及指定行範圍讀取。 | 已實作並接入七工具。 | 證據見第 08 份驗證紀錄。 | 真人終端機與真實 Gemini；第 07 份門檻保留。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。目前正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。目前正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
 
-## 最新驗證摘要（2026-10-23）
+## 第 08 份程式碼搜尋與局部讀檔
+
+第 08 份實作範圍為 FUT-01，與既有四工具共用同一工作區服務、敏感政策、取消世代及單一進行中操作限制。只接受原生工具呼叫，不新增本機搜尋指令、外部程序、套件或索引。
+
+| 工具 | 參數與用途 |
+|---|---|
+| `search_files` | 必填 `path`、`pattern`；遞迴搜尋安全普通檔案名稱，不讀內容，沒有單檔大小或編碼限制。 |
+| `search_text` | 必填 `path`、`query`；`file_pattern`、`case_sensitive`、`context_lines` 省略時為 `**/*`、true、2；附近行數可為 0～3。 |
+| `read_file_range` | 必填 `path`、`start_line`、`end_line`；行號從 1 開始，請求跨度最多 200 行；終點可夾限至 EOF。 |
+
+搜尋起點必須是目錄，根目錄用 `.`；範圍讀取目標必須是普通檔案。glob 的 `*`／`?` 以 Unicode scalar 匹配同區段，整段 `**` 匹配零個以上路徑區段；沒有 `/` 的樣式匹配各深度 basename，有 `/` 時錨定搜尋起點。比對區分大小寫，其他合法字元按字面處理；不支援正規式、brace 或字元集合。query 是 1～1024 UTF-16 單位的單行字面文字，可含空白與 Tab，不做 Unicode 正規化。
+
+搜尋固定略過 `bin`、`obj`、`node_modules`、`.vs`、`.idea`、`dist`、`coverage`、`TestResults`、`logs`、`.cache` 子目錄，名稱採 OrdinalIgnoreCase；明確指定為起點時允許搜尋其內容。同名普通檔案不略過，也不解析 `.gitignore`。原敏感路徑與連結限制仍優先適用。
+
+每次搜尋最多取得 8192 個項目、深度 32、保留排序前 200 筆；文字搜尋另限 512 個候選及 8388608 實際讀取 bytes。達工作量上限保守標示截斷，不為證明完整取得下一項。文字搜尋與範圍讀取只支援最多 131072 原始 bytes 的 UTF-8 文字，均先完整檢查內容；文字搜尋只略過過大、非法 UTF-8 與二進位候選。其他 I/O、路徑變動或敏感內容使整次無資料。
+
+三工具的完整 JSON 結果最多 65536 bytes。搜尋容量超限會移除排序尾端的完整命中，可能回傳「空集合但已截斷」；範圍結果超限直接拒絕，不切短行。範圍內容保留原始換行、不含起始 BOM；片段 bytes、整檔 bytes 及 JSON bytes 分別計算。CLI 只顯示安全路徑、計數、範圍及片段 bytes，不顯示 query、pattern 或命中原文。
+
+**搜尋或範圍讀取不建立修改快照。** `search_text` 開始處理候選、`read_file_range` 開始合法讀取時，會移除該檔舊快照；要修改仍須重新完整 `read_file`，再預覽及逐次核准。每回合五次生成與 262144 bytes 實際模型請求上限不變；結果已在本機取得不代表 Gemini 已收到。
+
+### 第 08 份驗證紀錄（2026-10-23）
+
+本次以 HEAD `a50b4a0` 加上尚未提交的工作區增量驗證；平台為 macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6。只使用合成 Key、可控制檔案系統、隔離真實檔案與假 HTTP handler，測試工作區保留，不遞迴清理。本次新增 41 個 MSTest，連同原有 289 個共 330 個；下表均為本次實際結果。
+
+| 命令 | 退出碼與結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原成功。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；產品、TerminalHost、測試建置成功，0 警告／0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；330 通過、0 失敗、0 略過，含既有 01～07 回歸。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33 通過、0 失敗、0 略過。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；只顯示用法，無認證或生成。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 0；審查修正的換行格式修正後重新檢查通過。 |
+| `python3 -B tests/terminal_smoke.py` | 0；50 組通過，含原 47 組與 3 組 SEARCH-AC-033，不是真人操作。 |
+| `git diff --check`；另逐檔檢查 12 個未追蹤檔案 | 0；空白、C# CRLF／無末尾換行及本機文件連結查核通過。 |
+
+獨立唯讀程式審查找出 1 項重要競態：已觀察父目錄在再次定位時消失／變連結／變普通檔案，不得回報為初次查找錯誤而保留快照。新增文字搜尋與範圍讀取的回歸測試先重現失敗，補強失敗路徑重驗後通過；最終整套 330 個測試通過。沒有未處理的審查項目。
+
+| 案例 | 自動驗證內容 |
+|---|---|
+| SEARCH-AC-001～003、030～031 | 七工具及嚴格 Schema、所有權與摘要、參數拒絕、短 Key、CLI 摘要。 |
+| SEARCH-AC-004～009、016～021 | 路徑、敏感／忽略／連結、Unicode glob 與文字、完整 UTF-8／BOM、分行、附近行及範圍 bytes。 |
+| SEARCH-AC-010～015 | 列舉／候選／讀取／深度／結果筆數上限及完整 JSON 65535／65536／65537 bytes。 |
+| SEARCH-AC-022～027、032 | 無命中及格式排除候選重驗、根／目錄交換、快照、取消／Clear／並行／Dispose、來源 bytes 不變及既有回歸。 |
+| SEARCH-AC-028～029 | 真實 ChatApplication／SDK 配假 handler、多工具原序、簽章、第 5 次工具全不執行及含歷史／七工具／多結果／既有寫入的實際 body 262144／262145 bytes。 |
+| SEARCH-AC-033 | 離線 PTY 的七工具 help、三種摘要、busy 輸入丟棄、Ctrl+C 繼續聊天及 Ctrl+D 等待收尾。 |
+| SEARCH-AC-034～035 | 真人終端機與真實 Gemini **未執行**；不以自動測試替代。 |
+
+第 07 份 Release 的 BUD-S003 阻擋，以及真人／服務／人工分發與 x64 待辦仍保留；本次未 publish、提交或推送，未啟用或放寬 hook／掃描器。
+
+<a id="stage07-validation"></a>
+
+## 第 07 份既有驗證摘要（2026-10-23）
 
 以下引用本對話於 2026-10-23 先前實際執行的查核及偵錯設定驗收；本次 README 維護只核對文件，沒有重新執行整套產品驗收。平台為 macOS arm64、.NET SDK 10.0.100、Python 3.9.6。離線產品與 Release 查核基線為 `5fc252c`；F5 驗收使用該基線加上兩份偵錯設定，其內容已提交為 `4df5214`。下表的 index 掃描在 `4df5214` 執行。
 
@@ -125,12 +177,12 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 |---|---|
 | Core | `ChatApplication` 狀態機、`AgentRunner`、完整回合驗證、`ConversationContext` 與用量累計；新增契約為 internal，不依賴 SDK 型別。 |
 | Llm | session 綁定的 `GeminiClient`、SDK 轉換、受控 HTTP 傳輸、協定保存、回應與錯誤分類。 |
-| Tools | 固定四工具 Schema、Registry、各工具嚴格參數解析與安全結果轉接。 |
+| Tools | 固定七工具 Schema、Registry、各工具嚴格參數解析與安全結果轉接。 |
 | Workspace | 依固定工作區及當前政策驗證路徑、種類、連結與內容；有界列檔／讀取、記憶體快照與候選、核准後安全發布／核對及明確 JSON 投影。 |
 | Security | 當前 Key 的 Ordinal 完整子字串檢查、整次拒絕、顯示遮蔽與已知憑證欄位遮蔽。 |
 | Configuration／Cli | 嚴格設定、固定工作區、隱藏輸入、單一終端機讀取者、busy 控制觀察及安全純文字顯示。 |
 
-`AgentRunner` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。正式請求固定依序提供 `list_files`、`read_file`、`create_file`、`replace_text`，所有工作區 I/O 都經過同一服務。
+`AgentRunner` 建立 `LlmRequest(SystemInstruction, Messages, Tools)`，以 `ILlmClient.GenerateAsync(request, cancellationToken)` 取得 `LlmResult`。文字訊息使用 `LlmMessage.FromUserText`；工具結果使用 `FromToolResults`。正式請求固定依序提供上述七工具，所有工作區 I/O 都經過同一服務。
 
 `Completed` 與合法 `ToolCalls` 才會提供可續傳的 `ModelMessage`。模型紀錄完整保存 Content、part 順序、工具 ID、thought parts 與簽章；顯示文字只串接非 thought 的 text parts。模型訊息不可公開序列化、列印內容或跨 client／session 續用。
 
@@ -300,7 +352,7 @@ export NUGET_HTTP_CACHE_PATH=/tmp/aiagent-stage02-plan/http-cache
 
 ## 第 05 份 Agent 工具循環
 
-第 05 份實作當時只登錄 `list_files`、`read_file`，兩者皆要求唯一的 string `path`，根目錄使用 `.`；第 06 份已加入建立與替換，目前正式登錄四工具。以下說明第 05 份建立並沿用至今的循環行為，寫入增量見下一節。模型可直接聊天；要操作檔案時，必須提出原生 function call。Markdown、檔案文字或模型附帶文字不會觸發隱藏操作。
+第 05 份實作當時只登錄 `list_files`、`read_file`，兩者皆要求唯一的 string `path`，根目錄使用 `.`；第 06 份加入建立與替換，第 08 份再擴充三項搜尋／範圍工具，目前正式登錄七工具。以下說明第 05 份建立並沿用至今的循環行為，寫入增量見下一節。模型可直接聊天；要操作檔案時，必須提出原生 function call。Markdown、檔案文字或模型附帶文字不會觸發隱藏操作。
 
 Registry 逐一驗證名稱及參數，沿用工作區的路徑、UTF-8、敏感檔案、快照及容量限制。額外、重複或大小寫變體欄位會拒絕；原始 HTTP 回應的重複 JSON 欄位在 SDK dictionary 轉換前拒絕，不採最後值。原始模型 Content、thought signatures、ID 與 part 順序保留，全部結果依原呼叫順序集中回填，逆序或缺失配對不續送。
 
@@ -526,4 +578,4 @@ dotnet "/example/new-publish-directory/AIAgent.Cli.dll" --help
 
 ## 後續階段
 
-目前四工具、限制／用量整合測試、開發掃描器及選用 hook 均已實作，離線與 PTY 回歸已通過；第三階段整體完成仍須處理 Release 掃描阻擋，並補齊真人終端機、真實 Gemini 與人工提交／分享／分發檢查。後續搜尋、摘要、金額預算、App 或其他平台須另訂規格。
+目前七工具、限制／用量整合測試、開發掃描器及選用 hook 均已實作，離線與 PTY 回歸已通過；第三階段整體完成仍須處理 Release 掃描阻擋，並補齊真人終端機、真實 Gemini 與人工提交／分享／分發檢查。第 08 份搜尋增量見上方專節；後續摘要、金額預算、App 或其他平台須另訂規格。

@@ -9,6 +9,9 @@ internal interface IWorkspaceFiles : IAsyncDisposable
     IReadSnapshotStore Snapshots { get; }
     Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken cancellationToken);
+    Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken cancellationToken);
+    Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken cancellationToken);
+    Task<WorkspaceRangeReadResult> ReadFileRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken);
     Task<WorkspaceWriteResult> CreateFileAsync(string path, string content, CancellationToken cancellationToken);
     Task<WorkspaceWriteResult> ReplaceTextAsync(string path, string oldText, string newText, CancellationToken cancellationToken);
 }
@@ -31,7 +34,7 @@ internal enum WorkspaceStatus { Success, Rejected, Cancelled, Failed }
 internal enum WorkspaceEntryKind { File, Directory }
 internal enum WorkspaceErrorCode
 {
-    None, InvalidPath, OutsideWorkspace, SensitivePath, SymbolicLink,
+    None, InvalidArguments, InvalidPattern, InvalidQuery, InvalidLineRange, InvalidPath, OutsideWorkspace, SensitivePath, SymbolicLink,
     NotFound, WrongEntryType, AccessDenied, FileTooLarge, InvalidUtf8,
     BinaryContent, ResultTooLarge, SensitiveContent, PathChanged,
     WorkspaceUnavailable, IoFailure, Unavailable, AlreadyExists, SnapshotRequired, EmptyOldText,
@@ -42,6 +45,17 @@ internal enum WorkspaceErrorCode
 internal static class WorkspaceLimits
 {
     internal const int MaxRelativePathCodeUnits = 4096;
+    internal const int MaxSearchScannedEntries = 8192;
+    internal const int MaxSearchCandidateFiles = 512;
+    internal const int MaxSearchReadBytes = 8388608;
+    internal const int MaxSearchDepth = 32;
+    internal const int MaxSearchResults = 200;
+    internal const int MaxSearchPatternCodeUnits = 1024;
+    internal const int MaxSearchQueryCodeUnits = 1024;
+    internal const int DefaultSearchContextLines = 2;
+    internal const int MaxSearchContextLines = 3;
+    internal const int MaxRangeLines = 200;
+    internal const int MaxDiscoveryResultBytes = 65536;
     internal const int MaxFileBytes = 131072;
     internal const int MaxEditArgumentCodeUnits = 131072;
     internal const int MaxEditArgumentBytes = 131072;

@@ -25,7 +25,7 @@ public sealed class BudgetWorkflowTests
         Assert.IsTrue(config.GetProperty("candidateCount").GetInt32() == 1 && config.GetProperty("maxOutputTokens").GetInt32() == 8192,
             "BUD-AC-001-sdk-config");
         var tools = body.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
-        Assert.IsTrue(tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()).SequenceEqual(new[] { "list_files", "read_file", "create_file", "replace_text" }), "BUD-AC-001-order");
+        Assert.IsTrue(tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()).SequenceEqual(new[] { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range" }), "BUD-AC-001-order");
     }
 
     [TestMethod]
