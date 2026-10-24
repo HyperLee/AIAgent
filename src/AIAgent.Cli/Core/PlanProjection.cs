@@ -12,6 +12,12 @@ internal static class PlanProjection
 {
     internal const string Prompt = "確認此版本並切換 Execute？[y/N] ";
     private const string ReservedId = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    private static readonly string[] BlockReasons = ["capability_unavailable", "turn_paused", "turn_cancelled", "generation_limit",
+        "model_outcome", "operation_failed", "approval_declined", "file_conflict", "write_unconfirmed", "mode_changed", "model_reported",
+        "resource_limit", "workspace_unavailable", "local_failure", "process_start_failed", "process_failed", "process_timed_out", "process_output_limit",
+        "validation_inconclusive", "process_unconfirmed"];
+    private static readonly string UpperReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r)).First();
+    private static readonly string UpperDisplayReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r + "；" + Reason(r))).First();
     internal static string Name<T>(T value) where T : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
     internal static byte[] State(AgentMode mode, PlanSnapshot? plan, bool upper = false)
     {
@@ -31,15 +37,17 @@ internal static class PlanProjection
                 {
                     writer.WriteStartObject(); writer.WriteString("task_id", upper ? ReservedId : task.TaskId);
                     writer.WriteString("kind", Name(task.Kind)); writer.WriteString("title", task.Title); writer.WriteString("acceptance", task.Acceptance);
+                    writer.WriteNumber("requirements_version", task.RequirementsVersion);
                     writer.WriteStartArray("requirements");
                     foreach (var requirement in task.Requirements)
                     {
                         writer.WriteStartObject(); writer.WriteString("tool", requirement.ToolName); writer.WriteString("path", requirement.Path);
+                        if (requirement.Task is { } processTask) writer.WriteString("task", Name(processTask));
                         if (requirement.StartLine is { } start) { writer.WriteNumber("start_line", start); writer.WriteNumber("end_line", requirement.EndLine!.Value); }
                         writer.WriteEndObject();
                     }
                     writer.WriteEndArray(); writer.WriteString("state", upper ? "in_progress" : Name(task.State));
-                    writer.WriteString("summary", task.Summary); writer.WriteString("block_reason", upper ? "capability_unavailable" : task.BlockReason);
+                    writer.WriteString("summary", task.Summary); writer.WriteString("block_reason", upper ? UpperReason : task.BlockReason);
                     writer.WriteString("completion_basis", upper ? "model_assessment" : Name(task.CompletionBasis));
                     writer.WriteStartArray("completion_fact_ids");
                     if (upper)
@@ -71,18 +79,20 @@ internal static class PlanProjection
             {
                 output.Append(upper ? ReservedId : task.TaskId).Append(" [").Append(Name(task.Kind)).Append("] ")
                     .Append(Escape(task.Title)).Append('\n').Append("  完成條件：").Append(Escape(task.Acceptance)).Append('\n');
+                output.Append("  條件版本：").Append(task.RequirementsVersion.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 output.Append("  狀態：").Append(upper ? "in_progress" : Name(task.State)).Append("；完成依據：")
                     .Append(upper ? "model_assessment" : Name(task.CompletionBasis)).Append('\n');
                 foreach (var requirement in task.Requirements)
                 {
                     output.Append("  必要操作：").Append(requirement.ToolName).Append(" \"").Append(Escape(requirement.Path)).Append('"');
+                    if (requirement.Task is { } processTask) output.Append(" 任務 ").Append(Name(processTask));
                     if (requirement.StartLine is { } start) output.Append(" 行 ").Append(start.ToString(CultureInfo.InvariantCulture))
                         .Append('～').Append(requirement.EndLine!.Value.ToString(CultureInfo.InvariantCulture));
                     output.Append('\n');
                 }
                 if (task.Summary is { } summary) output.Append("  摘要：").Append(Escape(summary)).Append('\n');
                 if (upper || task.BlockReason is not null) output.Append("  受阻原因：")
-                    .Append(upper ? "capability_unavailable；等待下一則指示；任務尚未完成；驗證能力尚未提供" : task.BlockReason + "；" + Reason(task.BlockReason!)).Append('\n');
+                    .Append(upper ? UpperDisplayReason + "；" + Reason(UpperDisplayReason) : task.BlockReason + "；" + Reason(task.BlockReason!)).Append('\n');
                 output.Append("  完成事實：");
                 if (upper) output.AppendJoin(", ", Enumerable.Repeat(ReservedId, task.Kind == PlanTaskKind.Analysis ? 1 : task.Requirements.Count));
                 else output.AppendJoin(", ", task.CompletionFactIds);
@@ -98,6 +108,12 @@ internal static class PlanProjection
 
     internal static string Reason(string reason) => reason switch
     {
+        "process_start_failed" => "程序未能啟動",
+        "process_failed" => "程序未成功",
+        "process_timed_out" => "程序已逾時",
+        "process_output_limit" => "程序超出資源上限",
+        "validation_inconclusive" => "缺少可確認的測試證據",
+        "process_unconfirmed" => "程序收尾未確認；需要使用者人工處理",
         "turn_paused" => "等待下一則指示；任務尚未完成",
         "turn_cancelled" => "回合已取消",
         "generation_limit" => "已達生成上限",

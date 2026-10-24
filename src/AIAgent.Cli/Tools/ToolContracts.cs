@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Tools;
@@ -31,12 +32,14 @@ internal sealed class ToolExecutionResult
     internal bool? VerifiedHasUtf8Bom { get; }
     internal bool CleanupFailed { get; }
     internal bool StopAfterOperation { get; }
+    internal ProcessExecutionSummary? ProcessSummary { get; }
+    internal bool ProcessCleanupFailed { get; }
 
     internal ToolExecutionResult(ToolStatus status, string errorCode, JsonElement? response,
         string? relativePath = null, long? byteCount = null, int? returnedEntries = null, bool truncated = false,
         FileWriteState? writeState = null, string? verifiedPath = null, long? verifiedByteCount = null,
         bool? verifiedHasUtf8Bom = null, bool cleanupFailed = false, bool stopAfterOperation = false,
-        WorkspaceDiscoverySummary? discoverySummary = null)
+        WorkspaceDiscoverySummary? discoverySummary = null, ProcessExecutionSummary? processSummary = null, bool processCleanupFailed = false)
     {
         if (!Enum.IsDefined(status) || !ToolErrorCodes.IsValid(errorCode) ||
             response is { ValueKind: not JsonValueKind.Object }) throw new ArgumentException("工具結果無效");
@@ -47,6 +50,11 @@ internal sealed class ToolExecutionResult
             writeState == FileWriteState.Unconfirmed && (status != ToolStatus.Failed || errorCode is not ("write_unconfirmed" or "cleanup_failure")) ||
             cleanupFailed != (errorCode == "cleanup_failure") ||
             cleanupFailed && (status != ToolStatus.Failed || writeState is null)) throw new ArgumentException("工具寫入事實無效");
+        if (processSummary is not null && writeState is not null ||
+            processCleanupFailed != (processSummary?.CleanupFailed ?? false) ||
+            processCleanupFailed && (status != ToolStatus.Failed || errorCode != "process_cleanup_failed"))
+            throw new ArgumentException("工具程序事實無效");
+        ProcessSummary = processSummary; ProcessCleanupFailed = processCleanupFailed;
         WriteState = writeState; VerifiedPath = verifiedPath; VerifiedByteCount = verifiedByteCount;
         VerifiedHasUtf8Bom = verifiedHasUtf8Bom; CleanupFailed = cleanupFailed; StopAfterOperation = stopAfterOperation;
         Status = status; ErrorCode = errorCode; Response = response?.Clone();
@@ -56,7 +64,10 @@ internal sealed class ToolExecutionResult
     }
     internal ToolExecutionResult WithoutResponse() => new(Status, ErrorCode, null,
         writeState: WriteState, verifiedPath: VerifiedPath, verifiedByteCount: VerifiedByteCount,
-        verifiedHasUtf8Bom: VerifiedHasUtf8Bom, cleanupFailed: CleanupFailed, stopAfterOperation: StopAfterOperation);
+        verifiedHasUtf8Bom: VerifiedHasUtf8Bom, cleanupFailed: CleanupFailed, stopAfterOperation: StopAfterOperation,
+        processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed);
+    internal ToolExecutionResult WithProcessStop() => new(Status, ErrorCode, Response,
+        stopAfterOperation: true, processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed);
     public override string ToString() => "[ToolExecutionResult]";
 }
 
@@ -73,5 +84,8 @@ internal static class ToolErrorCodes
         "result_too_large" or "sensitive_content" or "path_changed" or "workspace_unavailable" or "io_failure" or "unavailable" or
         "already_exists" or "snapshot_required" or "empty_old_text" or "text_not_found" or "ambiguous_match" or
         "no_change" or "edit_too_large" or "preview_too_large" or "bom_change_not_allowed" or "unsupported_metadata" or
+        "unsupported_project_layout" or "unsafe_output_path" or "protected_runtime_path" or "process_limit" or
+        "process_start_failed" or "process_failed" or "process_timed_out" or "process_output_limit" or
+        "process_io_failure" or "process_output_invalid" or "validation_inconclusive" or "process_unconfirmed" or "process_cleanup_failed" or
         "approval_declined" or "conflict" or "publish_unsupported" or "write_unconfirmed" or "cleanup_failure";
 }

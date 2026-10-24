@@ -1,3 +1,4 @@
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
@@ -151,7 +152,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                     return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
                 }
                 ToolExecutionResult result;
-                var taskBound = registry.IsWorkspaceTool(call.Name) && registry.ExecutionPolicy.Plans.HasInProgress;
+                var taskBound = registry.IsTaskOperation(call.Name) && registry.ExecutionPolicy.Plans.HasInProgress;
                 var localFailure = false;
                 try { result = await registry.DispatchAsync(call, token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -161,15 +162,19 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
 
                 AddOperation(call, result);
                 if (result.Response is null) _reset = true;
-                var reason = localFailure || _eventFailed || result.CleanupFailed || result.ErrorCode == "unavailable" ? AgentStopReason.LocalFailure
+                var reason = result.ProcessCleanupFailed || result.ProcessSummary?.EndState == ProcessEndState.Unconfirmed ||
+                    result.ErrorCode is "process_unconfirmed" or "process_cleanup_failed" ? AgentStopReason.ProcessUnconfirmed
+                    : localFailure || _eventFailed || result.CleanupFailed || result.ErrorCode == "unavailable" ? AgentStopReason.LocalFailure
                     : result.WriteState == FileWriteState.Unconfirmed ? AgentStopReason.WriteUnconfirmed
                     : result.Response is null || result.ErrorCode is "sensitive_arguments" or "sensitive_content" ? AgentStopReason.SensitiveData
+                    : result.ErrorCode == "process_limit" ? AgentStopReason.ProcessResourceLimit
                     : result.ErrorCode == "workspace_unavailable" ? AgentStopReason.WorkspaceUnavailable
                     : result.Status == ToolStatus.Cancelled || Cancelled ? AgentStopReason.TurnCancelled
                     : result.ErrorCode == "approval_declined" ? AgentStopReason.ApprovalDeclined
                     : result.ErrorCode == "conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
                     : result.WriteState is not null && (result.Status == ToolStatus.Failed || result.StopAfterOperation || result.ErrorCode == "publish_unsupported") ? AgentStopReason.FileWriteFailed
                     : result.ErrorCode == "mode_restricted" ? AgentStopReason.ModeRestricted
+                    : registry.IsProcessTool(call.Name) && (result.StopAfterOperation || result.Status != ToolStatus.Success) ? AgentStopReason.ProcessFailed
                     : result.ErrorCode == "plan_required" ? AgentStopReason.PlanRequired
                     : result.ErrorCode == "plan_not_approved" ? AgentStopReason.PlanNotApproved
                     : result.ErrorCode is "evidence_limit" or "plan_too_large" ? AgentStopReason.TaskResourceLimit
@@ -182,7 +187,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                     return Finish(reason == AgentStopReason.TurnCancelled ? AgentTurnStatus.Cancelled :
                         reason is AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed or
                             AgentStopReason.ModeRestricted or AgentStopReason.PlanRequired or AgentStopReason.PlanNotApproved or AgentStopReason.TaskBlocked or AgentStopReason.TaskResourceLimit ||
-                        reason == AgentStopReason.FileWriteFailed && result.Status == ToolStatus.Rejected ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
+                        (reason is AgentStopReason.FileWriteFailed or AgentStopReason.ProcessFailed) && result.Status == ToolStatus.Rejected || reason == AgentStopReason.ProcessResourceLimit ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
                 }
                 results.Add(new(call.PartIndex, call.CallId, call.Name, result.Response!.Value));
             }
@@ -236,7 +241,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
         private AgentTurnResult Finish(AgentTurnStatus status, AgentStopReason reason, string text = "",
             IReadOnlyList<LlmMessage>? completed = null)
         {
-            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed))
+            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
             { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; text = ""; completed = null; }
             if (_eventFailed) { status = AgentTurnStatus.Failed; reason = AgentStopReason.LocalFailure; text = ""; completed = null; }
             registry.ExecutionPolicy.Plans.BlockInProgress(reason switch
@@ -250,12 +255,25 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                 AgentStopReason.WorkspaceUnavailable => "workspace_unavailable",
                 AgentStopReason.TaskResourceLimit => "resource_limit",
                 AgentStopReason.TaskBlocked => "operation_failed",
+                AgentStopReason.ProcessResourceLimit => "resource_limit",
+                AgentStopReason.ProcessUnconfirmed => "process_unconfirmed",
+                AgentStopReason.ProcessFailed => ProcessBlockReason(),
                 AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable => "local_failure",
                 _ => "model_outcome"
             });
             return new(status, reason, _modelStatus, _modelError, text,
                 status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, _generations, _usage.Snapshot(), _reset);
         }
+
+        private string ProcessBlockReason() => _operations.LastOrDefault(o => o.ToolName == "run_dotnet_task")?.ErrorCode switch
+        {
+            "process_start_failed" => "process_start_failed",
+            "process_timed_out" => "process_timed_out",
+            "process_output_limit" => "process_output_limit",
+            "validation_inconclusive" => "validation_inconclusive",
+            "capability_unavailable" => "capability_unavailable",
+            _ => "process_failed"
+        };
 
         private static bool ValidResult(LlmResult result)
         {

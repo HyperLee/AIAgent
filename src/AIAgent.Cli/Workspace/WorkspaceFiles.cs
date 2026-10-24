@@ -50,23 +50,27 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         Func<WorkspaceStatus, WorkspaceErrorCode, T> end, CancellationToken external)
     {
         long generation;
+        WorkspaceOperationLease? lease;
         lock (_gate)
         {
             if (_disposal is not null || _inFlight is not null) return Task.FromResult(end(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable));
             if (external.IsCancellationRequested) return Task.FromResult(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
+            if (!_executionPolicy.WorkspaceOperations.TryAcquire(external, out lease))
+                return Task.FromResult(end(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable));
             _inFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
             generation = _snapshots.Generation;
             _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;
         }
-        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration), external);
+        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration), lease!);
     }
 
     private async Task<T> RunCoreAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
-        Func<WorkspaceStatus, WorkspaceErrorCode, T> end, WorkspaceOperation state, CancellationToken external)
+        Func<WorkspaceStatus, WorkspaceErrorCode, T> end, WorkspaceOperation state, WorkspaceOperationLease lease)
     {
+        using var admitted = lease;
         using var borrowing = _executionPolicy.Plans.BorrowGeneration(state.PlanGeneration);
         T Complete(T result) { RecordTaskOperation(state, result); return result; }
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(external, _lifetime.Token);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(lease.CancellationToken, _lifetime.Token);
         lock (_gate) _activeCancellation = linked;
         try { return Complete(await operation(state, linked.Token)); }
         catch (Exception exception)
@@ -179,6 +183,27 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         }
     }
 
+    internal long InvalidateForProcess(WorkspaceOperationLease lease)
+    {
+        lock (_gate)
+        {
+            if (_disposal is not null || _policy is null || !lease.BelongsTo(_executionPolicy.WorkspaceOperations) || !lease.IsCurrent)
+                throw new OperationCanceledException();
+            return _snapshots.InvalidateForProcess();
+        }
+    }
+
+    // Cleanup may clear baselines after cancellation, but can never admit or revive work.
+    internal void InvalidateAfterProcess(WorkspaceOperationLease lease)
+    {
+        lock (_gate)
+        {
+            if (_policy is null || !lease.BelongsTo(_executionPolicy.WorkspaceOperations) || !_executionPolicy.WorkspaceOperations.IsActive(lease))
+                throw new OperationCanceledException();
+            _snapshots.InvalidateForProcess();
+        }
+    }
+
     private string ValidateArgument(string rawPath, bool read)
     {
         if (!WorkspacePathRules.TryNormalize(rawPath, out var relative, out var directory)) throw Rejected(WorkspaceErrorCode.InvalidPath);
@@ -260,6 +285,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     {
         CancellationTokenSource? active;
         lock (_gate) active = _activeCancellation;
+        _executionPolicy.WorkspaceOperations.Clear();
         try { active?.Cancel(); }
         catch (ObjectDisposedException) { }
     }
@@ -286,6 +312,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             try { _lifetime.Cancel(); }
             catch (Exception) { failed = true; }
             await wait;
+            await _executionPolicy.WorkspaceOperations.DisposeAsync();
         }
         catch (Exception) { failed = true; }
         finally

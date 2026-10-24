@@ -1,9 +1,13 @@
+using System.Text.Json;
+
 using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Llm;
+using AIAgent.Cli.Processes;
+using AIAgent.Cli.Security;
+using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
-using System.Text.Json;
 
 using Microsoft.Win32.SafeHandles;
 
@@ -19,7 +23,7 @@ try
     using var result = await new Bootstrapper(new FixedSettings(), new WorkspaceResolver(new WorkspaceFileSystem()), bootstrap, bootstrap).StartAsync([], cancellation.Token);
     if (result.Status != BootstrapStatus.Ready) { bootstrap.ShowStatus(StatusMessages.For(result)); return result.ExitCode; }
     using var interaction = new ConsoleChatInteraction(terminal);
-    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate));
+    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate), scenario.StartsWith("build", StringComparison.Ordinal) ? new OfflineProcessFactory(scenario, gate) : null);
     interrupts.RouteTo(chat.Interrupt);
     return await chat.RunAsync(result.TakeSession(), cancellation.Token);
 }
@@ -45,11 +49,18 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("build", StringComparison.Ordinal) && _calls == 1)
+                return PlanCalls(("run_dotnet_task", new { task = "build", project_path = "中文專案/Example.csproj" }));
             if (scenario.StartsWith("plan", StringComparison.Ordinal))
             {
                 if (_calls == 1)
-                    return PlanCalls(("submit_plan", new { expected_revision = 0, objective = "中文計畫😀", tasks = new[] {
-                        new { kind = "write", title = "建立檔案", acceptance = "本機寫入核對", requirements = new[] { new { tool = "create_file", path = "new.md" } } } } }));
+                    return PlanCalls(("submit_plan", new
+                    {
+                        expected_revision = 0,
+                        objective = "中文計畫😀",
+                        tasks = new[] {
+                        new { kind = "write", title = "建立檔案", acceptance = "本機寫入核對", requirements = new[] { new { tool = "create_file", path = "new.md" } } } }
+                    }));
                 if (_calls == 3)
                 {
                     if (scenario == "plan-busy")
@@ -167,6 +178,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
 {
     private bool _approvalPrinted;
     private bool _planApprovalPrinted;
+    private bool _processApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -185,11 +197,24 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
             _planApprovalPrinted = false;
             Console.WriteLine("OFFLINE_PLAN_APPROVAL_READY");
         }
+        if (key is null && _processApprovalPrinted)
+        {
+            _processApprovalPrinted = false; Console.WriteLine("OFFLINE_PROCESS_APPROVAL_READY");
+        }
         return key;
     }
     public void Write(string text)
     {
         source.Write(text);
+        if (text.EndsWith(ProcessApprovalText.Prompt, StringComparison.Ordinal))
+        {
+            _processApprovalPrinted = true;
+            if (scenario == "build-preview-gated" && !_previewWaited)
+            {
+                _previewWaited = true; Console.WriteLine("OFFLINE_PROCESS_PREVIEW_PAUSED");
+                gate!.ReadExactly(new byte[1]);
+            }
+        }
         if (text.EndsWith(PlanProjection.Prompt, StringComparison.Ordinal))
         {
             _planApprovalPrinted = true;
@@ -258,4 +283,50 @@ internal sealed class GatedEditFileSystem(string scenario, FileStream gate) : IW
         public void FlushToDisk() { inner.FlushToDisk(); if (owner.StageGate) owner.Wait(); }
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
+}
+
+// Tests inject this simulator only into the offline terminal host; it is not native isolation evidence.
+internal sealed class OfflineProcessFactory(string scenario, FileStream? gate) : IControlledDotnetTasksFactory
+{
+    public bool IsAvailable => true;
+    public IControlledDotnetTasks Create(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, AgentExecutionPolicy execution,
+        IWorkspaceFiles files, Func<ProcessApprovalPreview, CancellationToken, ValueTask<ProcessApprovalDecision>> approve,
+        Action<string> progress) => new OfflineProcessTasks(scenario, gate, policy, execution, approve, progress);
+}
+
+internal sealed class OfflineProcessTasks(string scenario, FileStream? gate, ISensitiveDataPolicy policy, AgentExecutionPolicy execution,
+    Func<ProcessApprovalPreview, CancellationToken, ValueTask<ProcessApprovalDecision>> approve, Action<string> progress) : IControlledDotnetTasks, IProcessTurnLifecycle
+{
+    public void BeginTurn() { }
+    public async Task<DotnetTaskResult> RunAsync(DotnetTaskKind task, string projectPath, CancellationToken token)
+    {
+        const string preview = "離線程序模擬器：可信專案；Debug；無外部網路；只允許標準 bin／obj 與私人暫存；產物保留。\n" +
+            "程序可能執行專案程式；不保證追蹤所有刻意逃離後代。\n" + ProcessApprovalText.Prompt;
+        var decision = await approve(new(preview, this, execution.Plans.Generation, null, "offline-once"), token);
+        if (decision != ProcessApprovalDecision.Approved || token.IsCancellationRequested)
+            return new(ToolResponseWriter.Create(decision == ProcessApprovalDecision.Unavailable ? ToolStatus.Failed :
+                decision == ProcessApprovalDecision.Declined ? ToolStatus.Rejected : ToolStatus.Cancelled,
+                decision == ProcessApprovalDecision.Unavailable ? "unavailable" : decision == ProcessApprovalDecision.Declined ? "approval_declined" : "turn_cancelled", policy).WithProcessStop());
+        var cancelled = false;
+        if (scenario == "build-running")
+        {
+            using var observed = token.Register(() => Console.WriteLine("OFFLINE_PROCESS_CANCEL_OBSERVED"));
+            Console.WriteLine("OFFLINE_PROCESS_RUNNING");
+            await gate!.ReadExactlyAsync(new byte[1], CancellationToken.None);
+            cancelled = token.IsCancellationRequested;
+        }
+        if (scenario == "build-progress")
+        {
+            try { await Task.Delay(5000, token); progress("[程序] build；執行中，已經過 5 秒。"); }
+            catch (OperationCanceledException) { cancelled = true; }
+        }
+        var unconfirmed = scenario == "build-unconfirmed";
+        var summary = new ProcessExecutionSummary(task, projectPath, ProcessStartState.Started,
+            unconfirmed ? ProcessEndState.Unconfirmed : cancelled ? ProcessEndState.Cancelled : ProcessEndState.Exited,
+            unconfirmed || cancelled ? null : 0, 1, !unconfirmed, false,
+            unconfirmed || cancelled ? ValidationOutcome.NotVerified : ValidationOutcome.BuildSucceeded);
+        return new(ProcessResultWriter.Create(unconfirmed ? ToolStatus.Failed : cancelled ? ToolStatus.Cancelled : ToolStatus.Success,
+            unconfirmed ? "process_unconfirmed" : cancelled ? "turn_cancelled" : "none", summary, null, policy));
+    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

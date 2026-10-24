@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
@@ -22,6 +23,8 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
     private long _planSequence;
     private long _taskSequence;
     private long _operationSequence;
+    internal bool ProcessCapabilityAvailable { get; set; }
+    internal bool ProcessTestCapabilityAvailable { get; set; } = true;
     internal AgentMode Mode { get { lock (_gate) return _mode; } }
     internal long Generation { get { lock (_gate) return _generation; } }
     internal long ExecutionGeneration { get { lock (_gate) return _borrowedGeneration.Value ?? _generation; } }
@@ -83,8 +86,8 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
                     var prior = _plan?.Tasks.SingleOrDefault(t => t.TaskId == task.TaskId);
                     revised.Add(!newPlan && prior is not null && prior.SameDefinition(task)
                         ? new(prior.TaskId, prior.Kind, task.Title, task.Acceptance, task.Requirements,
-                            prior.State, prior.Summary, prior.BlockReason, prior.CompletionBasis, prior.CompletionFactIds)
-                        : new(Id("t", checked(++nextTask)), task.Kind, task.Title, task.Acceptance, task.Requirements));
+                            prior.State, prior.Summary, prior.BlockReason, prior.CompletionBasis, prior.CompletionFactIds, task.RequirementsVersion)
+                        : new(Id("t", checked(++nextTask)), task.Kind, task.Title, task.Acceptance, task.Requirements, requirementsVersion: task.RequirementsVersion));
                 }
                 if (!newPlan && revised.Count == _plan!.Tasks.Count && revised.Zip(_plan.Tasks).All(pair =>
                     pair.First.TaskId == pair.Second.TaskId && pair.First.Requirements.Zip(pair.Second.Requirements).All(r => r.First.Matches(r.Second))))
@@ -115,14 +118,14 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
             var task = _plan.Tasks.SingleOrDefault(t => t.TaskId == taskId);
             if (task is null) return new("task_not_found");
             if (_plan.ApprovalState != PlanApprovalState.Approved) return new("plan_not_approved");
-            if (task.Kind == PlanTaskKind.Validation && state == PlanTaskState.Completed) return new("capability_unavailable");
+            if (task.Kind == PlanTaskKind.Validation && (task.RequirementsVersion == 1 || !ProcessCapabilityAvailable || !ProcessTestCapabilityAvailable && task.Requirements.Any(r => r.Task == DotnetTaskKind.Test)) && state == PlanTaskState.Completed) return new("capability_unavailable");
             TaskOperationFact? analysis = null;
             PlanTaskSnapshot updated;
             if (state == PlanTaskState.InProgress)
             {
                 if (task.State is not (PlanTaskState.Pending or PlanTaskState.Blocked)) return new("invalid_task_transition");
                 if (_plan.Tasks.Any(t => t.State == PlanTaskState.InProgress)) return new("task_in_progress");
-                updated = task.Kind == PlanTaskKind.Validation ? task.WithState(PlanTaskState.Blocked, summary, "capability_unavailable") : task.WithState(state, summary);
+                updated = task.Kind == PlanTaskKind.Validation && (task.RequirementsVersion == 1 || !ProcessCapabilityAvailable || !ProcessTestCapabilityAvailable && task.Requirements.Any(r => r.Task == DotnetTaskKind.Test)) ? task.WithState(PlanTaskState.Blocked, summary, "capability_unavailable") : task.WithState(state, summary);
             }
             else
             {
@@ -145,7 +148,8 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
                     {
                         var fact = _facts.LastOrDefault(f => f.Context.PlanId == _plan.PlanId && f.Context.TaskId == task.TaskId &&
                             f.Kind == TaskCompletionBasis.LocalOperation && f.Request is { } request && request.Matches(requirement));
-                        if (fact is null || fact.Status != ToolStatus.Success || fact.Truncated || fact.CleanupFailed ||
+                        if (fact is null || fact.Status != ToolStatus.Success || fact.CleanupFailed ||
+                            (task.Kind == PlanTaskKind.Validation ? !SuccessfulProcess(fact, requirement) : fact.Truncated) ||
                             task.Kind == PlanTaskKind.Write && fact.WriteState != FileWriteState.Verified || selected.Contains(fact.OperationId, StringComparer.Ordinal))
                             return new("evidence_required");
                         selected.Add(fact.OperationId);
@@ -239,6 +243,90 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
         }
     }
 
+    internal string CheckProcess(DotnetTaskKind kind, string path)
+    {
+        lock (_gate)
+        {
+            if (_policy is null || !Current) return "unavailable";
+            if (_mode != AgentMode.Execute) return "mode_restricted";
+            if (!Enum.IsDefined(kind)) return "invalid_arguments";
+            if (_plan is null) return "none";
+            if (_plan.ApprovalState != PlanApprovalState.Approved) return "plan_not_approved";
+            var task = _plan.Tasks.SingleOrDefault(t => t.State == PlanTaskState.InProgress);
+            if (task?.Kind != PlanTaskKind.Validation || task.RequirementsVersion != 2) return "task_required";
+            return task.Requirements.Any(r => r.ToolName == "run_dotnet_task" && r.Path == path && r.Task == kind)
+                ? "none" : "task_scope_mismatch";
+        }
+    }
+
+    internal string ReserveProcess(DotnetTaskKind kind, string path, out TaskEvidenceReservation? reservation)
+    {
+        lock (_gate)
+        {
+            reservation = null;
+            var error = CheckProcess(kind, path);
+            if (error != "none") return error;
+            return Reserve(new("run_dotnet_task", path, task: kind), false, out reservation);
+        }
+    }
+
+    internal void RecordProcess(TaskEvidenceReservation? reservation, ToolStatus status, string errorCode, ProcessExecutionSummary summary)
+    {
+        if (reservation is null) return;
+        lock (_gate)
+        {
+            if (summary.StartState == ProcessStartState.NotStarted && summary.EndState != ProcessEndState.Unconfirmed)
+            {
+                if (_reservations.Remove(reservation) && _policy is not null && reservation.Generation == _generation &&
+                    _plan?.PlanId == reservation.Context.PlanId && _plan.Revision == reservation.Context.PlanRevision &&
+                    _plan.Tasks.Any(t => t.TaskId == reservation.Context.TaskId)) BlockCore(ProcessReason(status, errorCode, summary));
+                return;
+            }
+            if (!_reservations.Remove(reservation) || _policy is null || reservation.Generation != _generation ||
+                _plan?.PlanId != reservation.Context.PlanId || _plan.Revision != reservation.Context.PlanRevision ||
+                _plan.Tasks.All(t => t.TaskId != reservation.Context.TaskId) || reservation.Request.ToolName != "run_dotnet_task" ||
+                reservation.Request.Task != summary.Task || reservation.Request.Path != summary.ProjectPath) return;
+            var safe = SafeProcess(summary, _policy);
+            var safeCode = _policy.CanSendOrUse(errorCode, ContentBoundary.ToolResult) ? errorCode : "";
+            _facts.Add(new(Id("op", checked(++_operationSequence)), reservation.Context, TaskCompletionBasis.LocalOperation,
+                reservation.Request, safe ? status : ToolStatus.Failed, safeCode,
+                processSummary: safe ? summary : null));
+            if (status != ToolStatus.Success || !safe || !SuccessfulProcess(_facts[^1], reservation.Request))
+                BlockCore(ProcessReason(status, errorCode, summary));
+        }
+    }
+
+    private static bool SafeProcess(ProcessExecutionSummary value, ISensitiveDataPolicy policy)
+    {
+        string[] values = [value.ProjectPath, PlanProjection.Name(value.Task), PlanProjection.Name(value.StartState),
+            PlanProjection.Name(value.EndState), PlanProjection.Name(value.ValidationOutcome), value.OutputState,
+            value.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture), value.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "null",
+            value.StdoutBytes.ToString(CultureInfo.InvariantCulture), value.StderrBytes.ToString(CultureInfo.InvariantCulture)];
+        return values.All(v => policy.CanSendOrUse(v, ContentBoundary.ToolResult)) &&
+            (value.Tests is not { } tests || new[] { tests.Total, tests.Passed, tests.Failed, tests.Skipped, tests.Executed }
+                .All(n => policy.CanSendOrUse(n.ToString(CultureInfo.InvariantCulture), ContentBoundary.ToolResult)));
+    }
+
+    private static bool SuccessfulProcess(TaskOperationFact fact, TaskRequirement request) =>
+        fact.ErrorCode == "none" && fact.ProcessSummary is
+        {
+            StartState: ProcessStartState.Started, EndState: ProcessEndState.Exited, ExitCode: 0,
+            CleanupConfirmed: true, CleanupFailed: false, OutputState: "safe"
+        } summary &&
+        summary.Task == request.Task && summary.ProjectPath == request.Path &&
+        (request.Task == DotnetTaskKind.Build ? summary.ValidationOutcome == ValidationOutcome.BuildSucceeded :
+            summary.ValidationOutcome == ValidationOutcome.TestsPassed && summary.Tests is { Executed: > 0, Failed: 0 });
+
+    private static string ProcessReason(ToolStatus status, string error, ProcessExecutionSummary summary) =>
+        summary.CleanupFailed || summary.EndState == ProcessEndState.Unconfirmed ? "process_unconfirmed" : error switch
+        {
+            "process_start_failed" or "process_failed" or "process_timed_out" or "process_output_limit" or "validation_inconclusive" => error,
+            "approval_declined" => "approval_declined",
+            "capability_unavailable" => "capability_unavailable",
+            "process_limit" => "resource_limit",
+            _ => status == ToolStatus.Cancelled ? "turn_cancelled" : "process_failed"
+        };
+
     internal string Reserve(TaskRequirement request, bool write, out TaskEvidenceReservation? reservation)
     {
         lock (_gate)
@@ -311,12 +399,26 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy)
 
 internal sealed class AgentExecutionPolicy(PlanStore plans)
 {
+    private int _processStopped;
+    internal bool ProcessSessionStopped => Volatile.Read(ref _processStopped) != 0;
+    internal void StopProcesses() => Interlocked.Exchange(ref _processStopped, 1);
     internal PlanStore Plans { get; } = plans;
     internal AgentMode Mode => Plans.Mode;
-    internal bool Allows(ToolCapability capability) => Plans.IsExecutionCurrent && capability switch
+    internal WorkspaceOperationCoordinator WorkspaceOperations { get; } = new();
+    internal bool ProcessTestCapabilityAvailable
+    {
+        get => Plans.ProcessTestCapabilityAvailable;
+        set => Plans.ProcessTestCapabilityAvailable = value;
+    }
+    internal bool ProcessCapabilityAvailable
+    {
+        get => Plans.ProcessCapabilityAvailable;
+        set => Plans.ProcessCapabilityAvailable = value;
+    }
+    internal bool Allows(ToolCapability capability) => !ProcessSessionStopped && Plans.IsExecutionCurrent && capability switch
     {
         ToolCapability.WorkspaceRead => true,
-        ToolCapability.WorkspaceWrite or ToolCapability.UpdateTask => Mode == AgentMode.Execute,
+        ToolCapability.WorkspaceWrite or ToolCapability.UpdateTask or ToolCapability.DotnetTask => Mode == AgentMode.Execute,
         ToolCapability.SubmitPlan => Mode == AgentMode.Plan,
         _ => false
     };

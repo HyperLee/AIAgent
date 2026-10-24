@@ -166,6 +166,7 @@ def main():
     budget_cases(["dotnet", str(args.host.resolve())])
     discovery_cases(["dotnet", str(args.host.resolve())])
     plan_cases(["dotnet", str(args.host.resolve())])
+    controlled_build_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -593,6 +594,58 @@ def plan_cases(host):
         finally:
             os.close(write_fd)
             terminal.close()
+
+
+def controlled_build_cases(host):
+    """BUILD-AC-035: terminal behavior with an injected simulator, separate from native fixtures."""
+    ready = b"OFFLINE_PROCESS_APPROVAL_READY"
+    for choice in ("yes", "no", "blank", "CtrlC", "EOF", "prepaste", "running", "unconfirmed", "progress", "plan"):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-build-pty-"))
+        read_fd, write_fd = os.pipe()
+        scenario = "build-preview-gated" if choice == "prepaste" else "build-running" if choice == "running" else "build-unconfirmed" if choice == "unconfirmed" else "build-progress" if choice == "progress" else "build-flow"
+        terminal = TerminalProcess(host + [scenario, str(read_fd)], workspace, (read_fd,))
+        os.close(read_fd)
+        try:
+            terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT)
+            prompt_count = 1
+            if choice == "plan":
+                terminal.send(b"/plan\r"); prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count)
+            terminal.send("建置中文😀\r".encode())
+            if choice == "plan":
+                prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count)
+                check(ready not in terminal.output, "BUILD-AC-035-Plan-zero-approval")
+                terminal.send(b"/exit\r"); terminal.finish(0)
+            else:
+                if choice == "prepaste":
+                    terminal.wait_for(b"OFFLINE_PROCESS_PREVIEW_PAUSED")
+                    terminal.send(b"yes\r"); os.write(write_fd, b"x")
+                terminal.wait_for(ready)
+                if choice in ("yes", "running", "unconfirmed", "progress"):
+                    terminal.send(b"invalid\r"); terminal.wait_for(ready, 2); terminal.send(b" YeS \r\n")
+                else:
+                    terminal.send({"no": b"no\r", "blank": b"\r", "CtrlC": b"\x03", "EOF": b"\x04", "prepaste": b"\x03"}[choice])
+                if choice == "running":
+                    terminal.wait_for(b"OFFLINE_PROCESS_RUNNING")
+                    terminal.send(b"discarded-process-input\r\x03")
+                    terminal.wait_for(b"OFFLINE_PROCESS_CANCEL_OBSERVED")
+                    check(terminal.process.poll() is None, "BUILD-AC-035-waits-for-cleanup")
+                    os.write(write_fd, b"x")
+                if choice == "progress":
+                    terminal.wait_for("已經過 5 秒".encode())
+                if choice not in ("EOF", "unconfirmed"):
+                    prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count); terminal.send(b"/exit\r")
+                terminal.finish(1 if choice == "unconfirmed" else 0)
+            check(list(workspace.iterdir()) == [], "BUILD-AC-035-simulator-no-source-writes")
+            check(b" YeS " not in terminal.output and b"discarded-process-input" not in terminal.output, "BUILD-AC-035-hidden-busy")
+            if choice == "yes":
+                check(b"build_succeeded" in terminal.output, "BUILD-AC-035-local-summary")
+            if choice in ("no", "blank", "CtrlC", "prepaste", "plan"):
+                check(b"build_succeeded" not in terminal.output, "BUILD-AC-035-no-false-success")
+            print("BUILD-AC-035-" + choice + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
 
 
 if __name__ == "__main__":

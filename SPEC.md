@@ -4,6 +4,18 @@
 >
 > 本文件描述預計開發的功能與驗收方式。目前交付物為本規格書與 `.gitignore` 排除設定，產品程式、工具與測試均尚未建立。執行期遮蔽、敏感資訊檢查與提交阻擋是後續開發要求，本次未加入程式或 Git hooks。後續依第 16 章逐份展開子規格，再進行開發。
 
+## 第 10 份適用範圍補充（2026-10-24）
+
+[10：受控建置與測試](specs/10-controlled-build-and-test.md) 擴充 FUT-02；實作及分層驗證紀錄見 [README](README.md#controlled-build-validation)。正式登錄追加 `run_dotnet_task`，Plan 仍六項工具、Execute 九項；只有明確 `.csproj` 的固定 Debug build／MTP test，不提供自由 shell、額外 argv、restore 或部署。
+
+目前 SDK 10.0.100 的 MTP 固定使用全域 `/tmp` socket；依使用者決定保留私人 IPC 邊界，產品 `test` 回報 capability_unavailable，整個第 10 階段仍未完整驗收。
+
+確認計畫不等於核准程序。每次完整預覽後另取得新輸入同意；原生隔離不可用或布局不支援即拒絕，不回退裸跑。使用獨立發佈目錄啟動 Agent／ProcessHost；允許輸出與目前 runtime 相交時拒絕。來源與敏感位置不能寫入，建置產物與私人暫存保留，不進行批次清理。
+
+Validation v1 保持空條件及 capability_unavailable；v2 才可要求 1～8 個精確 build／test 操作。完成依據取本機最近相符的安全程序事實；正常退出 0 不單獨證明測試實際通過。程序與檔案共用排他租約，啟動前與收尾後失效所有修改快照。程序每回合兩次／累計 300 秒；既有生成、歷史、投影、事實與 SDK body 上限不變。Unconfirmed／程序收尾失敗鎖定 session 並退出 1。
+
+本補充只覆蓋第 10 份明示擴充；下列初版與第 09 份敘述保留歷史界線。真人、真實 Gemini、第 07 份 Release 掃描與人工分發另計，不能以程序功能實作取代其證據。
+
 ## 第 09 份適用範圍補充（2026-10-24）
 
 [09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 已實作 FUT-03，擴充本總規格第 5、8～15 章。啟動預設 Execute，沒有計畫時保留既有聊天與逐次核准；`/plan` 進入唯讀規劃，`/execute` 完整確認目前版本後等待下一則訊息，`/tasks` 顯示本機狀態。九項內建工具按模式提供：Plan 五唯讀加 submit_plan，Execute 七檔案工具加 update_task；新參數與結果契約依第 09 份，既有七工具格式不變。
@@ -763,6 +775,7 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/07-budget-and-acceptance.md` | 6、13～16 | 前述限制的整合、用量顯示、各模組串接與手動驗收清單；補強既有測試，整合暫存內容及發布檢查，明定自動掃描與阻擋的範圍。 |
 | `specs/08-code-search-and-partial-read.md` | 11、13～15 的後續擴充 | 有限 glob、跨檔字面搜尋、指定行範圍、固定忽略、獨立預算與快照失效；實作與證據見 README。 |
 | `specs/09-plan-mode-and-task-list.md` | 5、8～15 的後續擴充 | Plan／Execute、本機版本確認、四種任務狀態、必要操作與完成證據、容量及安全收尾；FUT-02／04 分別交付。 |
+| `specs/10-controlled-build-and-test.md` | 5、8～15 的後續擴充 | 固定 Debug 建置／MTP 測試、逐次核准、原生隔離與監督、Validation v2、輸出與執行限制；驗收分層。 |
 
 ### 16.3 主要流程
 

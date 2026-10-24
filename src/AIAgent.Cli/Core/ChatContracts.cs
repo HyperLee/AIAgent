@@ -1,3 +1,4 @@
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Workspace;
 
@@ -12,6 +13,7 @@ internal interface IChatInteraction
     void SetPolicy(ISensitiveDataPolicy policy);
     void Show(ChatEvent message);
     ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(FileApprovalDecision.Unavailable);
+    ValueTask<ProcessApprovalDecision> ConfirmProcessAsync(ProcessApprovalPreview preview, CancellationToken cancellationToken) => new(ProcessApprovalDecision.Unavailable);
     ValueTask<PlanApprovalDecision> ConfirmPlanAsync(PlanApprovalPreview preview, CancellationToken cancellationToken) => new(PlanApprovalDecision.Unavailable);
 }
 
@@ -21,7 +23,7 @@ internal interface IChatRuntimeFactory
     ILlmClient CreateClient(BootstrapSession session);
 }
 
-internal enum ChatState { AwaitingInput, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
+internal enum ChatState { AwaitingInput, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
 internal enum ChatInputStatus { Submitted, Invalid, EndOfInput, Cancelled, Unavailable }
 internal enum KeyReplacementChoice { Reenter, Exit, EndOfInput, Cancelled, Unavailable }
 internal enum ChatControlSignal { CancelTurn, EndOfInput, Unavailable }

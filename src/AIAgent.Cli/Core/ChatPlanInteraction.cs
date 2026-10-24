@@ -39,7 +39,7 @@ internal sealed partial class ChatApplication
                 if (decision == PlanApprovalDecision.EndOfInput) { RequestStop(StopReason.Normal); return; }
                 if (!Enum.IsDefined(decision) || decision == PlanApprovalDecision.Unavailable) { RequestStop(StopReason.Failure); return; }
                 if (!cancellation.IsCancellationRequested && decision == PlanApprovalDecision.Approved && _plans.Approve(preview))
-                    interaction.Show(new(ChatEventKind.Ready, text: "已確認此版本並切換 Execute；等待下一則訊息，寫入仍須逐次核准。"));
+                    interaction.Show(new(ChatEventKind.Ready, text: "已確認此版本並切換 Execute；等待下一則訊息，寫入與程序操作仍須逐次核准。"));
                 else
                 {
                     _plans.SetMode(AgentMode.Plan);

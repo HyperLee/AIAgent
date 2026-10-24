@@ -25,13 +25,15 @@ internal sealed class SubmitPlanTool(PlanStore plans, ISensitiveDataPolicy polic
           "kind": { "type": "string", "enum": ["analysis", "read", "write", "validation"] },
           "title": { "type": "string", "minLength": 1, "maxLength": 256 },
           "acceptance": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "requirements_version": { "type": "integer", "enum": [1, 2] },
           "requirements": {
             "type": "array", "maxItems": 8,
             "items": {
               "type": "object",
               "properties": {
-                "tool": { "type": "string", "enum": ["list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range"] },
+                "tool": { "type": "string", "enum": ["list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "run_dotnet_task"] },
                 "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                "task": { "type": "string", "enum": ["build", "test"] },
                 "start_line": { "type": "integer", "minimum": 1 },
                 "end_line": { "type": "integer", "minimum": 1 }
               },

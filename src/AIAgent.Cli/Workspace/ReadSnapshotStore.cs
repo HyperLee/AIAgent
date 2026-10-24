@@ -34,6 +34,11 @@ internal sealed class ReadSnapshotStore(object gate, Action? onClear = null) : I
         lock (gate) { _index.Clear(); _order.Clear(); _totalBytes = 0; }
     }
 
+    internal long InvalidateForProcess()
+    {
+        lock (gate) { InvalidateAllForRootFailure(); return Generation = checked(Generation + 1); }
+    }
+
     internal void Remove(string relativePath)
     {
         lock (gate)

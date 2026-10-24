@@ -4,6 +4,14 @@
 >
 > 選題依據：[未來開發大綱 FUT-02](../ROADMAP.md)。上位文件：[開發總規格](../SPEC.md)第 5、8～15 章；承接 [05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)及 [09：Plan 模式與任務清單](09-plan-mode-and-task-list.md)，尤其第 09 份的 [FUT-02 交接專節](09-plan-mode-and-task-list.md#fut-02-handoff)與 [FUT-04 交接專節](09-plan-mode-and-task-list.md#fut-04-handoff)。目前能力以 [README](../README.md)及程式為準；既有規格的「待實作」是其撰寫當時狀態。
 
+## 實作接續與驗收限制（2026-10-24）
+
+本檔原文的「本次只交付文件」是 0.1 撰寫階段的歷史界線。後續已依使用者要求開發，實作與實際證據見 [README](../README.md#controlled-build-validation)，原需求／案例編號及完整完成門檻保留。
+
+真實程序驗證確認：SDK 10.0.100 的 MTP `NamedPipeServer.GetPipeName` 在 Unix 固定回傳全域 `/tmp` 路徑，不採私人 TMPDIR，與 BUILD-035～036／第 6 節的私人 IPC 限制衝突。[固定版本來源](https://github.com/dotnet/sdk/blob/v10.0.100/src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs#L214-L223) 使用者於 2026-10-24 明確選擇保留隔離邊界、完成可用建置並明示測試不支援；因此目前 `test` 應在目標／探針／核准前回報 capability_unavailable，不修改 SDK、不增加全域 IPC 或網路權限。既有 MTP recipe、parser、v2 型別與測試是待支援的契約，不等於產品能執行 MTP。
+
+這是目前產品交付範圍的明示限制，不把 BUILD-AC-016～018 的真實 MTP 正向驗收改成成功或略過便算完成；第 10 階段仍未完整驗收。將來需另行確認 SDK 相容修正、維持原限制並通過真實案例後，才能重新宣告測試支援。第 07 份發布門檻與真人／真實服務亦繼續分列。
+
 ## 1. 目的、範圍與本次交付
 
 Agent 修改程式後，能在使用者逐次核准、離線且有作業系統存取限制的環境執行 .NET 建置／測試，取得本機程序事實，分別回報已驗證與未驗證部分。確認計畫不等於核准程序；命令正常結束也不一律等於測試實際通過。

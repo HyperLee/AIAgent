@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
@@ -57,6 +58,14 @@ internal static class ChatDisplay
         var name = message.ToolName ?? "未知工具";
         if (message.Kind == AgentEventKind.ExecutingTool) return "[工具] " + name + "：開始處理";
         var result = message.Operation!;
+        if (result.ProcessSummary is { } process)
+            return "[本機程序] " + PlanProjection.Name(process.Task) + " " + FileChangePreviewBuilder.EscapePath(process.ProjectPath) +
+                "；" + PlanProjection.Name(process.StartState) + "／" + PlanProjection.Name(process.EndState) +
+                "；退出碼 " + (process.ExitCode is { } exit ? Number(exit) : "不可得") +
+                "；驗證 " + PlanProjection.Name(process.ValidationOutcome) +
+                (process.Tests is { } tests ? "；執行 " + Number(tests.Executed) + "，通過 " + Number(tests.Passed) + "，失敗 " + Number(tests.Failed) + "，略過 " + Number(tests.Skipped) : "") +
+                (process.StdoutTruncated || process.StderrTruncated ? "；輸出節錄已截斷" : "") +
+                (process.CleanupConfirmed ? "；支援群組、已知後代與管線收尾已確認（不保證所有刻意逃離程序）" : "；收尾未確認；需人工處理，不能確認沒有殘留程序");
         if (result.WriteState == FileWriteState.Verified)
             return "[本機結果] 已寫入並核對：" + FileChangePreviewBuilder.EscapePath(result.VerifiedPath!) + "，" + Number(result.VerifiedByteCount!.Value) + " bytes" +
                 (result.CleanupFailed ? "；內部暫存清理未完成；需人工處理" : "");
@@ -83,6 +92,9 @@ internal static class ChatDisplay
 
     private static string TurnText(ChatEvent message) => message.StopReason switch
     {
+        AgentStopReason.ProcessFailed => "受控 .NET 任務未成功；本回合停止，下一則明確指示須重新核准。",
+        AgentStopReason.ProcessResourceLimit => "已達本回合程序次數或時間上限；本回合停止。",
+        AgentStopReason.ProcessUnconfirmed => "程序狀態或收尾未確認；已停止此 session，需使用者人工處理殘留程序。",
         AgentStopReason.TurnCancelled => "已取消本回合。",
         AgentStopReason.ApprovalDeclined => "已拒絕此變更；本回合停止。",
         AgentStopReason.FileConflict => "檔案或路徑已變動；停止本回合，請重新讀檔。",

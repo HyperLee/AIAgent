@@ -4,6 +4,23 @@
 >
 > 選題依據：[未來開發大綱 FUT-03](../ROADMAP.md)。上位文件：[開發總規格](../SPEC.md)第 5、8～15 章；承接 [03：CLI 與 Context](03-cli-and-context.md)、[04：工作區與唯讀工具](04-workspace-and-read-tools.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)及 [08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)。目前能力以 [README](../README.md)與原始碼為準，前置規格的「待實作」是其撰寫當時狀態。本份文件完成不表示 FUT-03 已實作或產品驗收通過。
 
+## 第 10 份接續契約（2026-10-24）
+
+本份原文的「本階段不提供程序／Validation 受阻」是第 09 份歷史界線。後續 [10：受控建置與測試](10-controlled-build-and-test.md) 的第 12.2 節明示擴充下列來源契約；其他需求與安全目的保持適用，不能以程序輸出取代檔案 Verified、計畫確認或單次核准。
+
+| 來源需求 | 第 10 份生效的擴充 |
+|---|---|
+| PLAN-003～004、007～008、044～045、067 | 追加明確 DotnetTask 能力、內部原生監督器及 Execute 第九項工具；Plan 六項與七檔案工具 JSON 不變，Plan 直接入口在任何專案 I/O 前拒絕程序。 |
+| PLAN-014、024～025、028、030～035 | requirements_version 省略為 1；只有 Validation v2 可用 1～8 項 `{tool,path,task}`。版本或定義改變須新 TaskId／Draft／重新確認，不把舊空條件自動升級。 |
+| PLAN-036～041、043、046～048 | v1 仍受阻；具備程序能力時 v2 可開始，完成逐項取最近且相符的安全 Started／Exited／0／必要收尾事實。測試另需完整 MTP 摘要及實際執行，節錄截斷與必要證據分開。 |
+| PLAN-038、050～052 | 程序啟動前預留事實及完成投影容量；v2 預留每項完成識別與變體，使用全部固定受阻原因的最長實際 bytes；沿用 256／32768／65536 上限。 |
+| PLAN-049、056～060、062、066 | 同一工作區租約內執行、程序前後失效快照、逐次核准與新停止原因；Unconfirmed／程序收尾失敗鎖定 session，不能 clear 或換 Key 繼續。 |
+| PLAN-068～069、PLAN-AC-016、031～035 | 保留 FUT02-HO-001～010 與 FUT04-HO 固定錨點，增加第 10 份真實隔離／程序驗收；假造程序文字不能注入證據的回歸繼續適用。 |
+
+目前 SDK 10.0.100 的 MTP 使用全域 `/tmp` socket；2026-10-24 使用者決定保留第 10 份私人 IPC 邊界，產品 test 不支援，含 test 的 Validation v2 不得宣稱可完成。
+
+版本是程序內契約，不是跨次保存格式；沒有摘要、存檔遷移、核准恢復、多 Agent 或可調總預算。實際功能及驗收狀態以 [README](../README.md#controlled-build-validation) 為準。
+
 ## 1. 目的、範圍與交付界線
 
 使用者面對跨檔修改或多步工作時，可以先進入只允許探索與規劃的 Plan 模式，檢視可確認的任務清單，再明確切換 Execute。程式追蹤實際進度、未完成原因及完成依據；確認計畫與核准單次操作分開處理。
@@ -204,7 +221,7 @@ update_task 的 data 順序固定為 plan_id、revision、task_id、state、comp
 | Analysis | 空陣列；完成只表示模型已提供可檢視的分析摘要，標示 ModelAssessment，不表示功能、檔案或測試已核對。 |
 | Read | 1～8 項，工具限五項唯讀工具。全部必要操作成功且未截斷才具備完成所需本機事實。搜尋只證明按該工具契約取得資料，不證明已找到全部語意相關程式。 |
 | Write | 1～8 項，工具限 create_file／replace_text。每個指定目標都有相符的 Verified 寫入事實才可完成；程式品質、功能行為及測試另拆 Analysis／Validation。 |
-| Validation | 空陣列；表示待驗證工作。FUT-02 尚未提供程序能力時不能執行或完成，選為進行中時改為 Blocked／capability_unavailable。 |
+| Validation | v1 空陣列保持 Blocked／capability_unavailable；第 10 份 v2 以 1～8 個明確 build／test 條件及本機程序事實擴充開始與完成，能力不可用仍受阻。 |
 
 requirements 的 path 沿既有路徑及敏感政策做純文字正規化，不讀檔或檢查存在性；根目錄使用 `.`，比較採既有 Ordinal 索引，不猜測大小寫／Unicode 別名。read_file_range 必須同時提供正整數 start_line／end_line，起點不大於終點且跨度最多 200；其他工具不得帶行號。相同工具／正規化路徑／範圍的重複 requirement 拒絕。搜尋 query、pattern、替換文字及檔案內容不進計畫契約。
 
@@ -238,7 +255,7 @@ model_reported 只表示模型回報遇阻，不把 summary 當成本機錯誤�
 | PLAN-038 | 操作開始前本機擷取 TaskExecutionContext 及預留證據，完成後由實際工具結果產生唯一 OperationId。只取通過政策的結果欄位；未執行、被拒絕、Cancelled、Failed、NotApplied、Unconfirmed 或 CleanupFailed 均不能當作成功證據。 |
 | PLAN-039 | Read／Write 完成需每個 requirement 各有相符且不同的本機成功事實，全部歸屬同一有效 TaskId；Write 另須 Verified 且無清理失敗。read_file_range 比對已驗證的請求行範圍，成功空檔／EOF 夾限依第 08 份記錄實際結果；不將成功片段描述成完整讀檔。Truncated=true 的結果不符合完成條件。 |
 | PLAN-040 | update_task completed 不接受模型提供的操作紀錄；本機對每個 requirement 選取該任務最近一次相符終結事實，必須為合格成功。後來相符失敗不能被較早成功掩蓋；缺任一項則 evidence_required，任務保持 InProgress。 |
-| PLAN-041 | Analysis completed 將該次安全 summary 作為 ModelAssessment 事實並顯示，不能標為本機驗證。Validation completed 在本階段一律 capability_unavailable，不因模型聲稱命令成功、文字像測試報告或計畫已確認而完成。 |
+| PLAN-041 | Analysis completed 將該次安全 summary 作為 ModelAssessment 事實並顯示，不能標為本機驗證。Validation v1 completed 一律 capability_unavailable；第 10 份 v2 依其本機程序完成判準處理，不因模型聲稱命令成功、文字像測試報告或計畫已確認而完成。 |
 | PLAN-042 | 任務已接受的進度及操作事實獨立於回合歷史提交；最終模型生成失敗不抹除先前已接受的完成／Verified。只封鎖仍為 InProgress 的任務；取消不將 Completed 改成未套用。強制清除另依第 10 節先回報再清除。 |
 | PLAN-043 | 證據只證明該次操作及當時結果，不保證目前磁碟未再變更或整體功能正確。修訂後只有定義未變且保留 TaskId 的任務可沿用舊版本事實，原 Context 不改寫；其他任務不能重綁、複製或拼湊證據完成。 |
 
@@ -246,12 +263,12 @@ model_reported 只表示模型回報遇阻，不把 summary 當成本機錯誤�
 
 ## 8. 工具能力、整批預檢與實際入口
 
-正式 Registry 內建九項工具，七項檔案工具保持原順序，再接 submit_plan、update_task。對模型提供的 Definitions 依當次模式過濾：
+第 09 份 Registry 內建九項工具；第 10 份追加第十項 run_dotnet_task，七項檔案工具與 submit_plan、update_task 原順序保留。對模型提供的 Definitions 依當次模式過濾：
 
 | 模式 | 當次 Definitions 順序 |
 |---|---|
 | Plan | list_files、read_file、search_files、search_text、read_file_range、submit_plan。 |
-| Execute | list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、update_task。 |
+| Execute | list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、update_task、run_dotnet_task（第 10 份擴充）。 |
 
 所有工具以明確能力登錄，不由名稱前綴、描述、模型或檔案文字推斷權限。未來新增工具必須另行指定能力及模式政策；未指定時不對模型提供，也不允許派送。
 
@@ -280,7 +297,7 @@ text 欄位為單行合法 Unicode，可含一般空白；不接受控制字元�
 
 模型投影固定欄位為 mode、plan。plan 為 null 或含 plan_id、revision、approval、objective、tasks；task 依序為 task_id、kind、title、acceptance、requirements、state、summary、block_reason、completion_basis、completion_fact_ids。requirement 順序為 tool、path 及適用的 start_line、end_line。summary／block_reason 無值為 null，識別集合無值為空陣列。已退役事實保留在本機帳本，投影只包含活動任務的完成事實識別，不附帳本全文。
 
-每次候選計畫／進度更新另形成一份**保守容量投影**，只用於計量，不保存或送模型：保持候選使用者文字與 requirements；mode 使用 execute、approval 使用 approved、revision 使用 long.MaxValue 的十進位數字。所有 plan_id／task_id 以 32 個 ASCII 字元計量；每個 task 的 state、block_reason、completion_basis 分別使用最長固定值 in_progress、capability_unavailable、model_assessment；completion_fact_ids 預留該任務 requirements 筆數（Analysis 為 1、Validation 為 0）個各 32 ASCII 字元的識別。summary 保留候選原值，所有自動轉移只改固定原因而不新增或擴寫 summary。此不一定代表合法狀態的計量物件只作安全上界，不能發布為本機事實。
+每次候選計畫／進度更新另形成一份**保守容量投影**，只用於計量，不保存或送模型：保持候選使用者文字與 requirements；mode 使用 execute、approval 使用 approved、revision 使用 long.MaxValue 的十進位數字。所有 plan_id／task_id 以 32 個 ASCII 字元計量；每個 task 的 state、completion_basis 使用最長固定值 in_progress、model_assessment；第 10 份加入程序原因後，block_reason 從全部允許原因按 UTF-8 bytes 選最長值，CLI 則連同原因中文說明另選最長顯示組合；completion_fact_ids 預留該任務 requirements 筆數（Analysis 為 1、Validation v1 為 0、Validation v2 為 requirements 項數）個各 32 ASCII 字元的識別。summary 保留候選原值，所有自動轉移只改固定原因而不新增或擴寫 summary。此不一定代表合法狀態的計量物件只作安全上界，不能發布為本機事實。
 
 實際投影及此上界均須不超過 32768 bytes；相應完整核准／tasks 顯示亦須以此上界估算並各不超過 65536 bytes，舊事實計數按最大 256 計量。這項餘裕在計畫發布後持續保留，涵蓋尚未執行任何工具就取消、模型結束、切模式與確認字串增長，不能等到工具開始才預留。因計量餘裕拒絕的候選即使目前實際 bytes 尚未達上限也不得接受。
 

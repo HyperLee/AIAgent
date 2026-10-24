@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；每回合最多五次生成。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；每回合最多五次生成。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md) 與 [09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -19,10 +19,66 @@
 | 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 整合測試、掃描器及選用 hook 已實作。 | MSTest、Python 與 PTY 回歸通過。 | Release 掃描受阻；真人／服務／人工分發檢查未完成。 |
 | 08：程式碼搜尋與局部讀檔 | 安全檔名 glob、跨檔字面搜尋及指定行範圍讀取。 | 已實作並接入七工具。 | 證據見第 08 份驗證紀錄。 | 真人終端機與真實 Gemini；第 07 份門檻保留。 |
 | 09：Plan 模式與任務清單 | 模式限制、版本確認、任務狀態、本機完成證據與有界投影。 | 已實作並接入正式聊天。 | 證據見第 09 份驗證紀錄。 | PLAN-AC-034 真人、035 真實 Gemini；第 07 份門檻保留。 |
+| 10：受控建置與測試 | 固定 Debug 任務、逐次程序核准、原生限制與 Validation v2。 | 建置已接入；測試不支援。 | 離線回歸、真實建置 fixtures 與 PTY 通過，範圍見下方紀錄。 | MTP 與部分原生邊界待驗，第 10 階段未完整驗收；BUILD-AC-036 真人、037 真實 Gemini 及第 07 份門檻另計。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`，依目前模式提供其中六／八項；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，依目前模式提供其中六／九項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+
+<a id="controlled-build-validation"></a>
+
+## 第 10 份受控建置與測試
+
+依 [第 10 份規格](specs/10-controlled-build-and-test.md) 實作受控建置；**第 10 階段尚未完整驗收**。2026-10-24 已依使用者決定保留私人 IPC 隔離邊界，將 SDK 10.0.100 的 `test` 明示為 `capability_unavailable`，不啟動目標、探針或核准，不放寬到全域 `/tmp` socket。
+
+SDK 10.0.100 的 MTP 使用 `Path.Combine("/tmp", name)`，不採用私人 TMPDIR，與本規格的單次私人 IPC 邊界衝突。[固定版本原始碼](https://github.com/dotnet/sdk/blob/v10.0.100/src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs#L214-L223) 因此 parser／假執行器的 TestsPassed 測試只驗證契約，不能作為產品 MTP 可用的證據。未來須另行驗證相容 SDK 與支援契約，才能解除此限制。
+
+新增 `run_dotnet_task`，參數只接受 `task`（build／test）及 `project_path`（單一安全 `.csproj`），固定 Debug 與工作區根 cwd。正式工具順序在原九項後追加它，Plan 仍六項、Execute 九項。測試 recipe／MTP parser 保留規格契約，但目前產品 `test` 不支援；未來支援時才可執行目前來源建置及停用 launchSettings 環境／參數。不提供自由命令、restore、額外參數、TRX 安裝或部署。
+
+無計畫 Execute 可逐次核准。有計畫時須確認目前版本，並開始含精確 project／build 條件的 Validation v2；包含 test 的任務目前轉為 capability_unavailable，原 v1 空條件保持受阻。計畫確認不授權程序，每次仍完整預覽並使用新的隱藏 y／yes。build 成功只證明該次目標 Debug 建置。MTP 未來支援時，還須完整有效摘要、實際執行大於零、零失敗及收尾確認，略過數如實顯示。
+
+程序與檔案共用一項工作區操作租約，程序前後失效全部修改快照。每回合兩次啟動／300 秒，build 120 秒、test 180 秒；輸出總量 1 MiB，保留有界節錄。一般失敗／拒絕停止剩餘工具與生成，下一則明確指示須重新核准；Unconfirmed／收尾失敗退出 1，需使用者人工處理，不能靠 clear／換 Key 繼續。
+
+### 獨立產品位置
+
+先從來源建置，再將產品發佈到工作區以外的新目錄；以下是維護者操作，並非模型額外允許的 recipe：
+
+```sh
+dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj --configuration Debug --no-restore --output /private/tmp/aia-stage10-product
+/private/tmp/aia-stage10-product/AIAgent.Cli --workspace /absolute/path/to/trusted-workspace
+```
+
+發佈內容須包括 `ProcessHost/` 下的 apphost、DLL、deps、runtimeconfig 與必要相依檔。產品與監督器位置保持唯讀；與任何允許輸出 bin／obj 相交時拒絕操作，不能直接從待建置來源的產物位置覆寫自身。依賴須由維護者事先還原，產品不安裝或下載依賴。
+
+建置只以實際通過的 macOS 26.7.1 arm64／SDK 10.0.100 組合驗收；其他平台及 MTP 不宣稱可用。首版只接受受信任安裝根內單一 10.0.x SDK；global.json 如指定 SDK，版本須相同，rollForward 僅接受 disable／latestPatch，allowPrerelease 僅接受 false，SDK paths 等其他覆寫拒絕。核准後重新檢查 SDK 選擇，避免預覽版本與實際執行不同。原生政策不可用、別名／輸出布局不安全或依賴不足即拒絕。禁止外部與 loopback 網路，只允許該次私人 tmp 的 Unix IPC；產物與 `/private/tmp/aia-…` 預設保留，不執行批次或遞迴清理。監督只涵蓋支援群組與已觀測後代，不保證偵測所有刻意 setsid／double-fork／重新掛接行為。
+
+真實正向建置 fixture 為預先還原、`UseAppHost=false` 的小型專案。SDK 預設 `UseAppHost=true` 的 apphost 工作可能嘗試受限的群組／目錄服務，因而受控失敗；目前不宣稱任意 .NET 專案皆可成功建置，也不為此增加權限。
+
+### 第 10 份驗證紀錄（2026-10-24）
+
+基線 `4f5169c` 加本次未提交變更；初始 389 項 MSTest 通過。環境為 macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6；全程使用合成資料、離線 fixture 及真實 SDK 配假 HTTP handler，沒有呼叫真實 Gemini。下列是最終審查修正後的實際執行紀錄。
+
+| 命令／檢查 | 退出碼與實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；依賴還原成功。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI、ProcessHost、TerminalHost 與測試建置成功，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；456 通過、0 失敗、0 略過（10.952 秒）；含既有 389 項與本階段新增 67 項。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33 通過，0 失敗。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；只顯示用法與測試不支援的提示。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`；另查 `src/AIAgent.ProcessHost/AIAgent.ProcessHost.csproj` | 皆 0；CLI 與監督器格式檢查通過。 |
+| `python3 -B tests/terminal_smoke.py` | 0；67 組 PTY 通過，含 57 組既有與 10 組程序互動案例。程序 UI 使用離線模擬器，與下列真實原生驗證分列。 |
+| `dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj --configuration Debug --no-build --no-restore --output /private/tmp/aia-stage10-product-final-ibp77n7x` | 0；本機獨立目錄產物，CLI `--help` 退出 0，ProcessHost 無參數退出 64；四個必要檔案齊全，apphost 為 Mach-O arm64／0755，deps 不含 CLI／Google 依賴。未對外發布。 |
+| `git diff --check` | 0；已追蹤差異通過；新 C# 檔另查 CRLF、檔尾及空白。 |
+
+真實原生 fixtures 實際驗證離線 Debug 建置、原始碼未變、正常根程序退出後停止已觀測子程序、取消建置與已觀測子程序，以及核准後專案 bytes 變更即拒絕啟動。每次核准後的內建探針驗證來源寫入／rename、敏感檔、新敏感名稱、hard link／symlink、IPv4／IPv6 loopback 拒絕及私人 Unix IPC 允許。外層執行工具的 sandbox 會阻止巢狀 sandbox 初始化，因此這些測試在已核准的外層執行權限下運行，產品自身的 deny-default 政策仍啟用。
+
+離線測試另涵蓋嚴格 Schema、Plan／直接入口零 I/O 拒絕、v2 遷移與逐項證據、單次核准、工作區共用租約、byte 邊界、敏感文字跨區塊／節錄檢查、程序摘要保留、第五次生成、失敗停止及 Unconfirmed 鎖定。MTP parser 的合成摘要案例並非真實測試執行證據。
+
+獨立審查指出 SDK 目錄選擇與實際 muxer 選擇不一致、排序前無界列舉，以及控制回執失敗、父程序過早結束監督器、觀測遺失與收尾期間逾時的問題，均已修正並限縮重審。原生模組的 24 項 focused 測試通過；其中使用合成 sleep 目標與注入觀測失敗，驗證 Started／收尾回執丟例外及觀測喪失仍嘗試停止自有程序，保留 Unconfirmed。這些直接監督器測試與上述產品 sandbox 建置 fixture 分列，尚未實際切斷父程序控制管道。
+
+**未驗證／未完成：** 真實 MTP 正向案例 BUILD-AC-016～018 目前不支援；原生完整 120 秒逾時、忽略 TERM、已觀測後代改群組／setsid／double-fork、256 個身分上限、敵對祖先交換與大小寫／Unicode 別名，以及監督器崩潰後不確定收尾，尚未全部以真實 fixture 驗證。故不能以本次測試全綠宣告 BUILD-AC-001～034 整體通過；PTY 的 67 組亦不等於第 035 項所有條件均完成。真人 BUILD-AC-036、真實 Gemini 037 與第 07 份發布／分發門檻繼續待驗。
+
+本次沿用指定 checkout，保留未提交變更；產品採獨立目錄部署，與允許寫入的 bin／obj 相交時拒絕；對不支援的 SDK／布局採關閉能力，不改動使用者 SDK 或 global.json。這些界線可能使部分合法專案無法啟動，須另行驗證相容布局後擴充。所有私有暫存與 fixture 預設保留，未執行遞迴清理。
 
 ## 第 09 份 Plan 模式與任務清單
 
@@ -37,7 +93,7 @@
 
 典型流程是 `/plan` → 一般訊息要求探索及提出計畫 → `/tasks` → `/execute` → 隱藏輸入 yes → 下一則一般訊息要求執行。計畫確認只確認方向；每筆寫入仍須另行預覽、核准及重驗。Plan 的工具定義、批次預檢、Registry 與實際工作區入口共同禁止寫入，不能靠偽造呼叫繞過。
 
-Read／Write 任務須逐項符合必要操作。完成證據取同一任務最近的相符本機結果；截斷、後來失敗、未套用、Unconfirmed 或清理失敗皆不能完成，Write 每項都須 Verified。範圍讀取只證明指定請求的實際片段，不建立修改快照。Analysis 只標示「完成：模型分析判斷」；本階段 Validation 為「受阻：驗證能力尚未提供」，沒有建置或測試程序工具。
+Read／Write 任務須逐項符合必要操作。完成證據取同一任務最近的相符本機結果；截斷、後來失敗、未套用、Unconfirmed 或清理失敗皆不能完成，Write 每項都須 Verified。範圍讀取只證明指定請求的實際片段，不建立修改快照。Analysis 只標示「完成：模型分析判斷」。第 09 份原有 Validation v1 仍為「受阻：驗證能力尚未提供」；第 10 份新增的 v2 才能使用程序證據，且目前僅支援 build。
 
 計畫跨五回合歷史淘汰保留；每回合結束仍在途時轉為受阻，正常回答使用「等待下一則指示；任務尚未完成」。部分寫入與已接受完成獨立於模型後續成敗，不自動重試或復原。清除、強制安全重設及換 Key 丟棄計畫、確認、證據與預留，保留模式及程序用量；舊世代遲到結果不能復活狀態。
 

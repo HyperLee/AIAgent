@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Workspace;
 
@@ -76,7 +77,7 @@ internal static class PlanArguments
         foreach (var item in fields["tasks"].EnumerateArray())
         {
             error = "invalid_arguments";
-            if (!Fields(item, ["task_id", "kind", "title", "acceptance", "requirements"], ["kind", "title", "acceptance", "requirements"], out var task) ||
+            if (!Fields(item, ["task_id", "kind", "title", "acceptance", "requirements", "requirements_version"], ["kind", "title", "acceptance", "requirements"], out var task) ||
                 !Text(task["kind"], 32, false, policy, out var kindName) ||
                 !Text(task["title"], 256, true, policy, out var title) || !Text(task["acceptance"], 1024, true, policy, out var acceptance)) return false;
             var kind = kindName switch
@@ -90,25 +91,31 @@ internal static class PlanArguments
             if (!Enum.IsDefined(kind)) return false;
             var id = "";
             if (task.TryGetValue("task_id", out var idValue) && !Text(idValue, 32, false, policy, out id)) return false;
-            if (!Requirements(task["requirements"], kind, policy, out var requirements, out error)) return false;
-            parsed.Add(new(id, kind, title, acceptance, requirements));
+            var version = 1L;
+            if (task.TryGetValue("requirements_version", out var versionValue) &&
+                (!Integer(versionValue, 1, out version) || version > 2)) return false;
+            if (version == 2 && kind != PlanTaskKind.Validation) return false;
+            if (!Requirements(task["requirements"], kind, (int)version, policy, out var requirements, out error)) return false;
+            parsed.Add(new(id, kind, title, acceptance, requirements, requirementsVersion: (int)version));
         }
         tasks = parsed.AsReadOnly(); error = "none"; return true;
     }
 
-    private static bool Requirements(JsonElement value, PlanTaskKind kind, ISensitiveDataPolicy policy,
+    private static bool Requirements(JsonElement value, PlanTaskKind kind, int version, ISensitiveDataPolicy policy,
         out IReadOnlyList<TaskRequirement> requirements, out string error)
     {
         requirements = []; error = "invalid_arguments";
         if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > PlanLimits.MaxRequirements ||
-            (kind is PlanTaskKind.Analysis or PlanTaskKind.Validation ? value.GetArrayLength() != 0 : value.GetArrayLength() == 0)) return false;
+            (kind == PlanTaskKind.Analysis || kind == PlanTaskKind.Validation && version == 1 ? value.GetArrayLength() != 0 : value.GetArrayLength() == 0)) return false;
         var parsed = new List<TaskRequirement>();
         foreach (var item in value.EnumerateArray())
         {
-            if (!Fields(item, ["tool", "path", "start_line", "end_line"], ["tool", "path"], out var fields) ||
+            var process = kind == PlanTaskKind.Validation && version == 2;
+            if (!Fields(item, process ? ["tool", "path", "task"] : ["tool", "path", "start_line", "end_line"],
+                process ? ["tool", "path", "task"] : ["tool", "path"], out var fields) ||
                 !Text(fields["tool"], 32, false, policy, out var tool) || !Text(fields["path"], 4096, false, policy, out var rawPath)) return false;
             var write = tool is "create_file" or "replace_text";
-            if (kind == PlanTaskKind.Write ? !write : tool is not ("list_files" or "read_file" or "search_files" or "search_text" or "read_file_range")) return false;
+            if (process ? tool != "run_dotnet_task" : kind == PlanTaskKind.Write ? !write : tool is not ("list_files" or "read_file" or "search_files" or "search_text" or "read_file_range")) return false;
             if (!WorkspacePathRules.TryNormalize(rawPath, out var path, out _)) { error = "invalid_path"; return false; }
             if (WorkspacePathRules.IsSensitive(path)) { error = "sensitive_path"; return false; }
             if (!policy.CanSendOrUse(path, ContentBoundary.ToolArguments)) { error = "sensitive_arguments"; return false; }
@@ -121,7 +128,15 @@ internal static class PlanArguments
                 start = (int)from; end = (int)to;
             }
             else if (fields.ContainsKey("start_line") || fields.ContainsKey("end_line")) return false;
-            var requirement = new TaskRequirement(tool, path, start, end);
+            DotnetTaskKind? task = null;
+            if (process)
+            {
+                if (!Text(fields["task"], 5, false, policy, out var name) || name is not ("build" or "test") ||
+                    !path.EndsWith(".csproj", StringComparison.Ordinal) || rawPath.EndsWith('/') ||
+                    path.IndexOfAny(['*', '?', '[', ']']) >= 0) return false;
+                task = name == "build" ? DotnetTaskKind.Build : DotnetTaskKind.Test;
+            }
+            var requirement = new TaskRequirement(tool, path, start, end, task);
             if (parsed.Any(requirement.Matches)) return false;
             parsed.Add(requirement);
         }

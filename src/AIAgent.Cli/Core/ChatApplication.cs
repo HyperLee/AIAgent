@@ -1,10 +1,12 @@
+using AIAgent.Cli.Processes;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Core;
 
 internal sealed partial class ChatApplication(IChatInteraction interaction, IChatRuntimeFactory runtimeFactory,
-    ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory)
+    ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory,
+    IControlledDotnetTasksFactory? controlledTasksFactory = null)
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _stop = new();
@@ -16,6 +18,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     private BootstrapSession? _session;
     private ILlmClient? _client;
     private IWorkspaceFiles? _workspace;
+    private IControlledDotnetTasks? _processes;
+    private bool _processFatalStop;
     private ToolRegistry? _registry;
     private AgentRunner? _runner;
     private IDisposable? _busyObserver;
@@ -67,10 +71,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/help")
                 {
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/plan：唯讀探索與規劃；/execute：確認目前版本後切換執行；/tasks：本機任務與完成依據。\n" +
-                        "版本確認不直接執行，須等待下一則訊息；每筆寫入仍逐次核准。分析判斷不等於本機驗證，建置／測試能力尚未提供。\n" +
+                        "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；SDK 10.0.100 的 test 因私人 IPC 限制不支援。\n" +
                         "計畫最多 20 任務、1 項在途及 256 筆事實；容量不足時請 /clear 後重新規劃。\n" +
                         "/clear：清除對話、快照、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
-                        "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range 七工具；文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
+                        "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
                         "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
                         "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
                         "替換保留普通權限位元，不保證 owner、ACL、xattr 或硬連結關係；取消不復原已寫內容。"));
@@ -143,6 +147,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         {
             _busyObserver = interaction.ObserveBusyInput(HandleSignal);
             using var approvalBinding = workspaceFilesFactory.ApprovalBridge?.Bind(_session!, ConfirmChangeAsync);
+            if (_processFatalStop) { RequestStop(StopReason.Failure); return false; }
+            if (_processes is IProcessTurnLifecycle lifecycle) lifecycle.BeginTurn();
             var result = await _runner!.RunAsync(context.BuildMessages(user), cancellation.Token);
             var status = result.Status;
             var reason = result.StopReason;
@@ -151,12 +157,16 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (result.RequiresContextReset) ClearConversationState();
                 // Cancellation and final publication use the same CLI decision point.
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
-                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed))
+                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
                 else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
                 {
                     context.CommitCompletedTurn(result.CompletedTurn);
                     interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Completed));
+                }
+                if (result.StopReason == AgentStopReason.ProcessUnconfirmed || result.Operations.Any(o => o.ProcessCleanupFailed || o.ProcessSummary?.EndState == ProcessEndState.Unconfirmed))
+                {
+                    _processFatalStop = true; _executionPolicy!.StopProcesses(); RequestStop(StopReason.Failure);
                 }
                 LastOutcome = result.RequiresContextReset ? null : new(result, status, reason);
                 ShowTaskSummary();
@@ -244,11 +254,16 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private (ToolRegistry Registry, AgentRunner Runner) CreateAgent(BootstrapSession session, ILlmClient client, IWorkspaceFiles workspace)
     {
+        var processFactory = controlledTasksFactory ?? new ControlledDotnetTasksFactory();
+        _processes = processFactory.Create(session.Workspace, session.Policy, _executionPolicy!, workspace,
+            ConfirmProcessAsync, text => interaction.Show(new(ChatEventKind.Ready, text: text)));
+        _executionPolicy!.ProcessCapabilityAvailable = processFactory.IsAvailable;
+        _executionPolicy.ProcessTestCapabilityAvailable = processFactory.Supports(DotnetTaskKind.Test);
         var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy),
             new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy),
             new SearchFilesTool(workspace, session.Policy), new SearchTextTool(workspace, session.Policy),
             new ReadFileRangeTool(workspace, session.Policy), new SubmitPlanTool(_plans!, session.Policy),
-            new UpdateTaskTool(_plans!, session.Policy)], session.Policy, _executionPolicy);
+            new UpdateTaskTool(_plans!, session.Policy), new RunDotnetTaskTool(_processes, session.Policy)], session.Policy, _executionPolicy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent));
     }
 
@@ -265,6 +280,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private async Task ReplaceKeyAsync()
     {
+        if (_processFatalStop) { RequestStop(StopReason.Failure); return; }
         SetState(ChatState.AwaitingKeyChoice);
         var choice = await interaction.ChooseKeyReplacementAsync(_stop.Token);
         if (Stopping) return;
@@ -290,6 +306,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         {
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             _plans!.BindPolicy(replacement.Policy);
+            _executionPolicy = new(_plans);
             client = runtimeFactory.CreateClient(replacement);
             workspace = workspaceFilesFactory.Create(replacement, _executionPolicy);
             var agent = CreateAgent(replacement, client, workspace);
@@ -323,6 +340,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     private async Task DisposeWorkspaceAsync()
     {
         _runner = null; _registry = null;
+        var processes = _processes; _processes = null;
+        if (processes is not null) await processes.DisposeAsync();
         var workspace = _workspace;
         _workspace = null;
         if (workspace is not null) await workspace.DisposeAsync();
@@ -347,7 +366,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.Cancelling)
+            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

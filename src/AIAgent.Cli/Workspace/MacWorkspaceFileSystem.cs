@@ -112,7 +112,7 @@ internal sealed class MacWorkspaceFileSystem : IWorkspaceWriteFileSystem
         0x4000 => WorkspaceNodeKind.Directory,
         0xa000 => WorkspaceNodeKind.Link,
         _ => WorkspaceNodeKind.Other
-    }, state.Size, state.ModifiedSeconds, state.ModifiedNanoseconds, (uint)state.Device, state.Inode);
+    }, state.Size, state.ModifiedSeconds, state.ModifiedNanoseconds, (uint)state.Device, state.Inode, state.Links, state.User, state.Mode);
 
     private static void ThrowError(int error)
     {

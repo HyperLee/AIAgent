@@ -34,6 +34,10 @@ internal sealed class ToolRegistry
     internal bool IsWorkspaceTool(string name) => _capabilities.TryGetValue(name, out var capability) &&
         capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite;
 
+    internal bool IsTaskOperation(string name) => _capabilities.TryGetValue(name, out var capability) &&
+        capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite or ToolCapability.DotnetTask;
+    internal bool IsProcessTool(string name) => _capabilities.TryGetValue(name, out var capability) && capability == ToolCapability.DotnetTask;
+
     internal string? SafeName(string name) => _tools.ContainsKey(name) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
 
     internal bool IsSensitive(LlmToolCall call) => !_policy.CanSendOrUse(call.Name, ContentBoundary.ToolArguments) ||
