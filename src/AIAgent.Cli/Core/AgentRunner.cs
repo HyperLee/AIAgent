@@ -17,6 +17,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
             return Unavailable(AgentStopReason.RunnerUnavailable);
         try
         {
+            using var generation = registry.ExecutionPolicy.Plans.BorrowGeneration();
             if (initialMessages is null || initialMessages.Count == 0 || initialMessages.Any(message => message is null) ||
                 initialMessages[^1] is not { Kind: LlmMessageKind.User } user || string.IsNullOrWhiteSpace(user.UserText))
                 return Unavailable(AgentStopReason.LocalFailure);
@@ -47,6 +48,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
         private int _generations;
         private LlmStatus? _modelStatus;
         private LlmErrorCode? _modelError;
+        private readonly long _planGeneration = registry.ExecutionPolicy.Plans.ExecutionGeneration;
 
         internal async Task<AgentTurnResult> RunAsync()
         {
@@ -56,10 +58,13 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                 while (true)
                 {
                     if (Cancelled) return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
+                    var appendix = registry.ExecutionPolicy.Plans.StateAppendix();
+                    if (appendix is null || !policy.CanSendOrUse(instruction + appendix, ContentBoundary.ModelInput))
+                    { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
                     Emit(new(AgentEventKind.Generating, _generations + 1));
                     if (!TryBegin()) return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
                     _generations++;
-                    var result = await client.GenerateAsync(new(instruction, _messages, registry.Definitions), token);
+                    var result = await client.GenerateAsync(new(instruction + appendix, _messages, registry.Definitions), token);
                     if (result is null) return Invalid();
                     programUsage.Record(result); _usage.Record(result);
                     _reset |= result.RequiresContextReset;
@@ -93,6 +98,13 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                         {
                             AddRemaining(result.ToolCalls, 0, "generation_limit");
                             return Finish(AgentTurnStatus.Stopped, AgentStopReason.GenerationLimit);
+                        }
+                        if (result.ToolCalls.Any(call => registry.IsModeRestricted(call.Name)))
+                        {
+                            foreach (var call in result.ToolCalls)
+                                AddOperation(call, ToolResponseWriter.Create(registry.IsModeRestricted(call.Name) ? ToolStatus.Rejected : ToolStatus.NotExecuted,
+                                    registry.IsModeRestricted(call.Name) ? "mode_restricted" : "turn_stopped", policy));
+                            return Finish(AgentTurnStatus.Stopped, AgentStopReason.ModeRestricted);
                         }
                         var stopped = await ExecuteBatchAsync(result);
                         if (stopped is not null) return stopped;
@@ -139,6 +151,7 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                     return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
                 }
                 ToolExecutionResult result;
+                var taskBound = registry.IsWorkspaceTool(call.Name) && registry.ExecutionPolicy.Plans.HasInProgress;
                 var localFailure = false;
                 try { result = await registry.DispatchAsync(call, token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -156,13 +169,19 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
                     : result.ErrorCode == "approval_declined" ? AgentStopReason.ApprovalDeclined
                     : result.ErrorCode == "conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
                     : result.WriteState is not null && (result.Status == ToolStatus.Failed || result.StopAfterOperation || result.ErrorCode == "publish_unsupported") ? AgentStopReason.FileWriteFailed
+                    : result.ErrorCode == "mode_restricted" ? AgentStopReason.ModeRestricted
+                    : result.ErrorCode == "plan_required" ? AgentStopReason.PlanRequired
+                    : result.ErrorCode == "plan_not_approved" ? AgentStopReason.PlanNotApproved
+                    : result.ErrorCode is "evidence_limit" or "plan_too_large" ? AgentStopReason.TaskResourceLimit
+                    : result.ErrorCode is "task_required" or "task_scope_mismatch" || taskBound && result.Status != ToolStatus.Success ? AgentStopReason.TaskBlocked
                     : AgentStopReason.None;
                 if (reason != AgentStopReason.None)
                 {
                     if (result.ErrorCode == "sensitive_arguments") _reset = true;
                     AddRemaining(calls, index + 1, reason == AgentStopReason.TurnCancelled ? "turn_cancelled" : "turn_stopped");
                     return Finish(reason == AgentStopReason.TurnCancelled ? AgentTurnStatus.Cancelled :
-                        reason is AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed ||
+                        reason is AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed or
+                            AgentStopReason.ModeRestricted or AgentStopReason.PlanRequired or AgentStopReason.PlanNotApproved or AgentStopReason.TaskBlocked or AgentStopReason.TaskResourceLimit ||
                         reason == AgentStopReason.FileWriteFailed && result.Status == ToolStatus.Rejected ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
                 }
                 results.Add(new(call.PartIndex, call.CallId, call.Name, result.Response!.Value));
@@ -204,9 +223,9 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
         {
             // The permission point precedes invocation; dependencies receive the same token
             // and decide cancellation versus I/O/publication at their own boundaries.
-            lock (_gate) return !_cancelled && !token.IsCancellationRequested;
+            lock (_gate) return !_cancelled && !token.IsCancellationRequested && _planGeneration == registry.ExecutionPolicy.Plans.Generation;
         }
-        private bool Cancelled { get { lock (_gate) return _cancelled || token.IsCancellationRequested; } }
+        private bool Cancelled { get { lock (_gate) return _cancelled || token.IsCancellationRequested || _planGeneration != registry.ExecutionPolicy.Plans.Generation; } }
 
         private AgentTurnResult Invalid()
         {
@@ -220,6 +239,20 @@ internal sealed class AgentRunner(ILlmClient client, ToolRegistry registry, ISen
             if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed))
             { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; text = ""; completed = null; }
             if (_eventFailed) { status = AgentTurnStatus.Failed; reason = AgentStopReason.LocalFailure; text = ""; completed = null; }
+            registry.ExecutionPolicy.Plans.BlockInProgress(reason switch
+            {
+                AgentStopReason.None when status == AgentTurnStatus.Completed => "turn_paused",
+                AgentStopReason.TurnCancelled => "turn_cancelled",
+                AgentStopReason.GenerationLimit => "generation_limit",
+                AgentStopReason.ApprovalDeclined => "approval_declined",
+                AgentStopReason.FileConflict => "file_conflict",
+                AgentStopReason.WriteUnconfirmed => "write_unconfirmed",
+                AgentStopReason.WorkspaceUnavailable => "workspace_unavailable",
+                AgentStopReason.TaskResourceLimit => "resource_limit",
+                AgentStopReason.TaskBlocked => "operation_failed",
+                AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable => "local_failure",
+                _ => "model_outcome"
+            });
             return new(status, reason, _modelStatus, _modelError, text,
                 status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, _generations, _usage.Snapshot(), _reset);
         }

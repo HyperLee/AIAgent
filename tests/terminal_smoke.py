@@ -165,6 +165,7 @@ def main():
     edit_cases(["dotnet", str(args.host.resolve())])
     budget_cases(["dotnet", str(args.host.resolve())])
     discovery_cases(["dotnet", str(args.host.resolve())])
+    plan_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -528,6 +529,67 @@ def discovery_cases(host):
             terminal.finish(0)
             check((workspace / "notes.md").read_bytes() == original, "SEARCH-AC-033-source-unchanged")
             print("SEARCH-AC-033-" + decision + ": PASS", flush=True)
+        finally:
+            os.close(write_fd)
+            terminal.close()
+
+
+def plan_cases(host):
+    """PLAN-AC-033: local modes, fresh version approval and separate file approval."""
+    plan_ready = b"OFFLINE_PLAN_APPROVAL_READY"
+    file_ready = b"OFFLINE_APPROVAL_READY"
+    for choice in ("yes", "no", "blank", "CtrlC", "EOF", "prepaste", "busy"):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-plan-pty-"))
+        read_fd, write_fd = os.pipe()
+        scenario = "plan-preview-gated" if choice == "prepaste" else "plan-busy" if choice == "busy" else "plan-flow"
+        terminal = TerminalProcess(host + [scenario, str(read_fd)], workspace, (read_fd,))
+        os.close(read_fd)
+        try:
+            terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/plan\r")
+            terminal.wait_for(CHAT_PROMPT, 2)
+            check(b"[Plan]" in terminal.output and list(workspace.iterdir()) == [], "PLAN-AC-033-plan-local")
+            terminal.send("規劃中文😀\r".encode())
+            terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/tasks\r")
+            terminal.wait_for(CHAT_PROMPT, 4)
+            check(all(text.encode() in terminal.output for text in ("中文計畫😀", "建立檔案", "本機寫入核對", "new.md")), "PLAN-AC-033-full-task-list")
+            terminal.send(b"/execute\r")
+            if choice == "prepaste":
+                terminal.wait_for(b"OFFLINE_PLAN_PREVIEW_PAUSED")
+                terminal.send(b"yes\r")
+                os.write(write_fd, b"x")
+            terminal.wait_for(plan_ready)
+            check(list(workspace.iterdir()) == [], "PLAN-AC-033-preview-no-write")
+            if choice == "prepaste":
+                terminal.send(b"\x03")
+            elif choice in ("yes", "busy"):
+                terminal.send(b"invalid\r")
+                terminal.wait_for(plan_ready, 2)
+                terminal.send(b" YeS \r\n")
+            else:
+                terminal.send({"no": b"no\r", "blank": b"\r", "CtrlC": b"\x03", "EOF": b"\x04"}[choice])
+            if choice != "EOF":
+                terminal.wait_for(CHAT_PROMPT, 5)
+                check(list(workspace.iterdir()) == [], "PLAN-AC-033-confirm-does-not-execute")
+                if choice in ("yes", "busy"):
+                    terminal.send("執行下一步\r".encode())
+                    if choice == "busy":
+                        terminal.wait_for(b"OFFLINE_PLAN_GENERATING")
+                        terminal.send(b"discarded-plan-busy\r")
+                        os.write(write_fd, b"x")
+                    terminal.wait_for(file_ready)
+                    check(list(workspace.iterdir()) == [], "PLAN-AC-033-separate-file-approval")
+                    terminal.send(b"yes\r")
+                    terminal.wait_for(CHAT_PROMPT, 6)
+                    check((workspace / "new.md").read_bytes() == b"Hello\n", "PLAN-AC-033-verified-bytes")
+                    check(b"completed" in terminal.output and b"local_operation" in terminal.output, "PLAN-AC-033-completion-evidence")
+                terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(b" YeS " not in terminal.output and b"discarded-plan-busy" not in terminal.output, "PLAN-AC-033-hidden-no-queue")
+            if choice not in ("yes", "busy"):
+                check(list(workspace.iterdir()) == [], "PLAN-AC-033-declined-no-write")
+            print("PLAN-AC-033-" + choice + ": PASS", flush=True)
         finally:
             os.close(write_fd)
             terminal.close()

@@ -9,11 +9,15 @@ internal sealed class ToolRegistry
 {
     private readonly Dictionary<string, ITool> _tools = new(StringComparer.Ordinal);
     private readonly ISensitiveDataPolicy _policy;
-    internal IReadOnlyList<LlmToolDefinition> Definitions { get; }
+    private readonly Dictionary<string, ToolCapability> _capabilities = new(StringComparer.Ordinal);
+    private readonly IReadOnlyList<LlmToolDefinition> _definitions;
+    internal AgentExecutionPolicy ExecutionPolicy { get; }
+    internal IReadOnlyList<LlmToolDefinition> Definitions => Array.AsReadOnly(_definitions.Where(d => !IsModeRestricted(d.Name)).ToArray());
 
-    internal ToolRegistry(IReadOnlyList<ITool> tools, ISensitiveDataPolicy policy)
+    internal ToolRegistry(IReadOnlyList<ITool> tools, ISensitiveDataPolicy policy, AgentExecutionPolicy? executionPolicy = null)
     {
         _policy = policy;
+        ExecutionPolicy = executionPolicy ?? new(new PlanStore(policy));
         var definitions = new List<LlmToolDefinition>();
         foreach (var tool in tools)
         {
@@ -21,9 +25,14 @@ internal sealed class ToolRegistry
                 string.IsNullOrWhiteSpace(definition.Description) || definition.Parameters.ValueKind != JsonValueKind.Object ||
                 !_tools.TryAdd(definition.Name, tool)) throw new ArgumentException("工具登錄無效");
             definitions.Add(definition);
+            _capabilities.Add(definition.Name, tool.Capability);
         }
-        Definitions = Array.AsReadOnly(definitions.ToArray());
+        _definitions = Array.AsReadOnly(definitions.ToArray());
     }
+
+    internal bool IsModeRestricted(string name) => _capabilities.TryGetValue(name, out var capability) && !ExecutionPolicy.Allows(capability);
+    internal bool IsWorkspaceTool(string name) => _capabilities.TryGetValue(name, out var capability) &&
+        capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite;
 
     internal string? SafeName(string name) => _tools.ContainsKey(name) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
 
@@ -33,9 +42,12 @@ internal sealed class ToolRegistry
 
     internal async Task<ToolExecutionResult> DispatchAsync(LlmToolCall call, CancellationToken cancellationToken)
     {
+        using var generation = ExecutionPolicy.Plans.BorrowGeneration();
         if (cancellationToken.IsCancellationRequested) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Cancelled, "none", _policy));
         if (IsSensitive(call)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "sensitive_arguments", _policy));
         if (!_tools.TryGetValue(call.Name, out var tool)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy));
+        if (!ExecutionPolicy.Plans.IsExecutionCurrent) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Failed, "unavailable", _policy));
+        if (IsModeRestricted(call.Name)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "mode_restricted", _policy));
         var result = await tool.ExecuteAsync(call.Arguments, cancellationToken);
         if (result is null) throw new InvalidOperationException("工具結果不存在");
         if (result.Response is not { } response || SensitiveJson.Contains(response, _policy, ContentBoundary.ToolResult) ||

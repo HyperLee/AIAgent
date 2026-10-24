@@ -7,7 +7,8 @@ internal enum AgentTurnStatus { Completed, Cancelled, Stopped, Failed }
 internal enum AgentStopReason
 {
     None, ModelOutcome, TurnCancelled, GenerationLimit, SensitiveData, InvalidProtocol,
-    WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed
+    WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
+    ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 

@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換及逐次核准；每回合最多五次生成。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；每回合最多五次生成。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md) 與 [08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md) 與 [09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，既有規格保持原文。
 
 ## 開發進度
 
@@ -18,10 +18,59 @@
 | 06：檔案編輯與核准 | 建立、唯一精確替換、本機差異、逐筆核准、衝突、發布與讀回核對。 | 已實作。 | 離線與 PTY 回歸通過。 | 真人與真實 Gemini 寫入／核准。 |
 | 07：整體驗收 | 限制／用量整合、Git index／發布目錄掃描、選用 hook 與人工清單。 | 整合測試、掃描器及選用 hook 已實作。 | MSTest、Python 與 PTY 回歸通過。 | Release 掃描受阻；真人／服務／人工分發檢查未完成。 |
 | 08：程式碼搜尋與局部讀檔 | 安全檔名 glob、跨檔字面搜尋及指定行範圍讀取。 | 已實作並接入七工具。 | 證據見第 08 份驗證紀錄。 | 真人終端機與真實 Gemini；第 07 份門檻保留。 |
+| 09：Plan 模式與任務清單 | 模式限制、版本確認、任務狀態、本機完成證據與有界投影。 | 已實作並接入正式聊天。 | 證據見第 09 份驗證紀錄。 | PLAN-AC-034 真人、035 真實 Gemini；第 07 份門檻保留。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。目前正式依序提供 `list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`，依目前模式提供其中六／八項；每筆寫入須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+
+## 第 09 份 Plan 模式與任務清單
+
+第 09 份實作 FUT-03。啟動預設 Execute，沒有活動計畫時沿用既有聊天與逐筆檔案核准。模式、任務與證據由本機程式管理；計畫及檔案文字不能授權切換模式或建立操作事實。
+
+| 操作 | 行為 |
+|---|---|
+| `/plan` | 切換唯讀探索與規劃；提供五項唯讀工具及 `submit_plan`。保留同版確認，但在途任務轉為受阻。 |
+| `/tasks` | 本機顯示目標、版本、確認、全部任務、必要操作、摘要、完成依據、受阻原因及舊事實數；不呼叫模型。 |
+| `/execute` | Draft 計畫完整預覽後，只有新輸入的隱藏 y／yes 可確認該版本。確認後只切 Execute，等待下一則一般訊息。沒有計畫或同版已確認時不重問。 |
+| Execute 的 `update_task` | 開始、完成或封鎖任務；同時最多一項在途。模型不能提交自造 evidence、approved 或退出碼。 |
+
+典型流程是 `/plan` → 一般訊息要求探索及提出計畫 → `/tasks` → `/execute` → 隱藏輸入 yes → 下一則一般訊息要求執行。計畫確認只確認方向；每筆寫入仍須另行預覽、核准及重驗。Plan 的工具定義、批次預檢、Registry 與實際工作區入口共同禁止寫入，不能靠偽造呼叫繞過。
+
+Read／Write 任務須逐項符合必要操作。完成證據取同一任務最近的相符本機結果；截斷、後來失敗、未套用、Unconfirmed 或清理失敗皆不能完成，Write 每項都須 Verified。範圍讀取只證明指定請求的實際片段，不建立修改快照。Analysis 只標示「完成：模型分析判斷」；本階段 Validation 為「受阻：驗證能力尚未提供」，沒有建置或測試程序工具。
+
+計畫跨五回合歷史淘汰保留；每回合結束仍在途時轉為受阻，正常回答使用「等待下一則指示；任務尚未完成」。部分寫入與已接受完成獨立於模型後續成敗，不自動重試或復原。清除、強制安全重設及換 Key 丟棄計畫、確認、證據與預留，保留模式及程序用量；舊世代遲到結果不能復活狀態。
+
+最多 20 任務、每項 8 個必要操作、256 筆事實（含舊計畫／退役任務）。文字上限依原始 UTF-16 長度檢查；實際與保守模型投影各最多 32768 UTF-8 JSON bytes，完整新結果／確認／tasks 顯示各最多 65536 bytes。先保留取消與自動受阻收尾空間，再開始操作；不截斷計畫取得核准，不增加五次生成或 262144 bytes 實際模型請求上限。
+
+### 第 09 份驗證紀錄（2026-10-24）
+
+基線為 HEAD `79140cc` 加上本次未提交的工作區變更；只使用合成 Key、可控制檔案系統、真實 SDK 配假 HTTP handler 及離線 PTY。下表為當次實際命令、退出碼及數量；既有 F5 紀錄仍屬先前驗證。
+
+| 命令 | 退出碼與當次結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原成功。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；產品、TerminalHost 及測試建置成功；0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；389 通過、0 失敗、0 略過；含原有 330 項與新增 59 項。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33 通過，0 失敗。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；只顯示用法，沒有認證或生成。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 0；格式檢查通過，未改寫檔案。 |
+| `python3 -B tests/terminal_smoke.py` | 0；57 組 PTY 通過；含既有 50 組與新增 7 組，不是真人操作。 |
+| `git diff --check` | 0；已追蹤差異空白檢查通過；未追蹤 C# 另逐檔查核。 |
+
+當次環境為 macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6。精確 byte 邊界以實際序列化資料校準，不把 UTF-16 長度或估算當作 SDK body 大小。
+
+獨立唯讀審查在額度中斷前確認一項重要問題：過期 AsyncLocal 世代被新回合重新綁定，可能重開模型請求。已先以測試重現，再改為沿用原執行世代並禁止過期狀態投影。其後由實作者自行完成剩餘檢查，另修正強制重設後重建最近結果，以及分析完成與在途操作共用識別的溢位／短 Key 邊界；相關測試先失敗後通過，最終整套 389 項全綠。這不代表已取得完整獨立審查結論。
+
+| 案例 | 自動驗證內容 |
+|---|---|
+| PLAN-AC-001～007、021、023、029、032 | 本機指令與零生成、模式工具及嚴格 Schema、整批敏感／模式預檢、Unicode／長度／路徑與安全顯示、原生簽章及多結果配對、唯一記帳與既有回歸。 |
+| PLAN-AC-008～016、019、025、031 | 本機身分與版本、精確任務保留／退役、狀態轉移、逐項必要證據、最新失敗、範圍摘要、分析與未提供的驗證能力、256 筆容量。 |
+| PLAN-AC-017～020、026～030 | 部分寫入、取消決策點、Unconfirmed／CleanupFailed 優先、正常暫停、世代失效、清除／換 Key、五回合淘汰及完整請求上限。 |
+| PLAN-AC-024、026 | 投影 32767／32768／32769、結果與實際／保守預覽 65535／65536／65537 bytes，包含跳脫、保留容量及尚未操作即中止的收尾。結果 writer 防線另以超長合成內部識別測試，產品本機識別不會達此長度。 |
+| PLAN-AC-033 | macOS PTY 的同意、拒絕、空白、Ctrl+C、EOF、預貼 yes 及 busy 輸入七組，含獨立檔案核准與終端機復原。 |
+
+PLAN-AC-034 真人終端機與 PLAN-AC-035 真實 Gemini 尚未驗證；離線及 PTY 不代替這兩層。第 07 份 Release BUD-S003、x64 與人工分發門檻繼續保留。本次沒有新增套件、設定、認證、程序／shell、Git 工具、摘要、保存或多 Agent 能力，也沒有提交、推送或發布。
 
 ## 第 08 份程式碼搜尋與局部讀檔
 
@@ -142,21 +191,23 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 設定中的 `cwd` 為 `${workspaceFolder}`、`args` 為空陣列，因此預設工作區就是專案根目錄。工作區確認仍依產品流程執行；若要操作其他工作區，可依前述 CLI 的 `--workspace <path>` 方式另行啟動。Key 不放入偵錯參數、環境變數或兩份 JSON。
 
-`preLaunchTask` 與任務 label 一致；**Cmd+Shift+B** 可單獨執行同一個預設建置任務。偵錯設定關閉例外及模組載入訊息記錄；本機操作與 Key 輸入仍由產品終端機流程管理。2026-10-23 已實際驗證的 F5 範圍見[最新驗證摘要](#latest-validation)。
+`preLaunchTask` 與任務 label 一致；**Cmd+Shift+B** 可單獨執行同一個預設建置任務。偵錯設定關閉例外及模組載入訊息記錄；本機操作與 Key 輸入仍由產品終端機流程管理。2026-10-23 已實際驗證的 F5 範圍見[第 07 份既有驗證摘要](#stage07-validation)。
 
 ## 聊天操作
 
-提示為 `你> `。**輸入期間不回顯；Enter 後顯示安全訊息**。不顯示星號或輸入長度；已知指令只顯示操作結果。一般訊息含當前 Key 時整筆阻擋，原文不顯示或送出。
+一般輸入提示前顯示 `[Plan]`／`[Execute]`，提示仍為 `你> `。**輸入期間不回顯；Enter 後顯示安全訊息**。不顯示星號或輸入長度；已知指令只顯示操作結果。一般訊息含當前 Key 時整筆阻擋，原文不顯示或送出。
 
 | 操作 | 行為 |
 |---|---|
 | 一般文字 | 保留原始首尾空白，啟動最多五次生成的回合；生成及工具處理期間不接受下一則訊息。 |
 | 空白 | 不送出，重新提示。 |
 | `/help` | 顯示聊天指令與目前能力；啟動參數 `--help` 只顯示啟動用法。 |
-| `/clear` | 清除對話、快照、核准記憶體及最近本機結果，保留 Key、工作區、模型及程序累計；不復原已寫檔案。 |
+| `/plan`、`/execute`、`/tasks` | 切模式、確認版本或檢視本機任務；詳見第 09 份操作。 |
+| `/clear` | 清除對話、快照、計畫、確認、證據及最近結果，保留模式、Key、工作區、模型及程序累計；不復原已寫檔案。 |
 | `/exit`、EOF、Ctrl+D | 正常退出；部分輸入會丟棄。 |
 | 等待輸入／認證選擇／Key 輸入時 Ctrl+C | 退出 130。 |
-| 生成／工具處理／核准中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
+| 計畫確認中 Ctrl+C | 取消該次確認並回到 Plan；不退出 130。 |
+| 生成／工具處理／檔案核准中 Ctrl+C | 取消並等待本回合收尾，再回到輸入；不取消後續聊天。 |
 | 生成／工具處理／核准中 Ctrl+D | 取消並等待收尾，正常退出。 |
 
 指令在 Trim 後區分大小寫且完整匹配；`/CLEAR`、`/help extra`、`/tmp/a` 皆為未知指令，不送模型。生成、工具處理、取消及收尾期間的普通按鍵（包含 `/exit`）會丟棄，不能排隊；外部 SIGINT 依相同聊天狀態路由。

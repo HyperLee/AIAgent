@@ -27,7 +27,7 @@ public sealed class DiscoveryIntegrationTests
             .RunAsync(WorkspaceFixtures.Session(root), default) == 0 && handler.Calls == 2, "SEARCH-AC-028-app");
         using var first = JsonDocument.Parse(handler.Bodies[0]); using var second = JsonDocument.Parse(handler.Bodies[1]);
         var definitions = first.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
-        Assert.IsTrue(definitions.GetArrayLength() == 7 && definitions[4].GetProperty("name").GetString() == "search_files" &&
+        Assert.IsTrue(definitions.GetArrayLength() == 8 && definitions[4].GetProperty("name").GetString() == "search_files" &&
             definitions[5].GetProperty("parametersJsonSchema").GetProperty("required").GetArrayLength() == 2, "SEARCH-AC-028-schema");
         var contents = second.RootElement.GetProperty("contents"); var parts = contents[2].GetProperty("parts");
         Assert.IsTrue(parts.GetArrayLength() == 3 && parts[0].GetProperty("functionResponse").GetProperty("id").GetString() == "call-0" &&

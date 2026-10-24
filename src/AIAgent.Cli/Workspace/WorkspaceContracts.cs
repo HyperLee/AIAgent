@@ -18,7 +18,7 @@ internal interface IWorkspaceFiles : IAsyncDisposable
 
 internal interface IWorkspaceFilesFactory
 {
-    IWorkspaceFiles Create(BootstrapSession session);
+    IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null);
     FileChangeApprovalBridge? ApprovalBridge => null;
 }
 
@@ -39,7 +39,8 @@ internal enum WorkspaceErrorCode
     BinaryContent, ResultTooLarge, SensitiveContent, PathChanged,
     WorkspaceUnavailable, IoFailure, Unavailable, AlreadyExists, SnapshotRequired, EmptyOldText,
     TextNotFound, AmbiguousMatch, NoChange, EditTooLarge, PreviewTooLarge, BomChangeNotAllowed,
-    UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure
+    UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure,
+    ModeRestricted, PlanNotApproved, TaskRequired, TaskScopeMismatch, EvidenceLimit, PlanTooLarge
 }
 
 internal static class WorkspaceLimits

@@ -167,6 +167,7 @@ public sealed class AgentLifecycleTests
 
 internal sealed class ThrowingTool : ITool
 {
+    public ToolCapability Capability => ToolCapability.WorkspaceRead;
     public LlmToolDefinition Definition { get; } = WorkspaceToolProjection.Definition("throw", "controlled failure");
     public Task<ToolExecutionResult> ExecuteAsync(System.Text.Json.JsonElement arguments, CancellationToken cancellationToken) => throw new IOException(GeminiFixtures.Key);
 }
@@ -174,17 +175,17 @@ internal sealed class ThrowingTool : ITool
 internal sealed class ObservedWorkspaceFactory : IWorkspaceFilesFactory
 {
     internal List<IWorkspaceFiles> Services { get; } = [];
-    public IWorkspaceFiles Create(BootstrapSession session)
+    public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
-        var service = new WorkspaceFilesFactory().Create(session); Services.Add(service); return service;
+        var service = new WorkspaceFilesFactory().Create(session, executionPolicy); Services.Add(service); return service;
     }
 }
 
 internal sealed class UnavailableWorkspaceFactory : IWorkspaceFilesFactory
 {
-    public IWorkspaceFiles Create(BootstrapSession session)
+    public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
-        var workspace = new WorkspaceFilesFactory().Create(session);
+        var workspace = new WorkspaceFilesFactory().Create(session, executionPolicy);
         workspace.DisposeAsync().AsTask().GetAwaiter().GetResult();
         return workspace;
     }

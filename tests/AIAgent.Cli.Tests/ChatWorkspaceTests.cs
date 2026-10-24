@@ -31,7 +31,7 @@ public sealed class ChatWorkspaceTests
                 _ => ChatFixture.Completed()
             });
             Assert.IsTrue(await Run(fixture, factory) == 0, "WS-AC-025");
-            Assert.IsTrue(fixture.Client.Requests.Count == (mode == "clear" ? 1 : 2) && fixture.Client.Requests.All(request => request.Tools.Count == 7), "WS-AC-025");
+            Assert.IsTrue(fixture.Client.Requests.Count == (mode == "clear" ? 1 : 2) && fixture.Client.Requests.All(request => request.Tools.Count == 8), "WS-AC-025");
             Assert.IsTrue(factory.Services.All(service => service.Snapshots.Count == 0), "WS-AC-025");
             WorkspaceFixtures.Check(await factory.Services[0].ReadFileAsync("a", default), WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable, "WS-AC-025");
         }
@@ -103,11 +103,11 @@ internal sealed class ChatWorkspaceFactory : IWorkspaceFilesFactory
     internal List<IWorkspaceFiles> Services { get; } = [];
     internal int FailIndex { get; set; } = -1;
     internal Action<int>? OnCreate { get; set; }
-    public IWorkspaceFiles Create(BootstrapSession session)
+    public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
         OnCreate?.Invoke(Services.Count);
         if (Services.Count == FailIndex) throw new IOException("FAKE_WORKSPACE_CONSTRUCTION_ONLY");
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [97]);
-        var service = new WorkspaceFiles(session.Workspace, session.Policy, fs); Services.Add(service); return service;
+        var service = new WorkspaceFiles(session.Workspace, session.Policy, fs, executionPolicy: executionPolicy); Services.Add(service); return service;
     }
 }

@@ -7,6 +7,7 @@ namespace AIAgent.Cli.Tools;
 
 internal interface ITool
 {
+    ToolCapability Capability => ToolCapability.Unspecified;
     LlmToolDefinition Definition { get; }
     Task<ToolExecutionResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken);
 }
@@ -63,6 +64,9 @@ internal static class ToolErrorCodes
 {
     internal static bool IsValid(string code) => code is "none" or "unknown_tool" or "invalid_arguments" or
         "invalid_pattern" or "invalid_query" or "invalid_line_range" or
+        "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
+        "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or
+        "capability_unavailable" or "evidence_limit" or "plan_too_large" or
         "sensitive_arguments" or "generation_limit" or "turn_cancelled" or "turn_stopped" or
         "invalid_path" or "outside_workspace" or "sensitive_path" or "symbolic_link" or "not_found" or
         "wrong_entry_type" or "access_denied" or "file_too_large" or "invalid_utf8" or "binary_content" or

@@ -45,6 +45,23 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("plan", StringComparison.Ordinal))
+            {
+                if (_calls == 1)
+                    return PlanCalls(("submit_plan", new { expected_revision = 0, objective = "中文計畫😀", tasks = new[] {
+                        new { kind = "write", title = "建立檔案", acceptance = "本機寫入核對", requirements = new[] { new { tool = "create_file", path = "new.md" } } } } }));
+                if (_calls == 3)
+                {
+                    if (scenario == "plan-busy")
+                    {
+                        Console.WriteLine("OFFLINE_PLAN_GENERATING");
+                        await gate!.ReadExactlyAsync(new byte[1], cancellationToken);
+                    }
+                    return PlanCalls(("update_task", new { plan_id = "p1", expected_revision = 1, task_id = "t1", status = "in_progress", summary = "開始建立" }),
+                        ("create_file", new { path = "new.md", content = "Hello\n" }),
+                        ("update_task", new { plan_id = "p1", expected_revision = 1, task_id = "t1", status = "completed", summary = "本機檔案已核對" }));
+                }
+            }
             if (scenario.StartsWith("search", StringComparison.Ordinal) && _calls == 1)
             {
                 LlmToolCall[] calls = [
@@ -89,18 +106,23 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         catch (OperationCanceledException) { return new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, true, false); }
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    private static LlmResult PlanCalls(params (string Name, object Args)[] operations)
+    {
+        var calls = operations.Select((op, index) => new LlmToolCall(index, null, op.Name, JsonSerializer.SerializeToElement(op.Args))).ToArray();
+        return new(LlmStatus.ToolCalls, LlmErrorCode.None, "", calls, LlmMessage.FromModel(new object(), calls), new(1, 2, null, 0, 3), true, false);
+    }
 }
 
 internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate) : IWorkspaceFilesFactory
 {
     private readonly WorkspaceFilesFactory _factory = new();
     public FileChangeApprovalBridge ApprovalBridge => _factory.ApprovalBridge;
-    public IWorkspaceFiles Create(BootstrapSession session)
+    public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
         if (scenario is "edit-stage-gated" or "edit-publish-gated")
             return new ObservedWriteWorkspace(new WorkspaceFiles(session.Workspace, session.Policy,
-                new GatedEditFileSystem(scenario, gate!), ApprovalBridge.ForSession(session)));
-        var workspace = _factory.Create(session);
+                new GatedEditFileSystem(scenario, gate!), ApprovalBridge.ForSession(session), executionPolicy));
+        var workspace = _factory.Create(session, executionPolicy);
         return scenario is "tool-busy" or "search-busy" ? new GatedWorkspace(workspace, gate!) : workspace;
     }
 }
@@ -144,6 +166,7 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : I
 internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStream? gate) : ITerminal
 {
     private bool _approvalPrinted;
+    private bool _planApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -157,11 +180,26 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
             _approvalPrinted = false;
             Console.WriteLine("OFFLINE_APPROVAL_READY");
         }
+        if (key is null && _planApprovalPrinted)
+        {
+            _planApprovalPrinted = false;
+            Console.WriteLine("OFFLINE_PLAN_APPROVAL_READY");
+        }
         return key;
     }
     public void Write(string text)
     {
         source.Write(text);
+        if (text.EndsWith(PlanProjection.Prompt, StringComparison.Ordinal))
+        {
+            _planApprovalPrinted = true;
+            if (scenario == "plan-preview-gated" && !_previewWaited)
+            {
+                _previewWaited = true;
+                Console.WriteLine("OFFLINE_PLAN_PREVIEW_PAUSED");
+                gate!.ReadExactly(new byte[1]);
+            }
+        }
         if (text.EndsWith(FileChangePreviewBuilder.Prompt, StringComparison.Ordinal))
         {
             _approvalPrinted = true;

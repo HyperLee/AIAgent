@@ -8,7 +8,8 @@ namespace AIAgent.Cli.Workspace;
 internal sealed class WorkspaceFilesFactory(FileChangeApprovalBridge? approvalBridge = null) : IWorkspaceFilesFactory
 {
     public FileChangeApprovalBridge ApprovalBridge { get; } = approvalBridge ?? new();
-    public IWorkspaceFiles Create(BootstrapSession session) => new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), ApprovalBridge.ForSession(session));
+    public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null) =>
+        new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), ApprovalBridge.ForSession(session), executionPolicy);
     public override string ToString() => "[WorkspaceFilesFactory]";
 }
 
@@ -20,19 +21,23 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private readonly IWorkspaceReadFileSystem _fileSystem;
     private readonly ReadSnapshotStore _snapshots;
     private readonly IFileChangeApproval _approval;
+    private readonly AgentExecutionPolicy _executionPolicy;
     private readonly CancellationTokenSource _lifetime = new();
     private ISensitiveDataPolicy? _policy;
     private TaskCompletionSource? _inFlight;
     private Task? _disposal;
     private CancellationTokenSource? _activeCancellation;
+    private long _activePlanGeneration;
     public IReadSnapshotStore Snapshots => _snapshots;
 
-    internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem, IFileChangeApproval? approval = null)
+    internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem,
+        IFileChangeApproval? approval = null, AgentExecutionPolicy? executionPolicy = null)
     {
         _root = workspace.RootPath;
         _policy = policy;
         _fileSystem = fileSystem;
         _approval = approval ?? UnavailableFileChangeApproval.Instance;
+        _executionPolicy = executionPolicy ?? new(new PlanStore(policy));
         _snapshots = new(_gate, CancelActiveOperation);
     }
 
@@ -51,19 +56,22 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             if (external.IsCancellationRequested) return Task.FromResult(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
             _inFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
             generation = _snapshots.Generation;
+            _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;
         }
-        return RunCoreAsync(operation, end, new WorkspaceOperation(generation), external);
+        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration), external);
     }
 
     private async Task<T> RunCoreAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
         Func<WorkspaceStatus, WorkspaceErrorCode, T> end, WorkspaceOperation state, CancellationToken external)
     {
+        using var borrowing = _executionPolicy.Plans.BorrowGeneration(state.PlanGeneration);
+        T Complete(T result) { RecordTaskOperation(state, result); return result; }
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(external, _lifetime.Token);
         lock (_gate) _activeCancellation = linked;
-        try { return await operation(state, linked.Token); }
+        try { return Complete(await operation(state, linked.Token)); }
         catch (Exception exception)
         {
-            if (IsInactive(state.Generation, linked.Token)) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
+            if (IsInactive(state.Generation, linked.Token)) return Complete(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
             Exception classified = exception;
             if (state.RootChecked && (exception is not (WorkspaceFailure or OperationCanceledException) ||
                 exception is WorkspaceFailure { Code: WorkspaceErrorCode.NotFound or WorkspaceErrorCode.PathChanged }))
@@ -71,7 +79,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
                 try { InspectRoot(); }
                 catch (WorkspaceFailure rootFailure) { classified = rootFailure; }
             }
-            if (IsInactive(state.Generation, linked.Token)) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
+            if (IsInactive(state.Generation, linked.Token)) return Complete(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
             if (state.Discovery is { } scan && (classified is not (WorkspaceFailure or OperationCanceledException) ||
                 classified is WorkspaceFailure
                 {
@@ -81,13 +89,13 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             {
                 try { RevalidateDiscovery(scan, state, linked.Token); }
                 catch (WorkspaceFailure observationFailure) { classified = observationFailure; }
-                catch (OperationCanceledException) { return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None); }
+                catch (OperationCanceledException) { return Complete(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None)); }
                 catch (Exception) { _snapshots.InvalidateAllForRootFailure(); }
             }
-            if (IsInactive(state.Generation, linked.Token)) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
-            if (classified is WorkspaceFailure failure) return end(failure.Status, failure.Code);
-            if (classified is OperationCanceledException) return end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
-            return end(classified is UnauthorizedAccessException ? WorkspaceStatus.Failed :
+            if (IsInactive(state.Generation, linked.Token)) return Complete(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
+            if (classified is WorkspaceFailure failure) return Complete(end(failure.Status, failure.Code));
+            if (classified is OperationCanceledException) return Complete(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
+            return Complete(end(classified is UnauthorizedAccessException ? WorkspaceStatus.Failed :
                 classified is FileNotFoundException or DirectoryNotFoundException or PathTooLongException or ArgumentException or NotSupportedException ? WorkspaceStatus.Rejected : WorkspaceStatus.Failed,
                 classified switch
                 {
@@ -95,10 +103,11 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
                     FileNotFoundException or DirectoryNotFoundException => WorkspaceErrorCode.PathChanged,
                     PathTooLongException or ArgumentException or NotSupportedException => WorkspaceErrorCode.InvalidPath,
                     _ => WorkspaceErrorCode.IoFailure
-                });
+                }));
         }
         finally
         {
+            _executionPolicy.Plans.Release(state.TaskReservation);
             TaskCompletionSource? finished;
             lock (_gate) { finished = _inFlight; _inFlight = null; _activeCancellation = null; }
             finished?.TrySetResult();
@@ -108,6 +117,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private Task<WorkspaceListResult> ListCoreAsync(string rawPath, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, false);
+        BeginTaskOperation(operation, "list_files", path);
         CheckActive(operation.Generation, token);
         var observations = InspectPath(path, WorkspaceNodeKind.Directory, operation);
         Revalidate(observations);
@@ -152,6 +162,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private async Task<WorkspaceReadResult> ReadCoreAsync(string rawPath, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, true);
+        BeginTaskOperation(operation, "read_file", path);
         lock (_gate) { CheckActive(operation.Generation, token); _snapshots.Remove(path); }
         var file = await ReadVerifiedFileAsync(path, operation, token);
         var result = WorkspaceReadResult.Success(new(path, file.Content, file.Bytes.LongLength, file.HasBom));
@@ -236,7 +247,8 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     { if (!_policy!.CanSendOrUse(text, boundary)) throw Rejected(WorkspaceErrorCode.SensitiveContent); }
     private bool IsInactive(long generation, CancellationToken token)
     {
-        lock (_gate) return token.IsCancellationRequested || _disposal is not null || generation != _snapshots.Generation;
+        lock (_gate) return token.IsCancellationRequested || _disposal is not null || generation != _snapshots.Generation ||
+            _activePlanGeneration != _executionPolicy.Plans.Generation;
     }
     private void CheckActive(long generation, CancellationToken token)
     {
@@ -290,11 +302,13 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     }
     public override string ToString() => "[WorkspaceFiles]";
 
-    private sealed class WorkspaceOperation(long generation)
+    private sealed class WorkspaceOperation(long generation, long planGeneration)
     {
         internal long Generation { get; } = generation;
+        internal long PlanGeneration { get; } = planGeneration;
         internal bool RootChecked { get; set; }
         internal DiscoveryScan? Discovery { get; set; }
+        internal TaskEvidenceReservation? TaskReservation { get; set; }
     }
 
     private sealed class PathObservation(string path, WorkspaceNodeState state)

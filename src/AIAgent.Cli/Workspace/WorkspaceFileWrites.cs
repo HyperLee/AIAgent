@@ -30,7 +30,9 @@ internal sealed partial class WorkspaceFiles
         try
         {
             CheckActive(operation.Generation, token);
+            if (!_executionPolicy.Allows(ToolCapability.WorkspaceWrite)) throw Rejected(WorkspaceErrorCode.ModeRestricted);
             path = ValidateArgument(rawPath, true);
+            BeginTaskOperation(operation, kind == FileChangeKind.Create ? "create_file" : "replace_text", path, write: true);
             var newBytes = EncodeEdit(text, token);
             if (oldText is not null) _ = EncodeEdit(oldText, token);
             if (_fileSystem is not IWorkspaceWriteFileSystem writeSystem)

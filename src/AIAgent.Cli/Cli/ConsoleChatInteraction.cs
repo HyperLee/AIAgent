@@ -6,7 +6,7 @@ using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Cli;
 
-internal sealed class ConsoleChatInteraction(ITerminal terminal) : IChatInteraction, IDisposable
+internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChatInteraction, IDisposable
 {
     private readonly object _gate = new();
     private readonly ChatInputReader _reader = new(terminal);
