@@ -28,7 +28,7 @@ internal static class ChatDisplay
     {
         ChatEventKind.UserMessage => "使用者：" + message.Text + "\n",
         ChatEventKind.Answer => (message.Status == LlmStatus.Truncated ? "回答未完整產生\n" : "") + "AI：" + message.Text + "\n",
-        ChatEventKind.Generating => "處理中；Ctrl+C 取消本回合，Ctrl+D 結束。\n",
+        ChatEventKind.Generating => (message.Text ?? "處理中；Ctrl+C 取消本回合，Ctrl+D 結束。") + "\n",
         ChatEventKind.AgentProgress => Operation(message.Agent!) + "\n",
         ChatEventKind.Usage => Usage(message),
         ChatEventKind.TurnEnded => TurnText(message) + "\n",
@@ -38,7 +38,7 @@ internal static class ChatDisplay
     private static string Usage(ChatEvent message)
     {
         if (message.TurnSummary is { } turn)
-            return "本次用量：" + Fields(turn) + "\n程序累計：" + Fields(message.SessionUsage!) +
+            return (message.Purpose == GenerationPurpose.Compaction ? "[摘要維護] " : "") + "本次用量：" + Fields(turn) + "\n程序累計：" + Fields(message.SessionUsage!) +
                 "\n[回合] 生成 " + Number(message.GenerationsStarted) + " 次；傳輸嘗試 " + Number(turn.DispatchedRequests) +
                 " 次" + (turn.CounterOverflowed ? "／不可完整累計（溢位）" : "") +
                 "；程序傳輸嘗試數：" + Number(message.SessionUsage!.DispatchedRequests) +
@@ -100,7 +100,10 @@ internal static class ChatDisplay
         AgentStopReason.FileConflict => "檔案或路徑已變動；停止本回合，請重新讀檔。",
         AgentStopReason.FileWriteFailed => "檔案寫入未完成；本回合已停止。",
         AgentStopReason.WriteUnconfirmed => "寫入結果未確認；停止後續操作。",
-        AgentStopReason.GenerationLimit => "已達每回合五次生成上限；剩餘工具未執行。",
+        AgentStopReason.GenerationLimit => "已達本回合生成上限；剩餘工具未執行，請檢視 /budget。",
+        AgentStopReason.ProgramGenerationLimit => "程序生成額度不足；請檢視 /budget，剩餘工具未執行。",
+        AgentStopReason.ContextCapacity => "Context 容量或檢視不可用；本次需求尚未執行完成，請檢視 /context。",
+        AgentStopReason.ContextCompactionFailed => "對話整理未完成或來源已變更；本次需求尚未執行，等待下一則指示。",
         AgentStopReason.ModeRestricted => "目前模式禁止此工具；本回合停止。",
         AgentStopReason.PlanRequired => "此操作需要活動計畫；本回合停止。",
         AgentStopReason.PlanNotApproved => "目前計畫版本尚未確認；本回合停止。",

@@ -10,7 +10,7 @@ using Google.GenAI.Types;
 namespace AIAgent.Cli.Llm;
 
 /// <summary>一次生成最多一次傳輸；只持有本 session 的模型協定，不管理聊天或執行工具。</summary>
-public sealed class GeminiClient : ILlmClient
+public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILlmContextTelemetry
 {
     private readonly object gate = new();
     private readonly object owner = new();
@@ -63,7 +63,7 @@ public sealed class GeminiClient : ILlmClient
 
     private async Task<LlmResult> GenerateCoreAsync(LlmRequest request, CancellationToken external)
     {
-        var state = new GeminiOperation();
+        var state = new GeminiOperation { Report = _requestReport };
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(GeminiLimits.RequestTimeoutSeconds), timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(external, lifetime.Token, deadline.Token);
         try
@@ -90,6 +90,8 @@ public sealed class GeminiClient : ILlmClient
         }
         finally
         {
+            try { if (state.BodyBytes is { } bytes) state.Report?.Invoke(bytes, state.RequestDispatched); }
+            catch (Exception) { /* Numeric diagnostics must never prevent client cleanup. */ }
             state.Response?.Dispose();
             if (transport is not null) transport.Operation = null;
             TaskCompletionSource? finished;

@@ -8,7 +8,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory,
     IControlledDotnetTasksFactory? controlledTasksFactory = null)
 {
-    private readonly object _gate = new();
+    private readonly object _gate = context.DecisionGate;
     private readonly CancellationTokenSource _stop = new();
     private CancellationTokenSource? _turnCancellation;
     private CancellationTokenSource? _planCancellation;
@@ -44,7 +44,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             {
                 interaction.SetPolicy(initialSession.Policy);
                 policyReady = true;
-                _plans = new(initialSession.Policy);
+                _plans = new(initialSession.Policy, _gate);
+                _contexts = new(context, _plans, initialSession.Policy);
                 _executionPolicy = new(_plans);
                 _client = runtimeFactory.CreateClient(initialSession);
                 _workspace = workspaceFilesFactory.Create(initialSession, _executionPolicy);
@@ -56,6 +57,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             {
                 SetState(ChatState.AwaitingInput);
                 interaction.Show(new(ChatEventKind.Ready, text: _plans!.Mode == AgentMode.Plan ? "[Plan]" : "[Execute]"));
+                var budget = _generationBudget.Snapshot();
+                if (_generationBudget.TakeNearLimitWarning()) ShowContextBlock("程序生成額度已接近上限；請檢視 /budget。");
+                ShowContextBlock("回合生成上限：" + budget.TurnLimit + "；程序剩餘：" + budget.ProgramRemaining + "。請用 /budget 檢視額度。");
                 var input = await interaction.ReadInputAsync(_stop.Token);
                 if (Stopping) break;
                 if (input.Status != ChatInputStatus.Submitted)
@@ -67,9 +71,13 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 var text = input.Text!;
                 var command = text.Trim();
                 if (command.Length == 0) continue;
+                if (await HandleContextCommandAsync(text)) continue;
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
+                    ShowContextBlock("/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
+                        "/budget、/budget set turn N（1～20）、/budget set program N（1～1000）、/budget reset（恢復5／100，不清消耗）；/clear 不解除程序總額度。\n" +
+                        "未釘選資訊可能於模型摘要中遺失；模式、計畫、證據及逐次核准仍由本機管理。");
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/plan：唯讀探索與規劃；/execute：確認目前版本後切換執行；/tasks：本機任務與完成依據。\n" +
                         "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；SDK 10.0.100 的 test 因私人 IPC 限制不支援。\n" +
                         "計畫最多 20 任務、1 項在途及 256 筆事實；容量不足時請 /clear 後重新規劃。\n" +
@@ -131,7 +139,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         return _stopReason switch { StopReason.Failure => 1, StopReason.Cancelled => 130, _ => 0 };
     }
 
-    private async Task<bool> RunTurnAsync(LlmMessage user)
+    private async Task<bool> RunTurnAsync(LlmMessage? user, bool maintenance = false)
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
         lock (_gate)
@@ -148,10 +156,12 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             _busyObserver = interaction.ObserveBusyInput(HandleSignal);
             using var approvalBinding = workspaceFilesFactory.ApprovalBridge?.Bind(_session!, ConfirmChangeAsync);
             if (_processFatalStop) { RequestStop(StopReason.Failure); return false; }
-            if (_processes is IProcessTurnLifecycle lifecycle) lifecycle.BeginTurn();
-            var result = await _runner!.RunAsync(context.BuildMessages(user), cancellation.Token);
+            if (!maintenance && _processes is IProcessTurnLifecycle lifecycle) lifecycle.BeginTurn();
+            var result = maintenance ? await _runner!.RunMaintenanceAsync(cancellation.Token) :
+                await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token);
             var status = result.Status;
             var reason = result.StopReason;
+            var publishAnswer = false;
             lock (_gate)
             {
                 if (result.RequiresContextReset) ClearConversationState();
@@ -159,31 +169,35 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
                     reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
-                else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
+                else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset && !maintenance)
                 {
                     context.CommitCompletedTurn(result.CompletedTurn);
-                    interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Completed));
+                    publishAnswer = true;
                 }
                 if (result.StopReason == AgentStopReason.ProcessUnconfirmed || result.Operations.Any(o => o.ProcessCleanupFailed || o.ProcessSummary?.EndState == ProcessEndState.Unconfirmed))
                 {
                     _processFatalStop = true; _executionPolicy!.StopProcesses(); RequestStop(StopReason.Failure);
                 }
-                LastOutcome = result.RequiresContextReset ? null : new(result, status, reason);
-                ShowTaskSummary();
-                if (status != AgentTurnStatus.Completed)
-                {
-                    if (status != AgentTurnStatus.Cancelled && result.ModelStatus == LlmStatus.Truncated &&
-                        !result.RequiresContextReset && !string.IsNullOrWhiteSpace(result.SafeText))
-                        interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Truncated));
-                    else interaction.Show(new(ChatEventKind.TurnEnded,
-                        status: status == AgentTurnStatus.Cancelled ? LlmStatus.Cancelled : result.ModelStatus,
-                        errorCode: result.ModelErrorCode, turnStatus: status, stopReason: reason));
-                }
+                if (maintenance) LastMaintenance = result.RequiresContextReset ? null : new(result);
+                else LastOutcome = result.RequiresContextReset ? null : new(result, status, reason);
+            }
+            if (publishAnswer) interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Completed));
+            ShowTaskSummary();
+            if (maintenance && (status == AgentTurnStatus.Completed || result.SafeText == "nothing_to_compact"))
+                ShowContextBlock(status == AgentTurnStatus.Completed ? "對話整理已完成；未釘選資訊可能遺失，等待下一則指示。" : "nothing_to_compact：至少需要三個原始完整回合。");
+            else if (status != AgentTurnStatus.Completed)
+            {
+                if (status != AgentTurnStatus.Cancelled && result.ModelStatus == LlmStatus.Truncated &&
+                    !result.RequiresContextReset && !string.IsNullOrWhiteSpace(result.SafeText))
+                    interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Truncated));
+                else interaction.Show(new(ChatEventKind.TurnEnded,
+                    status: status == AgentTurnStatus.Cancelled ? LlmStatus.Cancelled : result.ModelStatus,
+                    errorCode: result.ModelErrorCode, turnStatus: status, stopReason: reason));
             }
             if (result.RequiresContextReset)
                 interaction.Show(new(ChatEventKind.ContextCleared, text: "模型 Context、讀取快照、計畫、確認與證據已清除；模式保留，請開始新的對話。"));
             interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(),
-                generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage));
+                generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage, purpose: maintenance ? GenerationPurpose.Compaction : GenerationPurpose.Conversation));
             if (result.ModelErrorCode == LlmErrorCode.ClientUnavailable ||
                 result.StopReason is AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable) RequestStop(StopReason.Failure);
             lock (_gate)
@@ -264,7 +278,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             new SearchFilesTool(workspace, session.Policy), new SearchTextTool(workspace, session.Policy),
             new ReadFileRangeTool(workspace, session.Policy), new SubmitPlanTool(_plans!, session.Policy),
             new UpdateTaskTool(_plans!, session.Policy), new RunDotnetTaskTool(_processes, session.Policy)], session.Policy, _executionPolicy);
-        return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent));
+        return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent,
+            _generationBudget, _contexts, runtimeFactory.CreateContextInspector(client)));
     }
 
     private void HandleAgentEvent(AgentEvent message)
@@ -274,7 +289,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (_cancelTurn || _stopReason != StopReason.None) _state = ChatState.Cancelling;
             else _state = message.Kind == AgentEventKind.Generating ? ChatState.Generating : ChatState.ExecutingTools;
         }
-        interaction.Show(message.Kind == AgentEventKind.Generating ? new(ChatEventKind.Generating) :
+        if (message.Notice is not null) ShowContextBlock(message.Notice);
+        interaction.Show(message.Kind == AgentEventKind.Generating ? new(ChatEventKind.Generating,
+            text: message.Purpose == GenerationPurpose.Compaction ? "正在整理對話；模型摘要可能遺失未釘選資訊。" : null) :
             new(ChatEventKind.AgentProgress, agentEvent: message));
     }
 
@@ -306,6 +323,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         {
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             _plans!.BindPolicy(replacement.Policy);
+            _contexts!.BindPolicy(replacement.Policy);
             _executionPolicy = new(_plans);
             client = runtimeFactory.CreateClient(replacement);
             workspace = workspaceFilesFactory.Create(replacement, _executionPolicy);
@@ -331,9 +349,13 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private void ClearConversationState()
     {
-        context.Clear();
-        LastOutcome = null;
-        _plans?.Clear();
+        lock (_gate)
+        {
+            if (_contexts is not null) _contexts.Clear(); else context.Clear();
+            LastMaintenance = null;
+            LastOutcome = null;
+            _plans?.Clear();
+        }
         _workspace?.Snapshots.Clear();
     }
 

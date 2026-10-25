@@ -36,19 +36,36 @@ internal sealed class FixedSettings : IPublicSettingsLoader
 
 internal sealed class OfflineRuntime(string scenario, FileStream? gate) : IChatRuntimeFactory
 {
+    public ILlmContextInspector? CreateContextInspector(ILlmClient client) => client as ILlmContextInspector;
     private int _clients;
     public BootstrapSession CreateReplacementSession(ConfirmedWorkspace workspace, PublicSettings settings, KeyInputResult acceptedInput) => new ChatRuntimeFactory().CreateReplacementSession(workspace, settings, acceptedInput);
     public ILlmClient CreateClient(BootstrapSession session) => new OfflineClient(scenario, gate, ++_clients > 1);
 }
 
-internal sealed class OfflineClient(string scenario, FileStream? gate, bool replaced) : ILlmClient
+internal sealed class OfflineClient(string scenario, FileStream? gate, bool replaced) : ILlmClient, ILlmContextInspector
 {
+    public ContextRequestMeasure Measure(LlmRequest request) => new(ContextMeasureStatus.Measured, 1024);
+    public ContextTurnProjection ProjectCompletedTurn(long turnId, IReadOnlyList<LlmMessage> messages) =>
+        new(turnId, messages[0].UserText!, "offline answer", []);
     private int _calls;
     public async Task<LlmResult> GenerateAsync(LlmRequest request, CancellationToken cancellationToken)
     {
         try
         {
             _calls++;
+            if (scenario.StartsWith("context", StringComparison.Ordinal) && request.Tools.Count == 0)
+            {
+                if (scenario.EndsWith("busy", StringComparison.Ordinal))
+                {
+                    Console.WriteLine("OFFLINE_CONTEXT_COMPACTING");
+                    using var observed = cancellationToken.Register(() => Console.WriteLine("OFFLINE_CONTEXT_CANCEL_OBSERVED"));
+                    await gate!.ReadExactlyAsync(new byte[1], CancellationToken.None);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return new(LlmStatus.Completed, LlmErrorCode.None,
+                    "{\"version\":1,\"goals\":[\"離線摘要\"],\"decisions\":[],\"open_questions\":[],\"background\":[]}",
+                    [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("build", StringComparison.Ordinal) && _calls == 1)
                 return PlanCalls(("run_dotnet_task", new { task = "build", project_path = "中文專案/Example.csproj" }));
             if (scenario.StartsWith("plan", StringComparison.Ordinal))

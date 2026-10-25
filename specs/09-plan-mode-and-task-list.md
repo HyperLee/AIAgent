@@ -1,5 +1,11 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 11 份實作接續（2026-10-25）
+
+本份歷史階段限制由 [第 11 份 Context 與預算管理](11-context-and-budget-management.md) 明示擴充：成功歷史以摘要替換最舊完整前綴並保留最新兩回合；生成預設仍每回合五次，新增程序總額度100次，回合／程序可調為1～20／1～1000。自動摘要共用一般回合額度，手動 /compact 另有單次維護統計且計入程序總額度；只有有效 /compact 是新增會生成的本機指令例外。clear、reset、換 Key、模式及計畫變更不退還程序消耗。
+
+PlanStore、原始工具配對與簽章、讀檔快照及逐次核准仍由原邊界管理。20任務／1在途／256事實與計畫容量不放寬；程序仍兩次／300秒、一般失敗即停止，test仍不支援。實際功能、當次證據及未驗證部分見 [README](../README.md#context-budget-validation)，不以本增量解除其他階段門檻。
+
 > 文件版本：0.2｜建立日期：2026-10-23｜修訂日期：2026-10-23｜狀態：待實作規格
 >
 > 選題依據：[未來開發大綱 FUT-03](../ROADMAP.md)。上位文件：[開發總規格](../SPEC.md)第 5、8～15 章；承接 [03：CLI 與 Context](03-cli-and-context.md)、[04：工作區與唯讀工具](04-workspace-and-read-tools.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)及 [08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)。目前能力以 [README](../README.md)與原始碼為準，前置規格的「待實作」是其撰寫當時狀態。本份文件完成不表示 FUT-03 已實作或產品驗收通過。

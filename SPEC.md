@@ -4,6 +4,10 @@
 >
 > 本文件描述預計開發的功能與驗收方式。目前交付物為本規格書與 `.gitignore` 排除設定，產品程式、工具與測試均尚未建立。執行期遮蔽、敏感資訊檢查與提交阻擋是後續開發要求，本次未加入程式或 Git hooks。後續依第 16 章逐份展開子規格，再進行開發。
 
+## 第 11 份適用範圍補充（2026-10-25）
+
+[第 11 份](specs/11-context-and-budget-management.md) 接續第9、10、14章與相關歷史限制：加入程序內摘要、必留原文備註、容量資訊、/context、/compact、/budget；成功回合不再直接淘汰。回合／程序生成預設5／100，可調1～20／1～1000；自動摘要共用一般回合額度，手動摘要計入程序總額度。clear／reset／換 Key不退款，未釘選對話為有損整理；本機計畫、證據、快照與核准仍由原來源管理。容量估算、實際SDK bytes與API用量分列，不代表模型剩餘token或費用。證據見 [README](README.md#context-budget-validation)，跨次保存、多Agent、修正循環及既有未結門檻維持各自範圍。
+
 ## 第 10 份適用範圍補充（2026-10-24）
 
 [10：受控建置與測試](specs/10-controlled-build-and-test.md) 擴充 FUT-02；實作及分層驗證紀錄見 [README](README.md#controlled-build-validation)。正式登錄追加 `run_dotnet_task`，Plan 仍六項工具、Execute 九項；只有明確 `.csproj` 的固定 Debug build／MTP test，不提供自由 shell、額外 argv、restore 或部署。
@@ -776,6 +780,7 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/08-code-search-and-partial-read.md` | 11、13～15 的後續擴充 | 有限 glob、跨檔字面搜尋、指定行範圍、固定忽略、獨立預算與快照失效；實作與證據見 README。 |
 | `specs/09-plan-mode-and-task-list.md` | 5、8～15 的後續擴充 | Plan／Execute、本機版本確認、四種任務狀態、必要操作與完成證據、容量及安全收尾；FUT-02／04 分別交付。 |
 | `specs/10-controlled-build-and-test.md` | 5、8～15 的後續擴充 | 固定 Debug 建置／MTP 測試、逐次核准、原生隔離與監督、Validation v2、輸出與執行限制；驗收分層。 |
+| `specs/11-context-and-budget-management.md` | 5、8～10、14～15 的後續擴充 | 有界摘要、原文備註、容量資訊、共用回合／程序生成額度、原子發布與安全停止；分層驗收見README。 |
 
 ### 16.3 主要流程
 

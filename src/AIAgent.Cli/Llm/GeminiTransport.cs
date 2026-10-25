@@ -11,6 +11,8 @@ internal sealed class GeminiOperation
     internal bool InvalidParts { get; set; }
     internal LlmUsage? Usage { get; set; }
     internal HttpResponseMessage? Response { get; set; }
+    internal long? BodyBytes { get; set; }
+    internal Action<long, bool>? Report { get; set; }
 }
 
 internal sealed class GeminiBoundaryException(LlmErrorCode code, bool remote = false) : Exception("模型邊界已停止本次操作")
@@ -30,6 +32,7 @@ internal sealed class GeminiTransport(HttpMessageHandler inner, string model, IS
         var uri = request.RequestUri;
         if (request.Method != HttpMethod.Post || uri is null || uri.Scheme != "https" || uri.Host != "generativelanguage.googleapis.com" || !uri.IsDefaultPort || uri.UserInfo != "" || uri.AbsolutePath != $"/v1beta/models/{model}:generateContent" || uri.Query != "" || uri.Fragment != "") throw new GeminiBoundaryException(LlmErrorCode.InvalidRequest);
         var body = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+        state.BodyBytes = body.Length;
         if (body.Length > GeminiLimits.MaxRequestBodyBytes) throw new GeminiBoundaryException(LlmErrorCode.InputTooLarge);
         using (var document = JsonDocument.Parse(body))
             if (GeminiJson.IsSensitive(document.RootElement, currentPolicy!, ContentBoundary.ModelInput)) throw new GeminiBoundaryException(LlmErrorCode.SensitiveInput);

@@ -45,9 +45,14 @@ public sealed class PlanLifecycleTests
         using var f = new PlanFixture(); f.Submit(); f.Approve(); var execution = new AgentExecutionPolicy(f.Store);
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: execution);
-        var client = new ScriptClient { Session = f.Session, Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(
-            PlanWorkflowTests.Update(f, "in_progress"), PlanWorkflowTests.Call("read_file", new { path = "a" }, 1), PlanWorkflowTests.Update(f, "completed", 2)) : ChatFixture.Completed()) };
-        var context = new ConversationContext(); var runner = new AgentRunner(client, PlanWorkflowTests.Registry(files, f, execution), f.Session.Policy, "test instruction", new(), _ => { });
+        var client = new ScriptClient
+        {
+            Session = f.Session,
+            Respond = (i, request, _) => Task.FromResult(request.Tools.Count == 0 ? ChatFixture.Completed(ContextTestData.Summary) : i == 0 ? RunnerFixture.Calls(
+            PlanWorkflowTests.Update(f, "in_progress"), PlanWorkflowTests.Call("read_file", new { path = "a" }, 1), PlanWorkflowTests.Update(f, "completed", 2)) : ChatFixture.Completed())
+        };
+        var context = new ConversationContext(); var coordinator = new ContextCoordinator(context, f.Store, f.Session.Policy);
+        var runner = new AgentRunner(client, PlanWorkflowTests.Registry(files, f, execution), f.Session.Policy, "test instruction", new(), _ => { }, contextCoordinator: coordinator);
         for (var i = 0; i < 8; i++)
         {
             var result = await runner.RunAsync(context.BuildMessages(LlmMessage.FromUserText("q" + i)), default);
@@ -67,12 +72,16 @@ public sealed class PlanLifecycleTests
             using var f = new PlanFixture(); f.Submit(); f.Approve(); using var cancellation = new CancellationTokenSource();
             var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]); var execution = new AgentExecutionPolicy(f.Store);
             await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: execution);
-            var client = new ScriptClient { Session = f.Session, Respond = (i, _, _) =>
+            var client = new ScriptClient
+            {
+                Session = f.Session,
+                Respond = (i, _, _) =>
             {
                 if (i != 0 && point == "model") cancellation.Cancel();
                 return Task.FromResult(i == 0 ? RunnerFixture.Calls(PlanWorkflowTests.Update(f, "in_progress"),
                     PlanWorkflowTests.Call("read_file", new { path = "a" }, 1), PlanWorkflowTests.Update(f, "completed", 2)) : ChatFixture.Completed());
-            } };
+            }
+            };
             var runner = new AgentRunner(client, PlanWorkflowTests.Registry(files, f, execution), f.Session.Policy, "test instruction", new(), e =>
             {
                 if (e.Kind == AgentEventKind.ExecutingTool && (point == "start" && e.PartIndex == 0 || point == "read" && e.PartIndex == 1 || point == "complete" && e.PartIndex == 2)) cancellation.Cancel();
@@ -97,8 +106,12 @@ public sealed class PlanLifecycleTests
             var execution = new AgentExecutionPolicy(plans);
             await using var files = new WorkspaceFiles(session.Workspace, session.Policy, fs, new EditApproval(), execution);
             var registry = new ToolRegistry([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
-            var client = new ScriptClient { Session = session, Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(
-                PlanWorkflowTests.Call("update_task", PlanSdkTests.Update("in_progress")), PlanWorkflowTests.Call("create_file", new { path = "a", content = "A" }, 1))) };
+            var client = new ScriptClient
+            {
+                Session = session,
+                Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(
+                PlanWorkflowTests.Call("update_task", PlanSdkTests.Update("in_progress")), PlanWorkflowTests.Call("create_file", new { path = "a", content = "A" }, 1)))
+            };
             var result = await new AgentRunner(client, registry, session.Policy, "test instruction", new(), _ => { }).RunAsync([LlmMessage.FromUserText("write")], cancel.Token);
             Assert.AreEqual(cleanup ? AgentStopReason.LocalFailure : AgentStopReason.WriteUnconfirmed, result.StopReason);
             Assert.AreEqual(FileWriteState.Unconfirmed, plans.Facts.Single().WriteState);

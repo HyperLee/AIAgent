@@ -11,4 +11,5 @@ internal sealed class ChatRuntimeFactory : IChatRuntimeFactory
         catch { secrets.Dispose(); throw; }
     }
     public ILlmClient CreateClient(BootstrapSession session) => new GeminiClient(session);
+    public ILlmContextInspector? CreateContextInspector(ILlmClient client) => (client as GeminiClient)?.CreateContextInspector();
 }

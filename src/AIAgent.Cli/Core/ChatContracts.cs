@@ -21,6 +21,7 @@ internal interface IChatRuntimeFactory
 {
     BootstrapSession CreateReplacementSession(ConfirmedWorkspace workspace, PublicSettings settings, KeyInputResult acceptedInput);
     ILlmClient CreateClient(BootstrapSession session);
+    ILlmContextInspector? CreateContextInspector(ILlmClient client) => null;
 }
 
 internal enum ChatState { AwaitingInput, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
@@ -43,7 +44,8 @@ internal sealed class ChatInputResult
 internal sealed class ChatEvent(ChatEventKind kind, string? text = null, LlmStatus? status = null,
     LlmErrorCode? errorCode = null, LlmUsage? turnUsage = null, UsageSnapshot? sessionUsage = null, bool requestDispatched = false,
     AgentEvent? agentEvent = null, AgentTurnStatus? turnStatus = null, AgentStopReason? stopReason = null,
-    int generationsStarted = 0, UsageSnapshot? turnSummary = null, PlanSnapshot? planSummary = null)
+    int generationsStarted = 0, UsageSnapshot? turnSummary = null, PlanSnapshot? planSummary = null,
+    GenerationPurpose purpose = GenerationPurpose.Conversation)
 {
     internal ChatEventKind Kind { get; } = kind;
     internal string? Text { get; } = text;
@@ -58,6 +60,7 @@ internal sealed class ChatEvent(ChatEventKind kind, string? text = null, LlmStat
     internal int GenerationsStarted { get; } = generationsStarted;
     internal UsageSnapshot? TurnSummary { get; } = turnSummary;
     internal PlanSnapshot? PlanSummary { get; } = planSummary;
+    internal GenerationPurpose Purpose { get; } = purpose;
     public override string ToString() => "[ChatEvent]";
 }
 

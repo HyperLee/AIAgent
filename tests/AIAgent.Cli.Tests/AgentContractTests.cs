@@ -30,7 +30,8 @@ public sealed class AgentContractTests
         var turn = new List<LlmMessage> { LlmMessage.FromUserText("q"), model,
             LlmMessage.FromToolResults([response]), LlmMessage.FromModel(new object()) };
         var context = new ConversationContext();
-        for (var i = 0; i < 6; i++) context.CommitCompletedTurn(turn);
+        for (var i = 0; i < 5; i++) context.CommitCompletedTurn(turn);
+        Assert.ThrowsExactly<InvalidOperationException>(() => context.CommitCompletedTurn(turn));
         turn.Clear();
         Assert.AreEqual(5, context.CompletedTurnCount, "LOOP-AC-019");
         Assert.AreEqual(21, context.BuildMessages(LlmMessage.FromUserText("next")).Count, "LOOP-AC-019");

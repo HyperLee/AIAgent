@@ -30,13 +30,16 @@ public sealed class BuildChatTests
         }
     }
 
+    [DataRow(false)]
+    [DataRow(true)]
     [TestMethod]
-    public async Task BUILDAC031_UnconfirmedStopsSessionBeforeQueuedClearOrAnotherMessage()
+    public async Task BUILDAC031_UnconfirmedStopsSessionBeforeQueuedClearOrAnotherMessage(bool increaseLimit)
     {
         using var session = WorkspaceFixtures.Session(); var client = new ScriptClient { Session = session };
         client.Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(Call()));
         var runtime = new ScriptFactory(client); runtime.Sessions.Add(session);
         var interaction = new ProcessChatInteraction();
+        if (increaseLimit) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("/budget set turn 20"));
         foreach (var input in new[] { "build", "/clear", "retry", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(input));
         var processes = new TestProcessFactory { Unconfirmed = true };
         Assert.AreEqual(1, await new ChatApplication(interaction, runtime, new(), new(), "instruction", new WorkspaceFilesFactory(), processes).RunAsync(session, default));

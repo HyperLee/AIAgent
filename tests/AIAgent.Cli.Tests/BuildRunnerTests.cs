@@ -7,15 +7,18 @@ namespace AIAgent.Cli.Tests;
 [TestClass]
 public sealed class BuildRunnerTests
 {
+    [DataRow(5)]
+    [DataRow(20)]
     [TestMethod]
-    public async Task BUILDAC030_StandaloneFailedProcessStopsRemainderAndGeneration()
+    public async Task BUILDAC030_StandaloneFailedProcessStopsRemainderAndGeneration(int limit)
     {
         using var session = WorkspaceFixtures.Session();
         var client = new ScriptClient { Session = session };
         client.Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(
             new LlmToolCall(0, "p", "run_dotnet_task", GeminiFixtures.Element("{}")), RunnerFixture.Read(1)));
         var registry = new ToolRegistry([new FailedProcess(session.Policy)], session.Policy);
-        var runner = new AgentRunner(client, registry, session.Policy, "instruction", new(), _ => { });
+        var budget = new GenerationBudget(); budget.SetTurnLimit(limit);
+        var runner = new AgentRunner(client, registry, session.Policy, "instruction", new(), _ => { }, budget);
         var result = await runner.RunAsync([LlmMessage.FromUserText("build")], default);
         Assert.AreEqual(1, client.Requests.Count);
         Assert.AreEqual(AgentTurnStatus.Failed, result.Status);

@@ -125,7 +125,7 @@ internal static class PlanProjection
         "mode_changed" => "已切換 Plan 模式",
         "capability_unavailable" => "驗證能力尚未提供",
         "model_reported" => "模型回報受阻",
-        "resource_limit" => "資源容量不足；請 /clear 後重新規劃",
+        "resource_limit" => "資源或生成額度不足；請檢視 /context、/budget 或 /tasks。任務／證據容量不足時需 /clear 後重新規劃。",
         "workspace_unavailable" => "工作區無法使用",
         _ => "本機流程未完成"
     };

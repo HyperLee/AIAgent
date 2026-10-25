@@ -109,11 +109,12 @@ public sealed class ChatApplicationTests
     public async Task CLIAC007_ApplicationCarriesFiveCompleteTurnsThroughSeventhRequest()
     {
         var fixture = new ChatFixture(Enumerable.Range(1, 7).Select(i => "question " + i).Append("/exit").ToArray());
+        fixture.Client.Respond = (_, request, _) => Task.FromResult(ChatFixture.Completed(request.Tools.Count == 0 ? ContextTestData.Summary : "answer"));
         Assert.AreEqual(0, await fixture.Run());
-        Assert.AreEqual(11, fixture.Client.Requests[5].Messages.Count);
-        Assert.AreEqual("question 1", fixture.Client.Requests[5].Messages[0].UserText);
-        Assert.AreEqual("question 2", fixture.Client.Requests[6].Messages[0].UserText);
-        Assert.AreSame(fixture.Client.Returned[4].ModelMessage, fixture.Client.Requests[5].Messages[9]);
+        Assert.AreEqual(1, fixture.Client.Requests[5].Messages.Count);
+        Assert.AreEqual(0, fixture.Client.Requests[5].Tools.Count);
+        Assert.AreEqual("question 4", fixture.Client.Requests[6].Messages[0].UserText);
+        Assert.AreSame(fixture.Client.Returned[4].ModelMessage, fixture.Client.Requests[6].Messages[3]);
     }
 
     [TestMethod]
@@ -438,8 +439,12 @@ internal sealed class ScriptInteraction : IChatInteraction
     private sealed class Scope(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }
 
-internal sealed class ScriptClient : ILlmClient
+internal sealed class ScriptClient : ILlmClient, ILlmContextInspector
 {
+    internal Func<LlmRequest, ContextRequestMeasure>? Inspect { get; set; }
+    ContextRequestMeasure ILlmContextInspector.Measure(LlmRequest request) => Inspect?.Invoke(request) ?? new ContextTestInspector(this).Measure(request);
+    ContextTurnProjection ILlmContextInspector.ProjectCompletedTurn(long turnId, IReadOnlyList<LlmMessage> messages) =>
+        new ContextTestInspector(this).ProjectCompletedTurn(turnId, messages);
     internal BootstrapSession? Session { get; set; }
     internal List<LlmRequest> Requests { get; } = [];
     internal List<LlmResult> Returned { get; } = [];
@@ -463,6 +468,7 @@ internal sealed class ScriptClient : ILlmClient
 
 internal sealed class ScriptFactory(ScriptClient initial) : IChatRuntimeFactory
 {
+    public ILlmContextInspector? CreateContextInspector(ILlmClient client) => client as ILlmContextInspector;
     internal List<BootstrapSession> Sessions { get; } = [];
     internal ScriptClient ReplacementClient { get; } = new();
     internal bool FailClient { get; set; }

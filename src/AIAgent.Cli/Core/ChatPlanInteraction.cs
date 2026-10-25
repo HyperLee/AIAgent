@@ -33,19 +33,21 @@ internal sealed partial class ChatApplication
         try
         {
             var decision = await interaction.ConfirmPlanAsync(preview, cancellation.Token);
+            string text;
             lock (_gate)
             {
                 if (_stopReason != StopReason.None) return;
                 if (decision == PlanApprovalDecision.EndOfInput) { RequestStop(StopReason.Normal); return; }
                 if (!Enum.IsDefined(decision) || decision == PlanApprovalDecision.Unavailable) { RequestStop(StopReason.Failure); return; }
                 if (!cancellation.IsCancellationRequested && decision == PlanApprovalDecision.Approved && _plans.Approve(preview))
-                    interaction.Show(new(ChatEventKind.Ready, text: "已確認此版本並切換 Execute；等待下一則訊息，寫入與程序操作仍須逐次核准。"));
+                    text = "已確認此版本並切換 Execute；等待下一則訊息，寫入與程序操作仍須逐次核准。";
                 else
                 {
                     _plans.SetMode(AgentMode.Plan);
-                    interaction.Show(new(ChatEventKind.Ready, text: "未確認此版本；維持 Plan。"));
+                    text = "未確認此版本；維持 Plan。";
                 }
             }
+            interaction.Show(new(ChatEventKind.Ready, text: text));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         { _plans.SetMode(AgentMode.Plan); }

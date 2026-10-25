@@ -78,7 +78,7 @@ internal static class ToolErrorCodes
         "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
         "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or
         "capability_unavailable" or "evidence_limit" or "plan_too_large" or
-        "sensitive_arguments" or "generation_limit" or "turn_cancelled" or "turn_stopped" or
+        "sensitive_arguments" or "generation_limit" or "program_generation_limit" or "turn_cancelled" or "turn_stopped" or
         "invalid_path" or "outside_workspace" or "sensitive_path" or "symbolic_link" or "not_found" or
         "wrong_entry_type" or "access_denied" or "file_too_large" or "invalid_utf8" or "binary_content" or
         "result_too_large" or "sensitive_content" or "path_changed" or "workspace_unavailable" or "io_failure" or "unavailable" or

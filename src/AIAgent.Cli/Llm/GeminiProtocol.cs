@@ -17,7 +17,7 @@ internal sealed class GeminiModelContent(Content content, object owner, IReadOnl
 
 internal static class GeminiProtocol
 {
-    internal static List<Content> Convert(LlmRequest request, object owner, ISensitiveDataPolicy policy)
+    internal static List<Content> Convert(LlmRequest request, object owner, ISensitiveDataPolicy policy, bool completedTurn = false)
     {
         if (request is null || request.SystemInstruction is null || request.Messages.Count == 0) throw Invalid();
         var contents = new List<Content>();
@@ -57,7 +57,8 @@ internal static class GeminiProtocol
             }
             previous = message.Kind;
         }
-        if (previous == LlmMessageKind.Model || pending.Count != 0) throw Invalid();
+        if ((!completedTurn && previous == LlmMessageKind.Model) || pending.Count != 0 ||
+            completedTurn && !ToolCallPairing.ValidTurn(request.Messages)) throw Invalid();
         Check(request.SystemInstruction, policy, ContentBoundary.ModelInput);
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var tool in request.Tools)

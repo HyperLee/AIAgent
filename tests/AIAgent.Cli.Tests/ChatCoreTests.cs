@@ -39,7 +39,7 @@ public sealed class ChatCoreTests
         var context = new ConversationContext();
         var users = Enumerable.Range(0, 7).Select(i => LlmMessage.FromUserText("user " + i)).ToArray();
         var models = Enumerable.Range(0, 7).Select(_ => LlmMessage.FromModel(new object())).ToArray();
-        for (var i = 0; i < 7; i++)
+        for (var i = 0; i < 5; i++)
         {
             var messages = context.BuildMessages(users[i]);
             Assert.AreEqual(Math.Min(i, 5) * 2 + 1, messages.Count, "CLI-AC-007");
@@ -49,6 +49,8 @@ public sealed class ChatCoreTests
             context.CommitCompletedTurn([users[i], models[i]]);
             Assert.AreEqual(Math.Min(i + 1, 5), context.CompletedTurnCount, "CLI-AC-007");
         }
+        Assert.AreEqual(11, context.BuildMessages(users[5]).Count);
+        Assert.ThrowsExactly<InvalidOperationException>(() => context.CommitCompletedTurn([users[5], models[5]]));
         context.Clear(); context.Clear();
         Assert.AreEqual(0, context.CompletedTurnCount);
         Assert.AreEqual(1, context.BuildMessages(users[0]).Count);

@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；每回合最多五次生成。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -20,10 +20,60 @@
 | 08：程式碼搜尋與局部讀檔 | 安全檔名 glob、跨檔字面搜尋及指定行範圍讀取。 | 已實作並接入七工具。 | 證據見第 08 份驗證紀錄。 | 真人終端機與真實 Gemini；第 07 份門檻保留。 |
 | 09：Plan 模式與任務清單 | 模式限制、版本確認、任務狀態、本機完成證據與有界投影。 | 已實作並接入正式聊天。 | 證據見第 09 份驗證紀錄。 | PLAN-AC-034 真人、035 真實 Gemini；第 07 份門檻保留。 |
 | 10：受控建置與測試 | 固定 Debug 任務、逐次程序核准、原生限制與 Validation v2。 | 建置已接入；測試不支援。 | 離線回歸、真實建置 fixtures 與 PTY 通過，範圍見下方紀錄。 | MTP 與部分原生邊界待驗，第 10 階段未完整驗收；BUILD-AC-036 真人、037 真實 Gemini 及第 07 份門檻另計。 |
+| 11：Context 與預算管理 | 摘要、原文備註、容量與可調生成額度。 | 已實作並接入正式聊天。 | 當次離線／PTY證據見下方紀錄。 | CTX-AC-034真人、035真實Gemini；其他階段未結門檻保留。 |
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，依目前模式提供其中六／九項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+
+<a id="context-budget-validation"></a>
+
+## 第 11 份 Context 與預算管理
+
+原始歷史最多五個完整成功回合。新回合開始前，已有五回合則摘要最舊三回合；三至四回合且本機估算達196608 JSON bytes時整理至剩兩回合。每回合最多一次自動摘要，成功後只保留一份摘要；摘要可能遺失未釘選資訊，必要自由文字請使用原文備註。PlanStore仍管理目前目標、版本、任務與完成依據；摘要不能授權操作、建立讀檔快照或恢復核准。
+
+| 指令 | 行為 |
+|---|---|
+| /context、/context show | 查看容量、摘要及原文備註；過時計量明示過時。 |
+| /context pin TEXT、/context unpin n1 | 加入完整單行原文，或移除一筆現存備註；保留文字前後空白。最多16筆、每筆1024 UTF-16單位、pins JSON最多8192 bytes。 |
+| /compact | 至少三個原始成功回合時執行一次摘要維護，保留最新兩回合；消耗生成及API用量。 |
+| /budget | 查看回合／程序額度、已消耗、剩餘及最近一般／維護統計。 |
+| /budget set turn N、/budget set program N | 設定後續回合1～20／程序1～1000次生成；預設5／100。 |
+| /budget reset | 恢復5／100上限，既有消耗保留；clear、換Key、切模式及修訂計畫也不退款。 |
+
+自動摘要與一般生成共用當次回合額度，開始前回合及程序各須至少剩兩次；手動摘要另計單次維護並納入程序總計，不覆蓋最近一般結果。最後一次生成仍可完成文字回答，工具則整批不執行。調高額度、整理、reset或切Execute後都等待新指示；先前已核對寫入及完成事實保留。
+
+本機估算含原生訊息、指示、工具與附錄，與真正SDK body長度分列；196608 bytes是整理軟門檻，實際body仍以262144 bytes為硬上限。來源131072、摘要原始／canonical各16384、記憶附錄32768、完整CLI區塊65536 bytes，皆含封裝與跳脫。bytes、生成次數、API五欄用量與程序兩次／300秒分別計量，模型token容量不可得，不推算帳單。沒有額外端點、client、套件、設定、持久化或背景摘要。
+
+### 第 11 份驗證紀錄（2026-10-25）
+
+基線為a43f798加本次未提交變更；環境為macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6。全程使用合成Key、離線替身與真實SDK配假HTTP handler，沒有呼叫真實Gemini。
+
+| 命令／檢查 | 實際結果 |
+|---|---|
+| dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj | 0；固定依賴還原完成。 |
+| dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore | 0；CLI、ProcessHost、TerminalHost及測試建置成功，0警告／0錯誤。 |
+| dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build | 0；558通過、0失敗、0略過（12.040秒），包含原456與本次新增／擴充102個執行案例。 |
+| python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py' | 0；33通過。 |
+| dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help | 0；新能力與用途說明通過，不讀Key或建立client。 |
+| dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes | 0；產品格式檢查通過。變更測試檔另以whitespace／--include／verify-no-changes檢查通過。 |
+| python3 -B tests/terminal_smoke.py | 0；74組通過，含原67組與新增7組CTX-AC-033指令／手動及自動摘要／取消與EOF收尾。 |
+| git diff --check；變更C#行尾、Markdown連結與區塊 | 0；CRLF且無檔尾換行；本機連結及程式碼區塊通過。 |
+| 公開LLM契約、套件、設定與global.json差異 | 無變更。 |
+
+初始受限外層執行環境有3項既有原生sandbox測試失敗；允許產品自身sandbox初始化後，11項原生組及最終558項完整測試皆通過，產品隔離政策未放寬。額外的「整個測試專案whitespace驗證」退出2，指出17個未修改的舊測試檔已有LF行尾問題；本次變更檔零錯誤，未擴大改寫舊檔。
+
+| 離線案例群 | 當次回歸範圍 |
+|---|---|
+| CTX-AC-001～006 | 正式組裝、精確指令、原文／Unicode備註、16筆／8192 bytes、完整投影／顯示、短Key欄名／識別／數字／跨欄組合與原子拒絕。 |
+| CTX-AC-007～014 | 最舊完整前綴替換、涵蓋數、最新PlanStore／同版本狀態失效、快照保留、真實SDK多呼叫／簽章、來源白名單與131072 bytes、嚴格Schema及raw／canonical各16384 bytes。 |
+| CTX-AC-015～023 | 196608估算觸發、一次自動摘要、5次含摘要、實際262144／262145 bytes、失敗不fallback、取消與遲到候選、換Key不補送、敏感／非法協定共同重設、診斷不保留已摘要原生前綴。 |
+| CTX-AC-024～029 | 原Plan容量與收尾回歸、維護不開始程序回合、程序1000次耗盡與80%提醒、1／5／20最後生成整批零工具、開始／未傳輸／throw唯一記帳、clear／換Key消耗保留及一般／維護統計分列。 |
+| CTX-AC-030～032 | 活動計畫A已Verified／Completed後，B因額度或容量受阻；新指示及新核准只續B。20次生成不解除程序兩次／300秒、失敗即停、Unconfirmed鎖定及test不可用；既有01～10與Python適用回歸保留。 |
+
+獨立唯讀審查指出敏感內容被Schema錯誤提前遮蔽、遙測前置檢查誤計生成，以及部分驗收覆蓋不足；已加入失敗回歸並修正。實作者另以WeakReference／GC重現容量診斷保留舊原生回合，改為僅保留計量版本及弱計畫身分；來源metadata再檢查受控相對路徑。修正後完整558項與PTY通過，沒有另行獨立複審。
+
+CTX-AC-034真人、035真實Gemini、第10份未結原生驗收及第07份Release掃描／分發門檻保留；未執行Release發佈、真人終端機、真實Gemini、提交或推送，未宣告整體初版驗收完成。
 
 <a id="controlled-build-validation"></a>
 

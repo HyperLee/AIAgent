@@ -167,6 +167,7 @@ def main():
     discovery_cases(["dotnet", str(args.host.resolve())])
     plan_cases(["dotnet", str(args.host.resolve())])
     controlled_build_cases(["dotnet", str(args.host.resolve())])
+    context_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -646,6 +647,68 @@ def controlled_build_cases(host):
             print("BUILD-AC-035-" + choice + ": PASS", flush=True)
         finally:
             os.close(write_fd); terminal.close()
+
+
+def context_cases(host):
+    workspace = Path(tempfile.mkdtemp(prefix="aiagent-context-pty-"))
+    terminal = TerminalProcess(host + ["context"], workspace)
+    try:
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT)
+        prompt = 1
+        for text in ["/context pin   中文😀  ", "/context show", "/budget set turn 1",
+                     "/budget set program 1", "first", "second", "/budget",
+                     "/context unpin n1", "/clear", "/budget reset"]:
+            terminal.send((text + "\r").encode())
+            prompt += 1
+            terminal.wait_for(CHAT_PROMPT, prompt)
+        terminal.send(b"/exit\r")
+        terminal.finish(0)
+        check("n1：  中文😀  ".encode() in terminal.output, "CTX-AC-033-pin-exact-text")
+        check(terminal.output.count("處理中".encode()) == 1, "CTX-AC-033-program-limit-no-extra-generation")
+        check("程序已消耗：1".encode() in terminal.output, "CTX-AC-033-budget-retention")
+        print("CTX-AC-033-commands: PASS", flush=True)
+    finally:
+        terminal.close()
+    for automatic in (False, True):
+        for control in ("complete", "CtrlC", "EOF"):
+            read_fd, write_fd = os.pipe()
+            scenario = "context-busy" if control != "complete" else "context"
+            terminal = TerminalProcess(host + [scenario, str(read_fd)], workspace, (read_fd,))
+            os.close(read_fd)
+            try:
+                terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+                terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+                terminal.wait_for(CHAT_PROMPT)
+                prompt = 1
+                for i in range(5 if automatic else 3):
+                    terminal.send(("question " + str(i) + "\r").encode())
+                    prompt += 1
+                    terminal.wait_for(CHAT_PROMPT, prompt)
+                terminal.send(b"current\r" if automatic else b"/compact\r")
+                if control != "complete":
+                    terminal.wait_for(b"OFFLINE_CONTEXT_COMPACTING")
+                    terminal.send(b"discarded-context-input\r" + (b"\x03" if control == "CtrlC" else b"\x04"))
+                    terminal.wait_for(b"OFFLINE_CONTEXT_CANCEL_OBSERVED")
+                    check(terminal.process.poll() is None, "CTX-AC-033-await-cleanup")
+                    os.write(write_fd, b"x")
+                if control != "EOF":
+                    prompt += 1
+                    terminal.wait_for(CHAT_PROMPT, prompt)
+                    terminal.send(b"/context show\r")
+                    prompt += 1
+                    terminal.wait_for(CHAT_PROMPT, prompt)
+                    terminal.send(b"/exit\r")
+                terminal.finish(0)
+                check(b"discarded-context-input" not in terminal.output, "CTX-AC-033-busy-discard")
+                check(terminal.output.count("正在整理對話".encode()) == 1, "CTX-AC-033-one-compaction")
+                if control == "complete":
+                    check(b"model_summary" in terminal.output, "CTX-AC-033-summary-published")
+                print("CTX-AC-033-" + ("auto" if automatic else "manual") + "-" + control + ": PASS", flush=True)
+            finally:
+                os.close(write_fd)
+                terminal.close()
 
 
 if __name__ == "__main__":

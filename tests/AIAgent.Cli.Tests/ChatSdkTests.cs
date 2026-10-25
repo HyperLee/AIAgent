@@ -98,6 +98,7 @@ public sealed class ChatSdkTests
 
 internal sealed class SdkChatFactory(params GeminiHandler[] handlers) : IChatRuntimeFactory
 {
+    public ILlmContextInspector? CreateContextInspector(ILlmClient client) => ((GeminiClient)client).CreateContextInspector();
     private int _index;
     public BootstrapSession CreateReplacementSession(ConfirmedWorkspace workspace, PublicSettings settings, KeyInputResult acceptedInput) => new ChatRuntimeFactory().CreateReplacementSession(workspace, settings, acceptedInput);
     public ILlmClient CreateClient(BootstrapSession session) => new GeminiClient(session, handlers[_index++]);

@@ -4,6 +4,10 @@
 >
 > 選題依據：[未來開發大綱 FUT-04](../ROADMAP.md)。上位文件：[開發總規格](../SPEC.md)第 5、7～10、13～15 章；承接 [03：CLI 與 Context](03-cli-and-context.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](09-plan-mode-and-task-list.md)及 [10：受控建置與測試](10-controlled-build-and-test.md)。第 09 份 [FUT-04 固定交接](09-plan-mode-and-task-list.md#fut-04-handoff)及第 10 份第 10、12.3 節是必要交接來源。
 
+## 產品實作接續（2026-10-25）
+
+已依本份接續產品開發；下文「本次只新增本檔」與文件查核案例 CTX-AC-036 保留規格撰寫時的交付紀錄。產品實作與當次驗證見 [README](../README.md#context-budget-validation)。真人 CTX-AC-034、真實 Gemini 035、第 10 份未結原生驗收及第 07 份發布門檻分別列示。
+
 ## 1. 目的、交付與能力邊界
 
 讓較長的開發工作在本程序內保留目標、決策與必要約束，能辨識 Context 容量及生成額度，並在資料或預算不足時安全停止。摘要協助延續對話；目前任務、模式、核准及本機操作事實仍由各自的程式來源管理。

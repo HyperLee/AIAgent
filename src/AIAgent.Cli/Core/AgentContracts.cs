@@ -9,7 +9,8 @@ internal enum AgentStopReason
 {
     None, ModelOutcome, TurnCancelled, GenerationLimit, SensitiveData, InvalidProtocol,
     WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
-    ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit
+    ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit,
+    ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 
@@ -36,13 +37,16 @@ internal sealed class LocalToolOutcome(int generationNumber, int partIndex, stri
 }
 
 internal sealed class AgentEvent(AgentEventKind kind, int generationNumber, int? partIndex = null,
-    string? toolName = null, LocalToolOutcome? operation = null)
+    string? toolName = null, LocalToolOutcome? operation = null, GenerationPurpose purpose = GenerationPurpose.Conversation,
+    string? notice = null)
 {
     internal AgentEventKind Kind { get; } = kind;
     internal int GenerationNumber { get; } = generationNumber;
     internal int? PartIndex { get; } = partIndex;
     internal string? ToolName { get; } = toolName;
     internal LocalToolOutcome? Operation { get; } = operation;
+    internal GenerationPurpose Purpose { get; } = purpose;
+    internal string? Notice { get; } = notice;
     public override string ToString() => "[AgentEvent]";
 }
 

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Workspace;
@@ -17,14 +18,20 @@ public sealed class EditLifecycleTests
             var turn = i;
             interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(Math.Min(turn, 5), context.CompletedTurnCount, "EDIT-AC-035-whole-turns"); return ChatInputResult.Submitted(turn.ToString()); });
         }
-        interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(5, context.CompletedTurnCount, "EDIT-AC-035-trim"); return ChatInputResult.Submitted("/clear"); });
+        interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(3, context.CompletedTurnCount, "EDIT-AC-035-compacted"); return ChatInputResult.Submitted("/clear"); });
         interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(0, context.CompletedTurnCount, "EDIT-AC-035-clear"); return ChatInputResult.Submitted("/exit"); });
         var handler = new GeminiHandler();
-        handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls % 2 == 1 ? GeminiFixtures.Response(
-            "[{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"f" + (handler.Calls / 2) + "\",\"content\":\"x\"}}}]") : GeminiFixtures.Text()));
+        var normalCalls = 0;
+        handler.Respond = async (request, token) =>
+        {
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsByteArrayAsync(token));
+            if (!body.RootElement.TryGetProperty("tools", out _)) return GeminiHandler.Json(GeminiFixtures.Text(ContextTestData.Summary));
+            normalCalls++;
+            return GeminiHandler.Json(normalCalls % 2 == 1 ? BudgetFixture.Calls("create_file", new { path = "f" + normalCalls / 2, content = "x" }) : GeminiFixtures.Text());
+        };
         var usage = new UsageAccumulator();
         Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, usage, "instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default), "EDIT-AC-035");
-        Assert.IsTrue(Directory.GetFileSystemEntries(root).Length == 6 && handler.Calls == 12 && interaction.Approvals == 6 && usage.Snapshot().DispatchedRequests == 12, "EDIT-AC-035-files-and-usage");
+        Assert.IsTrue(Directory.GetFileSystemEntries(root).Length == 6 && handler.Calls == 13 && interaction.Approvals == 6 && usage.Snapshot().DispatchedRequests == 13, "EDIT-AC-035-files-and-usage");
     }
 
     [TestMethod]

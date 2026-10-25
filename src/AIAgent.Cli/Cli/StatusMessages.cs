@@ -4,7 +4,7 @@ namespace AIAgent.Cli.Cli;
 
 internal static class StatusMessages
 {
-    internal const string Usage = "用法：AIAgent.Cli [--workspace <path>] | --help\n聊天內 /help 查看操作；受控 Debug 建置須逐次核准。SDK 10.0.100 的 test 因私人 IPC 限制不支援。";
+    internal const string Usage = "用法：AIAgent.Cli [--workspace <path>] | --help\n聊天內 /help 查看操作；/context、/compact、/budget 管理摘要、原文備註及生成額度（預設回合5／程序100）；摘要會消耗生成及API用量，reset不退款。受控 Debug 建置須逐次核准。SDK 10.0.100 的 test 因私人 IPC 限制不支援。";
     internal static string For(BootstrapResult result) => result.Status switch
     {
         BootstrapStatus.Ready => "啟動檢查完成；聊天功能尚未接入",

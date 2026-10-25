@@ -51,18 +51,25 @@ public sealed class BudgetWorkflowTests
         var root = WorkspaceFixtures.NewDirectory(); var context = new ConversationContext(); var interaction = new EditChatInteraction();
         foreach (var input in Enumerable.Range(0, 8).Select(i => "question " + i))
             interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(input));
-        interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(5, context.CompletedTurnCount, "BUD-AC-008-failure-not-committed"); return ChatInputResult.Submitted("/exit"); });
+        interaction.Inner.Inputs.Enqueue(() => { Assert.AreEqual(4, context.CompletedTurnCount, "BUD-AC-008-failure-not-committed"); return ChatInputResult.Submitted("/exit"); });
         var handler = new GeminiHandler();
-        handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls % 2 == 1
-            ? handler.Calls == 1 ? BudgetFixture.Calls("create_file", new { path = "a", content = "safe" }) : BudgetFixture.Calls("read_file", new { path = "a" })
-            : handler.Calls == 16 ? GeminiFixtures.Text("", "SAFETY") : GeminiFixtures.Text()));
+        var normalCalls = 0;
+        handler.Respond = async (request, token) =>
+        {
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsByteArrayAsync(token));
+            if (!body.RootElement.TryGetProperty("tools", out _)) return GeminiHandler.Json(GeminiFixtures.Text(ContextTestData.Summary));
+            normalCalls++;
+            return GeminiHandler.Json(normalCalls % 2 == 1
+                ? normalCalls == 1 ? BudgetFixture.Calls("create_file", new { path = "a", content = "safe" }) : BudgetFixture.Calls("read_file", new { path = "a" })
+                : normalCalls == 16 ? GeminiFixtures.Text("", "SAFETY") : GeminiFixtures.Text());
+        };
         Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "test instruction", new WorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default), "BUD-AC-008-exit");
-        using var sixth = JsonDocument.Parse(handler.Bodies[10]); using var seventh = JsonDocument.Parse(handler.Bodies[12]);
+        using var sixth = JsonDocument.Parse(handler.Bodies[11]); using var seventh = JsonDocument.Parse(handler.Bodies[13]);
         var six = sixth.RootElement.GetProperty("contents"); var seven = seventh.RootElement.GetProperty("contents");
-        Assert.IsTrue(six.GetArrayLength() == 21 && seven.GetArrayLength() == 21 &&
-            six[0].GetProperty("parts")[0].GetProperty("text").GetString() == "question 0" &&
-            seven[0].GetProperty("parts")[0].GetProperty("text").GetString() == "question 1" &&
+        Assert.IsTrue(six.GetArrayLength() == 9 && seven.GetArrayLength() == 13 &&
+            six[0].GetProperty("parts")[0].GetProperty("text").GetString() == "question 3" &&
+            seven[0].GetProperty("parts")[0].GetProperty("text").GetString() == "question 3" &&
             interaction.Approvals == 1 && await File.ReadAllTextAsync(Path.Combine(root, "a")) == "safe", "BUD-AC-008-complete-chains");
     }
 
