@@ -22,7 +22,7 @@ public sealed class PlanSdkTests
             3 => Batch(("update_task", Update("in_progress")), ("create_file", new { path = "a", content = "中文\r\n" }), ("update_task", Update("completed"))),
             _ => GeminiFixtures.Text()
         }));
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, usage, "test instruction", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, usage, "test instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default));
         Assert.AreEqual(4, handler.Calls); Assert.AreEqual(1, interaction.FileApprovals); Assert.AreEqual(1, interaction.PlanApprovals);
         Assert.AreEqual("中文\r\n", await File.ReadAllTextAsync(Path.Combine(root, "a")));
@@ -54,7 +54,7 @@ public sealed class PlanSdkTests
             Assert.IsTrue(plans.Submit(PlanFixture.Submission(kind: "write", tool: "create_file")).Success);
             plans.Approve(plans.ApprovalPreview()!); var execution = new AgentExecutionPolicy(plans);
             await using var files = new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), new EditApproval(), execution);
-            var registry = new ToolRegistry([new ListFilesTool(files, session.Policy), new ReadFileTool(files, session.Policy),
+            var registry = TestRulesRegistry.Create([new ListFilesTool(files, session.Policy), new ReadFileTool(files, session.Policy),
                 new CreateFileTool(files, session.Policy), new ReplaceTextTool(files, session.Policy), new SearchFilesTool(files, session.Policy),
                 new SearchTextTool(files, session.Policy), new ReadFileRangeTool(files, session.Policy), new SubmitPlanTool(plans, session.Policy),
                 new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
@@ -83,8 +83,11 @@ public sealed class PlanSdkTests
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, new ControlledWorkspaceFileSystem(), executionPolicy: execution);
         var registry = PlanWorkflowTests.Registry(files, f, execution);
         var arguments = PlanFixture.Submission().GetRawText().Replace("\"title\":\"task\"", "\"title\":\"task\",\"t\\u0069tle\":\"other\"", StringComparison.Ordinal);
-        var handler = new GeminiHandler { Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
-            "[{\"functionCall\":{\"name\":\"submit_plan\",\"args\":" + arguments + "}}]"))) };
+        var handler = new GeminiHandler
+        {
+            Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
+            "[{\"functionCall\":{\"name\":\"submit_plan\",\"args\":" + arguments + "}}]")))
+        };
         await using var client = new GeminiClient(f.Session, handler);
         var result = await new AgentRunner(client, registry, f.Session.Policy, "test instruction", new(), _ => { }).RunAsync([LlmMessage.FromUserText("plan")], default);
         Assert.AreEqual(LlmErrorCode.InvalidResponse, result.ModelErrorCode); Assert.IsNull(f.Store.Snapshot); Assert.AreEqual(0, f.Store.Facts.Count);

@@ -16,7 +16,7 @@ public sealed class PlanChatTests
         var session = WorkspaceFixtures.Session(); var client = new ScriptClient { Session = session };
         client.Respond = (_, _, _) => Task.FromResult(new LlmResult(LlmStatus.Failed, LlmErrorCode.SensitiveOutput, "", [], null, null, true, true));
         var interaction = new PlanChatInteraction(); var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-        var app = new ChatApplication(interaction, factory, new(), new(), "test instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(interaction, factory, new(), new(), "test instruction", new TestWorkspaceFilesFactory());
         interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("/plan"));
         interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("fail"));
         LastTurnOutcome? observed = null;
@@ -43,7 +43,7 @@ public sealed class PlanChatTests
         });
         foreach (var text in new[] { "/plan", "/execute", "/tasks", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
         var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-        Assert.AreEqual(0, await new ChatApplication(interaction, factory, context, usage, "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default));
+        Assert.AreEqual(0, await new ChatApplication(interaction, factory, context, usage, "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default));
         Assert.AreEqual(1, interaction.PlanApprovals); Assert.AreEqual(3, client.Requests.Count);
         Assert.IsTrue(client.Requests[^1].SystemInstruction.Contains("\"approval\":\"approved\"", StringComparison.Ordinal));
         Assert.IsTrue(interaction.Inner.Events.Any(e => e.Kind == ChatEventKind.TaskSummary && e.PlanSummary?.PlanId == "p1"));
@@ -59,7 +59,7 @@ public sealed class PlanChatTests
             var interaction = new PlanChatInteraction { OnPlan = (_, _) => new(decision) };
             foreach (var text in new[] { "/plan", "plan", "/execute", "/tasks", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
             var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-            Assert.AreEqual(decision == PlanApprovalDecision.Unavailable ? 1 : 0, await new ChatApplication(interaction, factory, new(), new(), "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default));
+            Assert.AreEqual(decision == PlanApprovalDecision.Unavailable ? 1 : 0, await new ChatApplication(interaction, factory, new(), new(), "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default));
             Assert.AreEqual(2, client.Requests.Count);
             if (decision is PlanApprovalDecision.Declined or PlanApprovalDecision.Cancelled)
                 Assert.IsTrue(interaction.Inner.Events.Any(e => e.Text?.Contains("維持 Plan", StringComparison.Ordinal) == true));
@@ -72,7 +72,7 @@ public sealed class PlanChatTests
         var session = WorkspaceFixtures.Session(); var client = new ScriptClient { Session = session };
         client.Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(new LlmToolCall(0, null, "submit_plan", PlanFixture.Submission())) : ChatFixture.Completed());
         var interaction = new PlanChatInteraction(); var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-        var app = new ChatApplication(interaction, factory, new(), new(), "test instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(interaction, factory, new(), new(), "test instruction", new TestWorkspaceFilesFactory());
         interaction.OnPlan = (_, token) => { Assert.AreEqual(ChatState.AwaitingPlanApproval, app.State); app.Interrupt(); Assert.IsTrue(token.IsCancellationRequested); return new(PlanApprovalDecision.Approved); };
         foreach (var text in new[] { "/plan", "plan", "/execute", "/tasks", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
         Assert.AreEqual(0, await app.RunAsync(session, default));
@@ -90,8 +90,8 @@ public sealed class PlanChatTests
             var interaction = new PlanChatInteraction();
             foreach (var text in new[] { "/plan", "plan", reset ? "fail" : "/clear", "next", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
             var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-            await new ChatApplication(interaction, factory, new(), new(), "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default);
-            Assert.IsTrue(client.Requests[^1].SystemInstruction.Contains("{\"mode\":\"plan\",\"plan\":null}", StringComparison.Ordinal));
+            await new ChatApplication(interaction, factory, new(), new(), "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default);
+            Assert.IsTrue(client.Requests[^1].SystemInstruction.Contains("\"mode\":\"plan\",\"plan\":null}", StringComparison.Ordinal));
             Assert.AreEqual(6, client.Requests[^1].Tools.Count);
         }
     }
@@ -105,9 +105,9 @@ public sealed class PlanChatTests
         interaction.Inner.Keys.Enqueue(() => KeyInputResult.Accept("SECOND_SYNTHETIC_CREDENTIAL".AsSpan()));
         foreach (var text in new[] { "/plan", "plan", "auth", "next", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
         var factory = new ScriptFactory(client); factory.Sessions.Add(session); var usage = new UsageAccumulator();
-        Assert.AreEqual(0, await new ChatApplication(interaction, factory, new(), usage, "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default));
+        Assert.AreEqual(0, await new ChatApplication(interaction, factory, new(), usage, "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default));
         Assert.AreEqual(1, factory.ReplacementClient.Requests.Count);
-        Assert.IsTrue(factory.ReplacementClient.Requests[0].SystemInstruction.Contains("{\"mode\":\"plan\",\"plan\":null}", StringComparison.Ordinal));
+        Assert.IsTrue(factory.ReplacementClient.Requests[0].SystemInstruction.Contains("\"mode\":\"plan\",\"plan\":null}", StringComparison.Ordinal));
         Assert.AreEqual(4L, usage.Snapshot().DispatchedRequests);
     }
 }

@@ -16,7 +16,7 @@ public sealed class BuildRunnerTests
         var client = new ScriptClient { Session = session };
         client.Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(
             new LlmToolCall(0, "p", "run_dotnet_task", GeminiFixtures.Element("{}")), RunnerFixture.Read(1)));
-        var registry = new ToolRegistry([new FailedProcess(session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new FailedProcess(session.Policy)], session.Policy);
         var budget = new GenerationBudget(); budget.SetTurnLimit(limit);
         var runner = new AgentRunner(client, registry, session.Policy, "instruction", new(), _ => { }, budget);
         var result = await runner.RunAsync([LlmMessage.FromUserText("build")], default);

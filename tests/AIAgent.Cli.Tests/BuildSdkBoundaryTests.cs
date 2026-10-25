@@ -16,10 +16,10 @@ public sealed class BuildSdkBoundaryTests
         {
             using var session = WorkspaceFixtures.Session();
             var plans = new PlanStore(session.Policy); var execution = new AgentExecutionPolicy(plans);
-            await using var files = new WorkspaceFilesFactory().Create(session, execution);
+            await using var files = new TestWorkspaceFilesFactory().Create(session, execution);
             await using var process = new TestProcessFactory().Create(session.Workspace, session.Policy, execution, files,
                 (_, _) => new(ProcessApprovalDecision.Approved), _ => { });
-            var registry = new ToolRegistry([new RunDotnetTaskTool(process, session.Policy)], session.Policy, execution);
+            var registry = TestRulesRegistry.Create([new RunDotnetTaskTool(process, session.Policy)], session.Policy, execution);
             var handler = new GeminiHandler();
             handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls == 2
                 ? GeminiFixtures.Response("[{\"functionCall\":{\"name\":\"run_dotnet_task\",\"id\":\"p\",\"args\":{\"task\":\"build\",\"project_path\":\"a.csproj\"}},\"thoughtSignature\":\"c2ln\"}]")
@@ -42,10 +42,10 @@ public sealed class BuildSdkBoundaryTests
     public async Task BUILDAC027_FifthMixedBatchNeverCallsProcessApprovalOrTaskUpdate()
     {
         using var session = WorkspaceFixtures.Session(); var plans = new PlanStore(session.Policy); var execution = new AgentExecutionPolicy(plans);
-        await using var files = new WorkspaceFilesFactory().Create(session, execution);
+        await using var files = new TestWorkspaceFilesFactory().Create(session, execution);
         var factory = new TestProcessFactory();
         await using var tasks = factory.Create(session.Workspace, session.Policy, execution, files, (_, _) => throw new AssertFailedException("approval"), _ => { });
-        var registry = new ToolRegistry([new RunDotnetTaskTool(tasks, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
+        var registry = TestRulesRegistry.Create([new RunDotnetTaskTool(tasks, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
         var client = new ScriptClient { Session = session };
         client.Respond = (i, _, _) => Task.FromResult(i < 4 ? RunnerFixture.Calls(new LlmToolCall(0, null, "unknown", GeminiFixtures.Element("{}"))) :
             RunnerFixture.Calls(new LlmToolCall(0, "p", "run_dotnet_task", GeminiFixtures.Element("{\"task\":\"build\",\"project_path\":\"a.csproj\"}")),
@@ -59,9 +59,9 @@ public sealed class BuildSdkBoundaryTests
     public async Task BUILDAC003_LaterSensitiveArgumentsPreventEarlierProcessFromStarting()
     {
         using var session = WorkspaceFixtures.Session(); var plans = new PlanStore(session.Policy); var execution = new AgentExecutionPolicy(plans);
-        await using var files = new WorkspaceFilesFactory().Create(session, execution); var factory = new TestProcessFactory();
+        await using var files = new TestWorkspaceFilesFactory().Create(session, execution); var factory = new TestProcessFactory();
         await using var tasks = factory.Create(session.Workspace, session.Policy, execution, files, (_, _) => throw new AssertFailedException("approval"), _ => { });
-        var registry = new ToolRegistry([new RunDotnetTaskTool(tasks, session.Policy)], session.Policy, execution);
+        var registry = TestRulesRegistry.Create([new RunDotnetTaskTool(tasks, session.Policy)], session.Policy, execution);
         var client = new ScriptClient { Session = session };
         client.Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(
             new(0, "p", "run_dotnet_task", GeminiFixtures.Element("{\"task\":\"build\",\"project_path\":\"a.csproj\"}")),

@@ -16,7 +16,7 @@ public sealed class BudgetWorkflowTests
         var root = WorkspaceFixtures.NewDirectory(); var interaction = new EditChatInteraction();
         foreach (var text in new[] { "/help", "/clear", "plain", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(text));
         var handler = new GeminiHandler(); var usage = new UsageAccumulator();
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "test instruction", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "test instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default), "BUD-AC-001-exit");
         Assert.IsTrue(handler.Calls == 1 && usage.Snapshot().DispatchedRequests == 1 && interaction.Approvals == 0 &&
             Directory.GetFileSystemEntries(root).Length == 0 && !interaction.Inner.Events.Any(e => e.Agent?.Operation is not null), "BUD-AC-001-no-extra-work");
@@ -63,7 +63,7 @@ public sealed class BudgetWorkflowTests
                 ? normalCalls == 1 ? BudgetFixture.Calls("create_file", new { path = "a", content = "safe" }) : BudgetFixture.Calls("read_file", new { path = "a" })
                 : normalCalls == 16 ? GeminiFixtures.Text("", "SAFETY") : GeminiFixtures.Text());
         };
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "test instruction", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "test instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default), "BUD-AC-008-exit");
         using var sixth = JsonDocument.Parse(handler.Bodies[11]); using var seventh = JsonDocument.Parse(handler.Bodies[13]);
         var six = sixth.RootElement.GetProperty("contents"); var seven = seventh.RootElement.GetProperty("contents");

@@ -103,7 +103,7 @@ public sealed class DiscoveryBoundaryTests
         await using var f = new DiscoveryFixture();
         foreach (var query in new[] { "", "a\r", "a\n", "\u2028", "\u2029", "\u0000", "\ud800", new string('x', 1025) })
             Assert.IsTrue((await f.Files.SearchTextAsync(".", query, "*", true, 0, default)).ErrorCode == WorkspaceErrorCode.InvalidQuery, "SEARCH-AC-016-invalid");
-        Assert.IsTrue(f.Fs.Inspected.Count == 0 && f.Fs.Opened == 0, "SEARCH-AC-016-io");
+        Assert.IsTrue(f.Fs.ProductInspectionCount == 0 && f.Fs.Opened == 0, "SEARCH-AC-016-io");
         f.Fs.File("a", Encoding.UTF8.GetBytes(" \t.*[x]é"));
         foreach (var query in new[] { " ", "\t", ".*", "[x]", "é" })
             Assert.IsTrue((await f.Files.SearchTextAsync(".", query, "*", true, 0, default)).Data!.Matches.Count == 1, "SEARCH-AC-016-literal");
@@ -120,7 +120,7 @@ public sealed class DiscoveryBoundaryTests
             Assert.IsTrue((await f.Files.SearchTextAsync(path, "x", "*", true, 0, default)).Data is null, "SEARCH-AC-004-text");
             Assert.IsTrue((await f.Files.ReadFileRangeAsync(path, 1, 1, default)).Data is null, "SEARCH-AC-004-range");
         }
-        Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.Inspected.Count == 0, "SEARCH-AC-004-io");
+        Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.ProductInspectionCount == 0, "SEARCH-AC-004-io");
     }
 
     [TestMethod]

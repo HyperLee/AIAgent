@@ -98,7 +98,7 @@ public sealed class AgentBoundaryTests
         using var session = WorkspaceFixtures.Session(key: "status");
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var workspace = new WorkspaceFiles(session.Workspace, session.Policy, fs);
-        var registry = new ToolRegistry([new ReadFileTool(workspace, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new ReadFileTool(workspace, session.Policy)], session.Policy);
         var client = new ScriptClient { Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(RunnerFixture.Read(0), RunnerFixture.Read(1))) };
         var result = await new AgentRunner(client, registry, session.Policy, "instruction", new(), _ => { })
             .RunAsync([LlmMessage.FromUserText("q")], default);

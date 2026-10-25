@@ -19,7 +19,7 @@ public sealed class EditChatTests
             ? GeminiFixtures.Response("[{\"functionCall\":{\"name\":\"create_file\",\"id\":\"write-id\",\"args\":{\"path\":\"new.md\",\"content\":\"Hello\\n\"}},\"thoughtSignature\":\"c2ln\"}]")
             : GeminiFixtures.Text("done")));
         var usage = new UsageAccumulator();
-        var code = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "instruction", new WorkspaceFilesFactory())
+        var code = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage, "instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default);
         Assert.AreEqual(0, code, "EDIT-AC-032-exit");
         Assert.IsTrue(File.Exists(Path.Combine(root, "new.md")), "EDIT-AC-032-real-write");
@@ -46,7 +46,7 @@ public sealed class EditChatTests
             Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
             "[{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"a\",\"content\":\"x\"}}},{\"functionCall\":{\"name\":\"read_file\",\"args\":{\"path\":\"a\"}}}]")))
         };
-        var code = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new WorkspaceFilesFactory())
+        var code = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default);
         Assert.IsTrue(code == 0 && handler.Calls == 1 && interaction.Approvals == 1 && Directory.GetFileSystemEntries(root).Length == 0, "EDIT-AC-015");
         var operations = interaction.Inner.Events.Where(e => e.Agent?.Operation is not null).Select(e => e.Agent!.Operation!).ToArray();
@@ -66,7 +66,7 @@ public sealed class EditChatTests
                 Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
                 "[{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"a\",\"content\":\"x\"}}}]")))
             };
-            var exit = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
+            var exit = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new TestWorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
             var operation = interaction.Inner.Events.Single(e => e.Agent?.Operation is not null).Agent!.Operation!;
             Assert.IsTrue(exit == 1 && operation.Status == Tools.ToolStatus.Failed && operation.ErrorCode == "unavailable" &&
                 operation.WriteState == FileWriteState.NotApplied && Directory.GetFileSystemEntries(root).Length == 0, "EDIT-AC-030-local-failure");

@@ -21,7 +21,7 @@ public sealed class PlanWorkflowTests
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: new(f.Store));
         Assert.AreEqual(WorkspaceErrorCode.EvidenceLimit, (await files.ReadFileAsync("a", default)).ErrorCode);
-        Assert.AreEqual(0, fs.Opened); Assert.AreEqual(0, fs.Inspected.Count);
+        Assert.AreEqual(0, fs.Opened); Assert.AreEqual(0, fs.ProductInspectionCount);
         Assert.AreEqual(256, f.Store.Facts.Count); Assert.AreEqual("resource_limit", f.Task.BlockReason);
     }
 
@@ -35,7 +35,7 @@ public sealed class PlanWorkflowTests
         Assert.AreEqual("mode_restricted", (await registry.DispatchAsync(call, default)).ErrorCode);
         Assert.AreEqual(WorkspaceErrorCode.ModeRestricted, (await files.CreateFileAsync("a", "A", default)).ErrorCode);
         Assert.AreEqual(WorkspaceErrorCode.ModeRestricted, (await files.ReplaceTextAsync("a", "A", "B", default)).ErrorCode);
-        Assert.AreEqual(0, fs.Inspected.Count); Assert.AreEqual(0, fs.Opened);
+        Assert.AreEqual(0, fs.ProductInspectionCount); Assert.AreEqual(0, fs.Opened);
         Assert.AreEqual("unknown_tool", (await registry.DispatchAsync(Call("shell", new { }), default)).ErrorCode);
     }
 
@@ -52,7 +52,7 @@ public sealed class PlanWorkflowTests
             var result = await Runner(client, Registry(files, f, execution), f).RunAsync([LlmMessage.FromUserText("explore")], default);
             Assert.AreEqual(sensitive ? AgentStopReason.SensitiveData : AgentStopReason.ModeRestricted, result.StopReason);
             Assert.AreEqual(2, result.Operations.Count); Assert.AreEqual(ToolStatus.NotExecuted, result.Operations[0].Status);
-            Assert.AreEqual(0, fs.Inspected.Count); Assert.AreEqual(0, fs.Opened); Assert.AreEqual(1, client.Requests.Count);
+            Assert.AreEqual(0, fs.ProductInspectionCount); Assert.AreEqual(0, fs.Opened); Assert.AreEqual(1, client.Requests.Count);
         }
     }
 
@@ -68,7 +68,7 @@ public sealed class PlanWorkflowTests
         f.Update("in_progress");
         Assert.AreEqual(WorkspaceErrorCode.TaskScopeMismatch, (await files.CreateFileAsync("b", "B", default)).ErrorCode);
         Assert.AreEqual(WorkspaceErrorCode.TaskScopeMismatch, (await files.ReplaceTextAsync("a", "A", "B", default)).ErrorCode);
-        Assert.AreEqual(0, fs.Inspected.Count); Assert.AreEqual(0, f.Store.Facts.Count);
+        Assert.AreEqual(0, fs.ProductInspectionCount); Assert.AreEqual(0, f.Store.Facts.Count);
     }
 
     [TestMethod]
@@ -77,8 +77,12 @@ public sealed class PlanWorkflowTests
         using var f = new PlanFixture(); f.Submit(); f.Approve();
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]); var execution = new AgentExecutionPolicy(f.Store);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: execution);
-        var client = new ScriptClient { Session = f.Session, Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(
-            Update(f, "in_progress"), Call("read_file", new { path = "./a" }, 1), Update(f, "completed", 2)) : ChatFixture.Completed()) };
+        var client = new ScriptClient
+        {
+            Session = f.Session,
+            Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(
+            Update(f, "in_progress"), Call("read_file", new { path = "./a" }, 1), Update(f, "completed", 2)) : ChatFixture.Completed())
+        };
         var result = await Runner(client, Registry(files, f, execution), f).RunAsync([LlmMessage.FromUserText("read")], default);
         Assert.AreEqual(AgentTurnStatus.Completed, result.Status); Assert.AreEqual(PlanTaskState.Completed, f.Task.State);
         Assert.AreEqual(TaskCompletionBasis.LocalOperation, f.Task.CompletionBasis); Assert.AreEqual("op1", f.Task.CompletionFactIds.Single());
@@ -109,17 +113,26 @@ public sealed class PlanWorkflowTests
     {
         var root = WorkspaceFixtures.NewDirectory(); using var session = WorkspaceFixtures.Session(root);
         var plans = new PlanStore(session.Policy); plans.SetMode(AgentMode.Plan);
-        plans.Submit(JsonSerializer.SerializeToElement(new { expected_revision = 0, objective = "two writes", tasks = new[] {
-            new { kind = "write", title = "write", acceptance = "two files", requirements = new[] { new { tool = "create_file", path = "a" }, new { tool = "create_file", path = "b" } } } } }));
+        plans.Submit(JsonSerializer.SerializeToElement(new
+        {
+            expected_revision = 0,
+            objective = "two writes",
+            tasks = new[] {
+            new { kind = "write", title = "write", acceptance = "two files", requirements = new[] { new { tool = "create_file", path = "a" }, new { tool = "create_file", path = "b" } } } }
+        }));
         plans.Approve(plans.ApprovalPreview()!); var policy = new AgentExecutionPolicy(plans);
         var approval = new EditApproval { OnConfirm = p => { } };
         approval.OnConfirm = p => approval.Decision = p.RelativePath == "a" ? FileApprovalDecision.Approved : FileApprovalDecision.Declined;
         await using var files = new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), approval, policy);
-        var registry = new ToolRegistry([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, policy);
+        var registry = TestRulesRegistry.Create([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, policy);
         var start = Call("update_task", new { plan_id = "p1", expected_revision = 1, task_id = "t1", status = "in_progress", summary = "starting" });
-        var client = new ScriptClient { Session = session, Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(start,
+        var client = new ScriptClient
+        {
+            Session = session,
+            Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(start,
             Call("create_file", new { path = "a", content = "A" }, 1), Call("create_file", new { path = "b", content = "B" }, 2),
-            Call("update_task", new { plan_id = "p1", expected_revision = 1, task_id = "t1", status = "completed", summary = "done" }, 3))) };
+            Call("update_task", new { plan_id = "p1", expected_revision = 1, task_id = "t1", status = "completed", summary = "done" }, 3)))
+        };
         var result = await new AgentRunner(client, registry, session.Policy, "test instruction", new(), _ => { }).RunAsync([LlmMessage.FromUserText("write")], default);
         Assert.AreEqual(AgentStopReason.ApprovalDeclined, result.StopReason); Assert.AreEqual(1, client.Requests.Count);
         Assert.AreEqual(2, approval.Calls); Assert.AreEqual("A", await File.ReadAllTextAsync(Path.Combine(root, "a")));
@@ -136,9 +149,13 @@ public sealed class PlanWorkflowTests
             using var f = new PlanFixture(); f.Submit(kind: "analysis"); f.Approve();
             var fs = new ControlledWorkspaceFileSystem(); var execution = new AgentExecutionPolicy(f.Store);
             await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: execution);
-            var client = new ScriptClient { Session = f.Session, Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(complete ?
+            var client = new ScriptClient
+            {
+                Session = f.Session,
+                Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(complete ?
                 [Update(f, "in_progress"), Update(f, "completed", 1)] : [Update(f, "in_progress")]) : complete ?
-                new LlmResult(LlmStatus.Failed, LlmErrorCode.NetworkFailure, "", [], null, null, true, false) : ChatFixture.Completed()) };
+                new LlmResult(LlmStatus.Failed, LlmErrorCode.NetworkFailure, "", [], null, null, true, false) : ChatFixture.Completed())
+            };
             var result = await Runner(client, Registry(files, f, execution), f).RunAsync([LlmMessage.FromUserText("analyze")], default);
             Assert.AreEqual(complete ? PlanTaskState.Completed : PlanTaskState.Blocked, f.Task.State);
             if (!complete) { Assert.AreEqual("turn_paused", f.Task.BlockReason); Assert.AreEqual(AgentTurnStatus.Completed, result.Status); }
@@ -152,8 +169,12 @@ public sealed class PlanWorkflowTests
         using var f = new PlanFixture(); f.Submit(kind: "analysis"); f.Approve();
         var fs = new ControlledWorkspaceFileSystem(); var execution = new AgentExecutionPolicy(f.Store);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: execution);
-        var client = new ScriptClient { Session = f.Session, Respond = (i, _, _) => Task.FromResult(RunnerFixture.Calls(i < 4 ?
-            Call("list_files", new { path = "." }) : Update(f, "in_progress"))) };
+        var client = new ScriptClient
+        {
+            Session = f.Session,
+            Respond = (i, _, _) => Task.FromResult(RunnerFixture.Calls(i < 4 ?
+            Call("list_files", new { path = "." }) : Update(f, "in_progress")))
+        };
         var result = await Runner(client, Registry(files, f, execution), f).RunAsync([LlmMessage.FromUserText("loop")], default);
         Assert.AreEqual(AgentStopReason.GenerationLimit, result.StopReason); Assert.AreEqual(5, client.Requests.Count);
         Assert.AreEqual(PlanTaskState.Pending, f.Task.State); Assert.AreEqual(0, f.Store.Facts.Count);
@@ -163,16 +184,22 @@ public sealed class PlanWorkflowTests
     public async Task PLANAC031_UnspecifiedCapabilitiesCannotDispatchOrBeAdvertised()
     {
         using var f = new PlanFixture(); var tool = new UnspecifiedPlanTool();
-        var registry = new ToolRegistry([tool], f.Session.Policy, new(f.Store));
+        var registry = TestRulesRegistry.Create([tool], f.Session.Policy, new(f.Store));
         Assert.AreEqual(0, registry.Definitions.Count);
         Assert.AreEqual("mode_restricted", (await registry.DispatchAsync(Call("future_process", new { exit_code = 0 }), default)).ErrorCode);
         Assert.AreEqual(0, tool.Calls);
     }
 
     internal static LlmToolCall Call(string name, object args, int index = 0) => new(index, "c" + index, name, JsonSerializer.SerializeToElement(args));
-    internal static LlmToolCall Update(PlanFixture f, string status, int index = 0) => Call("update_task", new {
-        plan_id = f.Store.Snapshot!.PlanId, expected_revision = f.Store.Snapshot.Revision, task_id = f.Task.TaskId, status, summary = "summary" }, index);
-    internal static ToolRegistry Registry(IWorkspaceFiles files, PlanFixture f, AgentExecutionPolicy execution) => new([
+    internal static LlmToolCall Update(PlanFixture f, string status, int index = 0) => Call("update_task", new
+    {
+        plan_id = f.Store.Snapshot!.PlanId,
+        expected_revision = f.Store.Snapshot.Revision,
+        task_id = f.Task.TaskId,
+        status,
+        summary = "summary"
+    }, index);
+    internal static ToolRegistry Registry(IWorkspaceFiles files, PlanFixture f, AgentExecutionPolicy execution) => TestRulesRegistry.Create([
         new ListFilesTool(files, f.Session.Policy), new ReadFileTool(files, f.Session.Policy), new CreateFileTool(files, f.Session.Policy),
         new ReplaceTextTool(files, f.Session.Policy), new SearchFilesTool(files, f.Session.Policy), new SearchTextTool(files, f.Session.Policy),
         new ReadFileRangeTool(files, f.Session.Policy), new SubmitPlanTool(f.Store, f.Session.Policy), new UpdateTaskTool(f.Store, f.Session.Policy)], f.Session.Policy, execution);

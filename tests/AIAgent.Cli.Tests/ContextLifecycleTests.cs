@@ -60,7 +60,7 @@ public sealed class ContextLifecycleTests
         var handler = new GeminiHandler();
         handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(BudgetFixture.Calls("create_file", new
         { path = handler.Calls == 1 ? "a" : "b", content = "A" })));
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default));
         var operations = interaction.Inner.Events.Where(e => e.Agent?.Operation is not null).Select(e => e.Agent!.Operation!).ToArray();
         Assert.AreEqual(2, handler.Calls); Assert.AreEqual(1, interaction.Approvals);
@@ -82,7 +82,7 @@ public sealed class ContextLifecycleTests
         foreach (var input in new[] { "one", "two", "three", "/compact", "/budget" }) interaction.Inputs.Enqueue(() => ChatInputResult.Submitted(input));
         interaction.Choices.Enqueue(KeyReplacementChoice.Reenter);
         interaction.Keys.Enqueue(() => KeyInputResult.Accept("REPLACEMENT_SYNTHETIC_ONLY"));
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(first, second), new(), new(), "test", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(first, second), new(), new(), "test", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(WorkspaceFixtures.NewDirectory()), default));
         Assert.AreEqual(3, normal); Assert.AreEqual(4, first.Calls); Assert.AreEqual(0, second.Calls);
         Assert.IsTrue(interaction.Events.Any(e => e.Text?.Contains("程序已消耗：4", StringComparison.Ordinal) == true));

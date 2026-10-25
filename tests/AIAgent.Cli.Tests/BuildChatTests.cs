@@ -22,7 +22,7 @@ public sealed class BuildChatTests
             interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("build"));
             interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("/exit"));
             var processes = new TestProcessFactory();
-            var app = new ChatApplication(interaction, runtime, new(), new(), "instruction", new WorkspaceFilesFactory(), processes);
+            var app = new ChatApplication(interaction, runtime, new(), new(), "instruction", new TestWorkspaceFilesFactory(), processes);
             interaction.OnApproval = () => Assert.AreEqual(ChatState.AwaitingProcessApproval, app.State);
             Assert.AreEqual(decision == ProcessApprovalDecision.Unavailable ? 1 : 0, await app.RunAsync(session, default));
             Assert.AreEqual(1, client.Requests.Count); Assert.AreEqual(1, interaction.Approvals);
@@ -42,7 +42,7 @@ public sealed class BuildChatTests
         if (increaseLimit) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted("/budget set turn 20"));
         foreach (var input in new[] { "build", "/clear", "retry", "/exit" }) interaction.Inner.Inputs.Enqueue(() => ChatInputResult.Submitted(input));
         var processes = new TestProcessFactory { Unconfirmed = true };
-        Assert.AreEqual(1, await new ChatApplication(interaction, runtime, new(), new(), "instruction", new WorkspaceFilesFactory(), processes).RunAsync(session, default));
+        Assert.AreEqual(1, await new ChatApplication(interaction, runtime, new(), new(), "instruction", new TestWorkspaceFilesFactory(), processes).RunAsync(session, default));
         Assert.AreEqual(1, client.Requests.Count); Assert.AreEqual(1, processes.Turns);
         Assert.IsTrue(interaction.Inner.Events.Any(e => e.StopReason == AgentStopReason.ProcessUnconfirmed));
         Assert.IsTrue(interaction.Inner.Events.Any(e => e.Agent?.Operation?.ProcessSummary?.EndState == ProcessEndState.Unconfirmed));
@@ -59,7 +59,7 @@ public sealed class BuildChatTests
             : GeminiFixtures.Text("done")));
         var usage = new UsageAccumulator();
         Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage,
-            "instruction", new WorkspaceFilesFactory(), new TestProcessFactory()).RunAsync(WorkspaceFixtures.Session(), default));
+            "instruction", new TestWorkspaceFilesFactory(), new TestProcessFactory()).RunAsync(WorkspaceFixtures.Session(), default));
         using var json = System.Text.Json.JsonDocument.Parse(handler.Bodies[1]);
         Assert.AreEqual(9, json.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations").GetArrayLength());
         var contents = json.RootElement.GetProperty("contents");

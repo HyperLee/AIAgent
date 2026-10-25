@@ -9,14 +9,14 @@ internal sealed partial class WorkspaceFiles
     /// <summary>完整關閉後才回傳；內部查核不發布快照或模型資料。</summary>
     private async Task<VerifiedWorkspaceFile> ReadVerifiedFileAsync(string path, WorkspaceOperation operation,
         CancellationToken token, bool settling = false, DiscoveryReadBudget? budget = null,
-        WorkspaceNodeState? expected = null, Action<UnixFileMode>? observeMode = null)
+        WorkspaceNodeState? expected = null, Action<UnixFileMode>? observeMode = null, int maxBytes = WorkspaceLimits.MaxFileBytes)
     {
         void Active() { if (!settling) CheckActive(operation.Generation, token); }
         Active();
         var observations = InspectPath(path, WorkspaceNodeKind.File, operation);
         var initial = observations[^1].State;
         if (expected is { } observed && initial != observed) throw Rejected(WorkspaceErrorCode.PathChanged);
-        if (initial.Length > WorkspaceLimits.MaxFileBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
+        if (initial.Length > maxBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
         Active(); Revalidate(observations);
         byte[] original;
         UnixFileMode mode;
@@ -26,7 +26,7 @@ internal sealed partial class WorkspaceFiles
         {
             mode = file.GetMode(); observeMode?.Invoke(mode);
             if (file.GetState() != initial) throw Rejected(WorkspaceErrorCode.PathChanged);
-            var buffer = new byte[WorkspaceLimits.MaxFileBytes + 1]; var count = 0;
+            var buffer = new byte[maxBytes + 1]; var count = 0;
             while (count < buffer.Length)
             {
                 Active();
@@ -37,7 +37,7 @@ internal sealed partial class WorkspaceFiles
                 Active();
                 if (received == 0) break;
                 count += received;
-                if (count > WorkspaceLimits.MaxFileBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
+                if (count > maxBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
             }
             Revalidate(observations);
             if (file.GetState() != initial || count != initial.Length || file.GetMode() != mode) throw Rejected(WorkspaceErrorCode.PathChanged);

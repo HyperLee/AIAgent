@@ -49,6 +49,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 _executionPolicy = new(_plans);
                 _client = runtimeFactory.CreateClient(initialSession);
                 _workspace = workspaceFilesFactory.Create(initialSession, _executionPolicy);
+                _rules = _executionPolicy.Rules;
+                _contexts.BindRules(_rules);
+                if (_rules is not null) await RunRulesOperationAsync(token => _rules.EnsureInitializedAsync(token));
                 (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
                 interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
                     "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
@@ -71,11 +74,14 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 var text = input.Text!;
                 var command = text.Trim();
                 if (command.Length == 0) continue;
+                if (await HandleRulesCommandAsync(text)) continue;
                 if (await HandleContextCommandAsync(text)) continue;
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
+                    ShowContextBlock("/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
+                        "確認工作區及輸入 Key 後自動載入根規則，來源可能送至 Gemini；越過巢狀規則須先切 Scope，來源變動需重載及重新確認。\n" +
+                        "/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
                         "/budget、/budget set turn N（1～20）、/budget set program N（1～1000）、/budget reset（恢復5／100，不清消耗）；/clear 不解除程序總額度。\n" +
                         "未釘選資訊可能於模型摘要中遺失；模式、計畫、證據及逐次核准仍由本機管理。");
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/plan：唯讀探索與規劃；/execute：確認目前版本後切換執行；/tasks：本機任務與完成依據。\n" +
@@ -94,6 +100,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/clear")
                 {
                     ClearConversationState(); LastOutcome = null;
+                    if (_rules?.Capture().Status == ProjectRulesStatus.Valid) await CheckRulesReadyAsync();
                     interaction.Show(new(ChatEventKind.ContextCleared, text: "對話已清除。"));
                     continue;
                 }
@@ -107,6 +114,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     interaction.Show(new(ChatEventKind.InputRejected, text: "模型輸入含當前 Key；已阻擋本次傳送。"));
                     continue;
                 }
+                if (!await CheckRulesReadyAsync()) continue;
                 interaction.Show(new(ChatEventKind.UserMessage, text: text));
                 if (await RunTurnAsync(LlmMessage.FromUserText(text)) && !Stopping) await ReplaceKeyAsync();
             }
@@ -122,6 +130,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             SetState(ChatState.Stopping);
             if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
             try { ClearConversationState(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
+            try { if (_rules is not null) await _rules.DisposeAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { await DisposeWorkspaceAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
@@ -162,9 +172,22 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             var status = result.Status;
             var reason = result.StopReason;
             var publishAnswer = false;
+            if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
+            {
+                var rulesError = "none";
+                try { rulesError = _rules is null ? "rules_unavailable" : await _rules.ValidateAsync(cancellation.Token); }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
+                if (status == AgentTurnStatus.Completed && rulesError == "none" && result.RulesStamp is { } stamp && !_rules!.IsCurrent(stamp)) rulesError = "rules_changed";
+                if (rulesError != "none") { status = AgentTurnStatus.Stopped; reason = new ProjectRulesFlowException(rulesError).Reason; }
+            }
+            if (result.RequiresContextReset)
+            {
+                ClearConversationState();
+                if (_rules?.Capture().Status == ProjectRulesStatus.Valid) _ = await _rules.ValidateAsync(CancellationToken.None);
+            }
             lock (_gate)
             {
-                if (result.RequiresContextReset) ClearConversationState();
                 // Cancellation and final publication use the same CLI decision point.
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
                     reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
@@ -315,6 +338,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             return;
         }
         ClearConversationState(); LastOutcome = null;
+        _rules?.DetachPolicy();
         await DisposeWorkspaceAsync();
         BootstrapSession? replacement = null;
         ILlmClient? client = null;
@@ -324,9 +348,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             _plans!.BindPolicy(replacement.Policy);
             _contexts!.BindPolicy(replacement.Policy);
-            _executionPolicy = new(_plans);
+            _executionPolicy = new(_plans) { Rules = _rules };
             client = runtimeFactory.CreateClient(replacement);
             workspace = workspaceFilesFactory.Create(replacement, _executionPolicy);
+            if (_rules is not null && workspace.ProjectRulesWorkspace is { } reader) _rules.BindPolicy(replacement.Policy, reader);
             var agent = CreateAgent(replacement, client, workspace);
             interaction.SetPolicy(replacement.Policy);
             var old = _session;
@@ -334,6 +359,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             _registry = agent.Registry; _runner = agent.Runner;
             replacement = null; client = null; workspace = null;
             old.Dispose();
+            if (_rules is not null) await RunRulesOperationAsync(token => _rules.TryReloadAsync(token));
             interaction.Show(new(ChatEventKind.ContextCleared, text: "認證資料已更新；對話已清除，請重新輸入訊息。"));
         }
         finally
@@ -351,6 +377,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     {
         lock (_gate)
         {
+            _rules?.InvalidateCandidates();
             if (_contexts is not null) _contexts.Clear(); else context.Clear();
             LastMaintenance = null;
             LastOutcome = null;
@@ -388,7 +415,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
+            else if (_state is ChatState.LoadingRules or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

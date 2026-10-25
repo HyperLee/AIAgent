@@ -12,7 +12,7 @@ public sealed class WorkspaceFilesTests
     public async Task WSAC001_FactoryDoesNoIOAndEndedServiceRejectsOperations()
     {
         using var session = WorkspaceFixtures.Session("/missing");
-        var files = new WorkspaceFilesFactory().Create(session);
+        var files = new TestWorkspaceFilesFactory().Create(session);
         await files.DisposeAsync(); await files.DisposeAsync();
         WorkspaceFixtures.Check(await files.ReadFileAsync("a", default), WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable, "WS-AC-001");
     }

@@ -51,7 +51,7 @@ public sealed class BuildContractTests
         var policy = new SensitiveDataPolicy(secrets);
         var plans = new PlanStore(policy); plans.SetMode(AgentMode.Plan);
         await using var tasks = new CountingTasks();
-        var registry = new ToolRegistry([new RunDotnetTaskTool(tasks, policy)], policy, new(plans));
+        var registry = TestRulesRegistry.Create([new RunDotnetTaskTool(tasks, policy)], policy, new(plans));
         Assert.AreEqual(0, registry.Definitions.Count);
         var result = await registry.DispatchAsync(new LlmToolCall(0, "call", "run_dotnet_task",
             JsonSerializer.SerializeToElement(new { task = "build", project_path = "a.csproj" })), default);

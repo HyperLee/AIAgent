@@ -18,9 +18,11 @@ internal sealed partial class ChatApplication
 
     private async Task ExecuteModeAsync()
     {
+        if (!await CheckRulesReadyAsync()) return;
         if (_plans!.Snapshot is not { } plan || plan.ApprovalState == PlanApprovalState.Approved)
         { _plans.SetMode(AgentMode.Execute); ShowTasks(); return; }
         _plans.SetMode(AgentMode.Plan);
+        var rulesStamp = _rules!.Capture();
         var preview = _plans.ApprovalPreview();
         if (preview is null)
         { interaction.Show(new(ChatEventKind.InputRejected, text: "計畫無法完整安全顯示；未確認此版本。")); return; }
@@ -33,13 +35,14 @@ internal sealed partial class ChatApplication
         try
         {
             var decision = await interaction.ConfirmPlanAsync(preview, cancellation.Token);
+            if (decision == PlanApprovalDecision.Approved && !await CheckRulesReadyAsync(cancellation.Token)) return;
             string text;
             lock (_gate)
             {
                 if (_stopReason != StopReason.None) return;
                 if (decision == PlanApprovalDecision.EndOfInput) { RequestStop(StopReason.Normal); return; }
                 if (!Enum.IsDefined(decision) || decision == PlanApprovalDecision.Unavailable) { RequestStop(StopReason.Failure); return; }
-                if (!cancellation.IsCancellationRequested && decision == PlanApprovalDecision.Approved && _plans.Approve(preview))
+                if (!cancellation.IsCancellationRequested && decision == PlanApprovalDecision.Approved && _rules.IsCurrent(rulesStamp) && _plans.Approve(preview))
                     text = "已確認此版本並切換 Execute；等待下一則訊息，寫入與程序操作仍須逐次核准。";
                 else
                 {

@@ -9,6 +9,7 @@ namespace AIAgent.Cli.Tools;
 internal interface ITool
 {
     ToolCapability Capability => ToolCapability.Unspecified;
+    IProjectRulesWorkspace? ProjectRulesWorkspace => null;
     LlmToolDefinition Definition { get; }
     Task<ToolExecutionResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken);
 }
@@ -73,7 +74,7 @@ internal sealed class ToolExecutionResult
 
 internal static class ToolErrorCodes
 {
-    internal static bool IsValid(string code) => code is "none" or "unknown_tool" or "invalid_arguments" or
+    internal static bool IsValid(string code) => code is "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" or "none" or "unknown_tool" or "invalid_arguments" or
         "invalid_pattern" or "invalid_query" or "invalid_line_range" or
         "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
         "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or

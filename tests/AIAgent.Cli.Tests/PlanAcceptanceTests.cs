@@ -18,7 +18,7 @@ public sealed class PlanAcceptanceTests
         var session = WorkspaceFixtures.Session(); client.Session = session;
         var factory = new ScriptFactory(client); factory.Sessions.Add(session);
         var result = await new ChatApplication(interaction, factory, new(), usage,
-            "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default);
+            "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default);
         Assert.AreEqual(0, result);
         Assert.AreEqual(0, client.Requests.Count);
         Assert.AreEqual(0L, usage.Snapshot().DispatchedRequests);
@@ -36,7 +36,7 @@ public sealed class PlanAcceptanceTests
         var session = WorkspaceFixtures.Session(); var client = new ScriptClient { Session = session };
         var factory = new ScriptFactory(client); factory.Sessions.Add(session);
         await new ChatApplication(interaction, factory, new(), new(),
-            "test instruction", new WorkspaceFilesFactory()).RunAsync(session, default);
+            "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default);
         CollectionAssert.AreEqual(new[] { "list_files", "read_file", "search_files", "search_text", "read_file_range", "submit_plan" },
             client.Requests.Single().Tools.Select(t => t.Name).ToArray());
         Assert.IsTrue(client.Requests.Single().SystemInstruction.Contains("\"mode\":\"plan\"", StringComparison.Ordinal));

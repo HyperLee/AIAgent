@@ -30,6 +30,7 @@ internal sealed class ControlledWorkspaceFileSystem : IWorkspaceReadFileSystem
     internal Dictionary<string, Node> Nodes { get; } = new(StringComparer.Ordinal) { ["/ws"] = new(new(WorkspaceNodeKind.Directory, Identity: 1)) };
     internal List<string>? Names { get; set; }
     internal List<string> Inspected { get; } = [];
+    internal int ProductInspectionCount => Inspected.Count(p => p is not ("/ws" or "/ws/AGENTS.md"));
     internal List<string> Enumerated { get; } = [];
     internal List<Handle> Handles { get; } = [];
     internal int Scanned { get; private set; }

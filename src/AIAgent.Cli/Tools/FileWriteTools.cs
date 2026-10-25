@@ -8,6 +8,7 @@ namespace AIAgent.Cli.Tools;
 
 internal sealed class CreateFileTool(IWorkspaceFiles workspace, ISensitiveDataPolicy policy) : ITool
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => workspace.ProjectRulesWorkspace;
     public ToolCapability Capability => ToolCapability.WorkspaceWrite;
     public LlmToolDefinition Definition { get; } = EditToolProjection.Definition("create_file", "核准後建立工作區內不存在的 UTF-8 檔案，父目錄須存在", ["path", "content"]);
     public async Task<ToolExecutionResult> ExecuteAsync(JsonElement arguments, CancellationToken token)
@@ -21,6 +22,7 @@ internal sealed class CreateFileTool(IWorkspaceFiles workspace, ISensitiveDataPo
 
 internal sealed class ReplaceTextTool(IWorkspaceFiles workspace, ISensitiveDataPolicy policy) : ITool
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => workspace.ProjectRulesWorkspace;
     public ToolCapability Capability => ToolCapability.WorkspaceWrite;
     public LlmToolDefinition Definition { get; } = EditToolProjection.Definition("replace_text", "核准後替換已讀檔案中唯一的精確文字，衝突須重新讀取", ["path", "old_text", "new_text"]);
     public async Task<ToolExecutionResult> ExecuteAsync(JsonElement arguments, CancellationToken token)

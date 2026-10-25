@@ -168,6 +168,7 @@ def main():
     plan_cases(["dotnet", str(args.host.resolve())])
     controlled_build_cases(["dotnet", str(args.host.resolve())])
     context_cases(["dotnet", str(args.host.resolve())])
+    rules_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -709,6 +710,70 @@ def context_cases(host):
             finally:
                 os.close(write_fd)
                 terminal.close()
+
+
+def rules_cases(host):
+    workspace = Path(tempfile.mkdtemp(prefix="aiagent-rules-pty-"))
+    (workspace / "AGENTS.md").write_text("Root rule.", encoding="utf-8")
+    directory = " 中文 空白 "
+    (workspace / directory).mkdir()
+    leaf = workspace / directory / "AGENTS.md"
+    leaf.write_text("Leaf original.", encoding="utf-8")
+    terminal = TerminalProcess(host + ["rules"], workspace)
+    try:
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT); prompt = 1
+        for text in ["/rules", "/rules show", "/Rules", "/rules scope " + directory, "/rules show"]:
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+        leaf.write_text("Leaf changed.", encoding="utf-8")
+        for text in ["blocked", "/rules", "/rules reload", "/execute", "question", "/rules show", "/rules scope ."]:
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        check(b"Root rule." in terminal.output and b"Leaf original." in terminal.output and b"Leaf changed." in terminal.output, "RULE-AC-032-complete-sources")
+        check(directory.encode() in terminal.output and b"Stale" in terminal.output, "RULE-AC-032-literal-scope-stale")
+        check(terminal.output.count("處理中".encode()) == 1, "RULE-AC-032-local-commands-no-generation")
+        print("RULE-AC-032-scope-show-reload: PASS", flush=True)
+    finally:
+        terminal.close()
+    bad = Path(tempfile.mkdtemp(prefix="aiagent-rules-unavailable-pty-"))
+    (bad / "AGENTS.md").write_bytes(b"\xff")
+    terminal = TerminalProcess(host + ["rules"], bad)
+    try:
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(CHAT_PROMPT); prompt = 1
+        for text in ["/rules", "/compact", "/execute", "/context", "/budget"]:
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+        (bad / "AGENTS.md").write_text("Fixed.", encoding="utf-8")
+        for text in ["/rules reload", "question"]:
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        check(b"Unavailable" in terminal.output and terminal.output.count("處理中".encode()) == 1, "RULE-AC-032-unavailable-allowed-local")
+        print("RULE-AC-032-unavailable-recovery: PASS", flush=True)
+    finally:
+        terminal.close()
+    for control in ("CtrlC", "EOF"):
+        read_fd, write_fd = os.pipe()
+        terminal = TerminalProcess(host + ["rules-busy", str(read_fd)], workspace, (read_fd,))
+        os.close(read_fd)
+        try:
+            terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/rules reload\r")
+            terminal.wait_for(b"OFFLINE_RULES_READING")
+            terminal.send(b"discarded-rules-input\r" + (b"\x03" if control == "CtrlC" else b"\x04"))
+            terminal.wait_for(b"OFFLINE_RULES_CANCEL_OBSERVED")
+            check(terminal.process.poll() is None, "RULE-AC-032-wait-read-cleanup")
+            os.write(write_fd, b"x")
+            if control == "CtrlC":
+                terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/rules\r")
+                terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(b"discarded-rules-input" not in terminal.output and "處理中".encode() not in terminal.output, "RULE-AC-032-busy-no-replay")
+            print("RULE-AC-032-busy-" + control + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
 
 
 if __name__ == "__main__":

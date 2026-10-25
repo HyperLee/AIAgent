@@ -17,7 +17,7 @@ internal sealed class ToolRegistry
     internal ToolRegistry(IReadOnlyList<ITool> tools, ISensitiveDataPolicy policy, AgentExecutionPolicy? executionPolicy = null)
     {
         _policy = policy;
-        ExecutionPolicy = executionPolicy ?? new(new PlanStore(policy));
+        ExecutionPolicy = executionPolicy ?? tools.Select(t => t.ProjectRulesWorkspace?.ExecutionPolicy).FirstOrDefault(p => p is not null) ?? new(new PlanStore(policy));
         var definitions = new List<LlmToolDefinition>();
         foreach (var tool in tools)
         {
@@ -52,6 +52,8 @@ internal sealed class ToolRegistry
         if (!_tools.TryGetValue(call.Name, out var tool)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy));
         if (!ExecutionPolicy.Plans.IsExecutionCurrent) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Failed, "unavailable", _policy));
         if (IsModeRestricted(call.Name)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "mode_restricted", _policy));
+        var rulesError = ExecutionPolicy.Rules is { } rules ? await rules.ValidateAsync(cancellationToken) : "rules_unavailable";
+        if (rulesError != "none") return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, rulesError, _policy));
         var result = await tool.ExecuteAsync(call.Arguments, cancellationToken);
         if (result is null) throw new InvalidOperationException("工具結果不存在");
         if (result.Response is not { } response || SensitiveJson.Contains(response, _policy, ContentBoundary.ToolResult) ||

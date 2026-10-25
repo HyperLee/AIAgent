@@ -13,7 +13,7 @@ public sealed class ToolRegistryTests
         using var session = WorkspaceFixtures.Session();
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var workspace = new WorkspaceFiles(session.Workspace, session.Policy, fs);
-        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
         foreach (var json in new[] { "{}", "null", "[]", "{\"path\":null}", "{\"path\":0}", "{\"path\":true}",
             "{\"path\":{}}", "{\"path\":[]}", "{\"Path\":\"a\"}", "{\"path\":\"a\",\"extra\":1}", "{\"path\":\"a\",\"path\":\"b\"}" })
         {
@@ -23,8 +23,8 @@ public sealed class ToolRegistryTests
         foreach (var name in new[] { "Read_file", "create_file", "shell" })
             Assert.IsTrue((await registry.DispatchAsync(new(0, null, name, GeminiFixtures.Element("{\"path\":\"a\"}")), default)).ErrorCode == "unknown_tool", "LOOP-AC-011");
         Assert.AreEqual(0, fs.Opened, "LOOP-AC-004");
-        Assert.AreEqual(0, fs.Inspected.Count, "LOOP-AC-004");
-        Assert.Throws<ArgumentException>(() => new ToolRegistry([new ReadFileTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy), "LOOP-AC-002");
+        Assert.AreEqual(0, fs.ProductInspectionCount, "LOOP-AC-004");
+        Assert.Throws<ArgumentException>(() => TestRulesRegistry.Create([new ReadFileTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy), "LOOP-AC-002");
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public sealed class ToolRegistryTests
         using var session = WorkspaceFixtures.Session();
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65, 10]);
         await using var workspace = new WorkspaceFiles(session.Workspace, session.Policy, fs);
-        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
         var result = await registry.DispatchAsync(new(3, null, "read_file", GeminiFixtures.Element("{\"path\":\"a\"}")), default);
         Assert.IsTrue(result.Status == ToolStatus.Success && result.ByteCount == 2 && result.RelativePath == "a" && workspace.Snapshots.Count == 1, "LOOP-AC-013");
         Assert.IsTrue(result.Response!.Value.GetProperty("data").GetProperty("content").GetString() == "A\n", "LOOP-AC-013");
@@ -47,13 +47,13 @@ public sealed class ToolRegistryTests
         using var session = WorkspaceFixtures.Session();
         var fs = new ControlledWorkspaceFileSystem();
         await using var workspace = new WorkspaceFiles(session.Workspace, session.Policy, fs);
-        var registry = new ToolRegistry([new ReadFileTool(workspace, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new ReadFileTool(workspace, session.Policy)], session.Policy);
         foreach (var call in new[] {
             new LlmToolCall(0, null, GeminiFixtures.Key, GeminiFixtures.Element("{}")),
             new LlmToolCall(0, GeminiFixtures.Key, "read_file", GeminiFixtures.Element("{}")),
             new LlmToolCall(0, null, "unknown", GeminiFixtures.Element("{\"extra\":\"" + GeminiFixtures.Key + "\"}")) })
             Assert.IsTrue((await registry.DispatchAsync(call, default)).ErrorCode == "sensitive_arguments", "LOOP-AC-026");
-        Assert.AreEqual(0, fs.Inspected.Count, "LOOP-AC-026");
+        Assert.AreEqual(0, fs.ProductInspectionCount, "LOOP-AC-026");
     }
     [TestMethod]
     public async Task LOOPAC005_RealToolsPreserveLiteralWhitespaceUnicodeAndVariableNames()
@@ -63,8 +63,8 @@ public sealed class ToolRegistryTests
         foreach (var path in paths) await File.WriteAllTextAsync(Path.Combine(root, path), "safe");
         File.CreateSymbolicLink(Path.Combine(root, "link"), Path.Combine(root, paths[0]));
         using var session = WorkspaceFixtures.Session(root);
-        await using var workspace = new WorkspaceFilesFactory().Create(session);
-        var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
+        await using var workspace = new TestWorkspaceFilesFactory().Create(session);
+        var registry = TestRulesRegistry.Create([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy)], session.Policy);
         foreach (var path in paths)
         {
             var result = await registry.DispatchAsync(new(0, null, "read_file", System.Text.Json.JsonSerializer.SerializeToElement(new { path })), default);
@@ -83,7 +83,7 @@ public sealed class ToolRegistryTests
         for (var i = 0; i < 205; i++) await File.WriteAllTextAsync(Path.Combine(root, "safe" + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture)), "x");
         await File.WriteAllTextAsync(Path.Combine(root, ".env"), "synthetic hidden data");
         using var session = WorkspaceFixtures.Session(root);
-        await using var workspace = new WorkspaceFilesFactory().Create(session);
+        await using var workspace = new TestWorkspaceFilesFactory().Create(session);
         var result = await new ListFilesTool(workspace, session.Policy).ExecuteAsync(GeminiFixtures.Element("{\"path\":\".\"}"), default);
         Assert.IsTrue(result.Status == ToolStatus.Success && result.ReturnedEntries == 200 && result.Truncated, "LOOP-AC-031");
         var data = result.Response!.Value.GetProperty("data");
@@ -96,7 +96,7 @@ public sealed class ToolRegistryTests
     public void LOOPAC002_RegistryCapturesEachValidatedDefinitionExactlyOnce()
     {
         using var session = WorkspaceFixtures.Session();
-        var registry = new ToolRegistry([new ChangingDefinitionTool()], session.Policy);
+        var registry = TestRulesRegistry.Create([new ChangingDefinitionTool()], session.Policy);
         Assert.IsTrue(registry.Definitions.Single().Name == "read_file", "LOOP-AC-002");
     }
 
@@ -105,7 +105,7 @@ public sealed class ToolRegistryTests
     public async Task LOOPAC028_UnsafeResultProjectionDoesNotRetainRawSuccessMetadata()
     {
         using var session = WorkspaceFixtures.Session();
-        var registry = new ToolRegistry([new UnsafeMetadataTool()], session.Policy);
+        var registry = TestRulesRegistry.Create([new UnsafeMetadataTool()], session.Policy);
         var result = await registry.DispatchAsync(RunnerFixture.Read(0), default);
         Assert.IsTrue(result.Response is null && result.RelativePath is null && result.ByteCount is null, "LOOP-AC-028");
     }

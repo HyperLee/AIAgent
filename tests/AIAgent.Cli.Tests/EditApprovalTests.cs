@@ -40,7 +40,7 @@ public sealed class EditApprovalTests
     public async Task EDITAC016_UnboundOrDifferentSessionCannotApprove()
     {
         var root = WorkspaceFixtures.NewDirectory(); using var session = WorkspaceFixtures.Session(root); using var other = WorkspaceFixtures.Session(root);
-        var factory = new WorkspaceFilesFactory(); await using var files = factory.Create(session);
+        var factory = new TestWorkspaceFilesFactory(); await using var files = factory.Create(session);
         Assert.AreEqual(WorkspaceErrorCode.Unavailable, (await files.CreateFileAsync("a", "x", default)).ErrorCode, "EDIT-AC-016-unbound");
         using (factory.ApprovalBridge.Bind(other, (_, _) => new(FileApprovalDecision.Approved)))
             Assert.AreEqual(WorkspaceErrorCode.Unavailable, (await files.CreateFileAsync("a", "x", default)).ErrorCode, "EDIT-AC-016-session");
@@ -71,7 +71,7 @@ public sealed class EditApprovalTests
             "[{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"a\",\"content\":\"x\"}}}]")))
         };
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var app = new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new TestWorkspaceFilesFactory());
         var exit = await Task.Run(() => app.RunAsync(WorkspaceFixtures.Session(root), cancellation.Token));
         Assert.IsTrue(exit == 0 && terminal.ChatPrompts == 1 && handler.Calls == 1 && Directory.GetFileSystemEntries(root).Length == 0, "EDIT-AC-030-eof-stops-chat");
     }

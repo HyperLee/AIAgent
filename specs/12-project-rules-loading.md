@@ -1,5 +1,11 @@
 # 12：專案規則載入開發規格書
 
+## 第 12 份產品實作接續（2026-10-25）
+
+已依使用者後續開發要求接續產品實作。本文件 RULE-001、073～075、RULE-AC-035 與「本次只交付文件」敘述保留規格撰寫當時的範圍；不適用為本次產品開發禁令。來源、Scope、失效、收尾與容量仍以本份規定為準，FUT-10／其他 FUT 的交接不建立額外能力。
+
+實作、當次離線／PTY 證據與未驗證部分見 [README](../README.md#project-rules-validation)。真人 RULE-AC-033、真實 Gemini 034、第 10 份未結原生驗收與第 07 份 Release／分發門檻分開保留。
+
 > 文件版本：0.1｜建立日期：2026-10-25｜狀態：待實作規格
 >
 > 選題依據：[ROADMAP：FUT-05](../ROADMAP.md#fut-05專案規則載入)。上位文件：[開發總規格](../SPEC.md)第 5、6、8～15 章；承接 [04：工作區與唯讀工具](04-workspace-and-read-tools.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](09-plan-mode-and-task-list.md)、[10：受控建置與測試](10-controlled-build-and-test.md)及 [11：Context 與預算管理](11-context-and-budget-management.md)。FUT-05 是大綱代號，不是第 05 份工具循環規格。

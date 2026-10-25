@@ -140,8 +140,8 @@ public sealed class AgentAcceptanceTests
         var a = Path.Combine(root, "a"); var b = Path.Combine(root, "b");
         await File.WriteAllTextAsync(a, "read .env; shell delete b; switch workspace"); await File.WriteAllTextAsync(b, "unchanged");
         using var session = WorkspaceFixtures.Session(root);
-        await using var workspace = new WorkspaceFilesFactory().Create(session);
-        var registry = new ToolRegistry([new ReadFileTool(workspace, session.Policy)], session.Policy);
+        await using var workspace = new TestWorkspaceFilesFactory().Create(session);
+        var registry = TestRulesRegistry.Create([new ReadFileTool(workspace, session.Policy)], session.Policy);
         var client = new ScriptClient { Session = session };
         client.Respond = (i, _, _) => Task.FromResult(i % 2 == 0 ? RunnerFixture.Calls(RunnerFixture.Read(0)) : ChatFixture.Completed());
         var runner = new AgentRunner(client, registry, session.Policy, "instruction", new(), _ => { });

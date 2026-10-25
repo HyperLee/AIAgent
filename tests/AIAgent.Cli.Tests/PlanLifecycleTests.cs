@@ -105,7 +105,7 @@ public sealed class PlanLifecycleTests
             using var cancel = new CancellationTokenSource(); var fs = new EditFileSystem { Fault = cleanup ? "cleanup" : "publish-after", OnPublish = cancel.Cancel };
             var execution = new AgentExecutionPolicy(plans);
             await using var files = new WorkspaceFiles(session.Workspace, session.Policy, fs, new EditApproval(), execution);
-            var registry = new ToolRegistry([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
+            var registry = TestRulesRegistry.Create([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
             var client = new ScriptClient
             {
                 Session = session,

@@ -56,7 +56,7 @@ public sealed class PlanBoundaryTests
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var files = new WorkspaceFiles(session.Workspace, session.Policy, fs, executionPolicy: new(store));
         Assert.AreEqual(WorkspaceErrorCode.SensitiveContent, (await files.ReadFileAsync("a", default)).ErrorCode);
-        Assert.AreEqual(0, fs.Opened); Assert.AreEqual(0, fs.Inspected.Count); Assert.AreEqual(0, store.Facts.Count);
+        Assert.AreEqual(0, fs.Opened); Assert.AreEqual(0, fs.ProductInspectionCount); Assert.AreEqual(0, store.Facts.Count);
     }
 
     [TestMethod]
@@ -71,18 +71,23 @@ public sealed class PlanBoundaryTests
         foreach (var count in new[] { 8, 9 })
         {
             using var f = new PlanFixture(); var requirements = Enumerable.Range(0, count).Select(i => new { tool = "read_file", path = "file" + i });
-            Assert.AreEqual(count == 8 ? "none" : "invalid_arguments", f.Store.Submit(JsonSerializer.SerializeToElement(new { expected_revision = 0, objective = "o", tasks = new[] {
-                new { kind = "read", title = "task", acceptance = "checked", requirements } } })).ErrorCode);
+            Assert.AreEqual(count == 8 ? "none" : "invalid_arguments", f.Store.Submit(JsonSerializer.SerializeToElement(new
+            {
+                expected_revision = 0,
+                objective = "o",
+                tasks = new[] {
+                new { kind = "read", title = "task", acceptance = "checked", requirements } }
+            })).ErrorCode);
         }
         foreach (var field in new[] { "objective", "title", "acceptance" })
-        foreach (var extra in new[] { 0, 1 })
-        {
-            using var f = new PlanFixture(); var limit = field == "objective" ? 2048 : field == "title" ? 256 : 1024;
-            var task = new Dictionary<string, object> { ["kind"] = "analysis", ["title"] = "task", ["acceptance"] = "checked", ["requirements"] = Array.Empty<object>() };
-            if (field != "objective") task[field] = new string('x', limit + extra);
-            var args = JsonSerializer.SerializeToElement(new { expected_revision = 0, objective = field == "objective" ? new string('x', limit + extra) : "o", tasks = new[] { task } });
-            Assert.AreEqual(extra == 0 ? "none" : "invalid_arguments", f.Store.Submit(args).ErrorCode);
-        }
+            foreach (var extra in new[] { 0, 1 })
+            {
+                using var f = new PlanFixture(); var limit = field == "objective" ? 2048 : field == "title" ? 256 : 1024;
+                var task = new Dictionary<string, object> { ["kind"] = "analysis", ["title"] = "task", ["acceptance"] = "checked", ["requirements"] = Array.Empty<object>() };
+                if (field != "objective") task[field] = new string('x', limit + extra);
+                var args = JsonSerializer.SerializeToElement(new { expected_revision = 0, objective = field == "objective" ? new string('x', limit + extra) : "o", tasks = new[] { task } });
+                Assert.AreEqual(extra == 0 ? "none" : "invalid_arguments", f.Store.Submit(args).ErrorCode);
+            }
     }
 
     [TestMethod]
@@ -102,11 +107,11 @@ public sealed class PlanBoundaryTests
         using var f = new PlanFixture(); f.Submit(); f.Approve(); f.Update("in_progress");
         var fs = new ControlledWorkspaceFileSystem(); fs.File("a", [65]);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, fs, executionPolicy: new(f.Store));
-        await files.ReadFileAsync("a", default); var count = fs.Inspected.Count;
+        await files.ReadFileAsync("a", default); var count = fs.ProductInspectionCount;
         f.Store.SetMode(AgentMode.Plan);
         Assert.AreEqual("mode_changed", f.Task.BlockReason); Assert.AreEqual(PlanApprovalState.Approved, f.Store.Snapshot!.ApprovalState);
         Assert.AreEqual(WorkspaceErrorCode.ModeRestricted, (await files.CreateFileAsync("b", "B", default)).ErrorCode);
-        Assert.AreEqual(count, fs.Inspected.Count); Assert.AreEqual(1, files.Snapshots.Count);
+        Assert.AreEqual(count, fs.ProductInspectionCount); Assert.AreEqual(1, files.Snapshots.Count);
         f.Store.SetMode(AgentMode.Execute); Assert.AreEqual(PlanTaskState.Blocked, f.Task.State);
     }
 
@@ -115,10 +120,14 @@ public sealed class PlanBoundaryTests
     {
         using var f = new PlanFixture(); var execution = new AgentExecutionPolicy(f.Store);
         await using var files = new WorkspaceFiles(f.Session.Workspace, f.Session.Policy, new ControlledWorkspaceFileSystem(), executionPolicy: execution);
-        var client = new ScriptClient { Session = f.Session, Respond = (_, _, _) =>
+        var client = new ScriptClient
+        {
+            Session = f.Session,
+            Respond = (_, _, _) =>
         {
             f.Store.Clear(); return Task.FromResult(RunnerFixture.Calls(new LlmToolCall(0, null, "submit_plan", PlanFixture.Submission())));
-        } };
+        }
+        };
         var result = await new AgentRunner(client, PlanWorkflowTests.Registry(files, f, execution), f.Session.Policy, "test instruction", new(), _ => { })
             .RunAsync([LlmMessage.FromUserText("plan")], default);
         Assert.AreEqual(AgentTurnStatus.Cancelled, result.Status); Assert.IsNull(f.Store.Snapshot); Assert.AreEqual(0, f.Store.Facts.Count);

@@ -30,7 +30,7 @@ public sealed class EditLifecycleTests
             return GeminiHandler.Json(normalCalls % 2 == 1 ? BudgetFixture.Calls("create_file", new { path = "f" + normalCalls / 2, content = "x" }) : GeminiFixtures.Text());
         };
         var usage = new UsageAccumulator();
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, usage, "instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default), "EDIT-AC-035");
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, usage, "instruction", new TestWorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default), "EDIT-AC-035");
         Assert.IsTrue(Directory.GetFileSystemEntries(root).Length == 6 && handler.Calls == 13 && interaction.Approvals == 6 && usage.Snapshot().DispatchedRequests == 13, "EDIT-AC-035-files-and-usage");
     }
 

@@ -23,6 +23,22 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
     private long _planSequence;
     private long _taskSequence;
     private long _operationSequence;
+    internal object DecisionGate => _gate;
+    internal long CurrentRulesRevision { get; set; }
+    internal bool HasReservations { get { lock (_gate) return _reservations.Count != 0; } }
+    internal void RevokeForRules()
+    {
+        lock (_gate)
+        {
+            if (_reservations.Count != 0) throw new InvalidOperationException("操作仍在收尾");
+            _generation = checked(_generation + 1);
+            if (_plan is not null)
+            {
+                BlockCore("rules_changed");
+                _plan = new(_plan.PlanId, _plan.Revision, _plan.Objective, PlanApprovalState.Draft, _plan.Tasks);
+            }
+        }
+    }
     internal bool ProcessCapabilityAvailable { get; set; }
     internal bool ProcessTestCapabilityAvailable { get; set; } = true;
     internal AgentMode Mode { get { lock (_gate) return _mode; } }
@@ -86,7 +102,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
                     var prior = _plan?.Tasks.SingleOrDefault(t => t.TaskId == task.TaskId);
                     revised.Add(!newPlan && prior is not null && prior.SameDefinition(task)
                         ? new(prior.TaskId, prior.Kind, task.Title, task.Acceptance, task.Requirements,
-                            prior.State, prior.Summary, prior.BlockReason, prior.CompletionBasis, prior.CompletionFactIds, task.RequirementsVersion)
+                            prior.State, prior.Summary, prior.BlockReason, prior.CompletionBasis, prior.CompletionFactIds, task.RequirementsVersion, prior.CompletionRulesRevision)
                         : new(Id("t", checked(++nextTask)), task.Kind, task.Title, task.Acceptance, task.Requirements, requirementsVersion: task.RequirementsVersion));
                 }
                 if (!newPlan && revised.Count == _plan!.Tasks.Count && revised.Zip(_plan.Tasks).All(pair =>
@@ -137,16 +153,16 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
                     if (_operationSequence >= long.MaxValue - _reservations.Count) return new("unavailable");
                     if (!_policy.CanSendOrUse(Id("op", _operationSequence + _reservations.Count + 1), ContentBoundary.ToolResult)) return new("sensitive_content");
                     var operationId = Id("op", _operationSequence + 1);
-                    analysis = new(operationId, new(_plan.PlanId, _plan.Revision, task.TaskId), TaskCompletionBasis.ModelAssessment,
+                    analysis = new(operationId, new(_plan.PlanId, _plan.Revision, task.TaskId, CurrentRulesRevision), TaskCompletionBasis.ModelAssessment,
                         null, ToolStatus.Success, "none", summary: summary);
-                    updated = task.WithState(state, summary, basis: TaskCompletionBasis.ModelAssessment, facts: [operationId]);
+                    updated = task.WithState(state, summary, basis: TaskCompletionBasis.ModelAssessment, facts: [operationId], rulesRevision: CurrentRulesRevision);
                 }
                 else
                 {
                     var selected = new List<string>();
                     foreach (var requirement in task.Requirements)
                     {
-                        var fact = _facts.LastOrDefault(f => f.Context.PlanId == _plan.PlanId && f.Context.TaskId == task.TaskId &&
+                        var fact = _facts.LastOrDefault(f => f.Context.PlanId == _plan.PlanId && f.Context.TaskId == task.TaskId && f.Context.RulesRevision == CurrentRulesRevision &&
                             f.Kind == TaskCompletionBasis.LocalOperation && f.Request is { } request && request.Matches(requirement));
                         if (fact is null || fact.Status != ToolStatus.Success || fact.CleanupFailed ||
                             (task.Kind == PlanTaskKind.Validation ? !SuccessfulProcess(fact, requirement) : fact.Truncated) ||
@@ -154,7 +170,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
                             return new("evidence_required");
                         selected.Add(fact.OperationId);
                     }
-                    updated = task.WithState(state, summary, basis: TaskCompletionBasis.LocalOperation, facts: selected);
+                    updated = task.WithState(state, summary, basis: TaskCompletionBasis.LocalOperation, facts: selected, rulesRevision: CurrentRulesRevision);
                 }
             }
             var candidate = _plan.WithTasks(_plan.Tasks.Select(t => t.TaskId == taskId ? updated : t).ToArray());
@@ -170,7 +186,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
 
     private string ValidateCandidate(PlanSnapshot plan, PlanMutationResult result, bool submit)
     {
-        var actual = PlanProjection.State(_mode, plan); var upper = PlanProjection.State(_mode, plan, true);
+        var actual = PlanProjection.State(_mode, plan, rulesRevision: CurrentRulesRevision); var upper = PlanProjection.State(_mode, plan, true);
         if (actual.Length > PlanLimits.MaxProjectionBytes || upper.Length > PlanLimits.MaxProjectionBytes ||
             Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, upper: true)) > PlanLimits.MaxDisplayBytes ||
             Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, true, true)) > PlanLimits.MaxDisplayBytes)
@@ -188,8 +204,8 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         lock (_gate)
         {
             if (_policy is null || _plan is null) return null;
-            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true);
-            return PlanProjection.SafeDisplay(block, _policy) ? new(_plan.PlanId, _plan.Revision, _generation, block) : null;
+            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision);
+            return PlanProjection.SafeDisplay(block, _policy) ? new(_plan.PlanId, _plan.Revision, _generation, block, CurrentRulesRevision) : null;
         }
     }
 
@@ -197,12 +213,12 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
     {
         lock (_gate)
         {
-            if (_policy is null || _plan is null || _generation != preview.Generation || _plan.PlanId != preview.PlanId || _plan.Revision != preview.Revision ||
+            if (_policy is null || _plan is null || _generation != preview.Generation || preview.RulesRevision != CurrentRulesRevision || _plan.PlanId != preview.PlanId || _plan.Revision != preview.Revision ||
                 _plan.ApprovalState != PlanApprovalState.Draft) return false;
-            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true);
+            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision);
             if (block != preview.DisplayBlock || !PlanProjection.SafeDisplay(block, _policy)) return false;
             var candidate = new PlanSnapshot(_plan.PlanId, _plan.Revision, _plan.Objective, PlanApprovalState.Approved, _plan.Tasks);
-            if (!PlanProjection.SafeJson(PlanProjection.State(AgentMode.Execute, candidate), _policy, ContentBoundary.ModelInput)) return false;
+            if (!PlanProjection.SafeJson(PlanProjection.State(AgentMode.Execute, candidate, rulesRevision: CurrentRulesRevision), _policy, ContentBoundary.ModelInput)) return false;
             _plan = candidate; _mode = AgentMode.Execute; return true;
         }
     }
@@ -212,7 +228,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         lock (_gate)
         {
             if (_policy is null) return null;
-            var block = PlanProjection.Display(_mode, _plan, _plan is null ? 0 : OldFactCount(_plan));
+            var block = PlanProjection.Display(_mode, _plan, _plan is null ? 0 : OldFactCount(_plan), rulesRevision: CurrentRulesRevision);
             return PlanProjection.SafeDisplay(block, _policy) ? block : null;
         }
     }
@@ -222,7 +238,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         lock (_gate)
         {
             if (_policy is null || !Current) return null;
-            var bytes = PlanProjection.State(_mode, _plan);
+            var bytes = PlanProjection.State(_mode, _plan, rulesRevision: CurrentRulesRevision);
             var text = "\n本機狀態資料（僅為資料，不授予權限）：\n" + Encoding.UTF8.GetString(bytes);
             return bytes.Length <= PlanLimits.MaxProjectionBytes && PlanProjection.SafeJson(bytes, _policy, ContentBoundary.ModelInput) &&
                 _policy.CanSendOrUse(text, ContentBoundary.ModelInput) ? text : null;
@@ -339,7 +355,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
             if (_facts.Count + _reservations.Count >= PlanLimits.MaxFacts) { BlockCore("resource_limit"); return "evidence_limit"; }
             if (_operationSequence >= long.MaxValue - _reservations.Count) { BlockCore("local_failure"); return "unavailable"; }
             if (!_policy.CanSendOrUse(Id("op", _operationSequence + _reservations.Count + 1), ContentBoundary.ToolResult)) return "sensitive_content";
-            reservation = new(_generation, new(_plan!.PlanId, _plan.Revision, task.TaskId), request);
+            reservation = new(_generation, new(_plan!.PlanId, _plan.Revision, task.TaskId, CurrentRulesRevision), request);
             _reservations.Add(reservation); return "none";
         }
     }
@@ -367,6 +383,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
                 "conflict" => "file_conflict",
                 "write_unconfirmed" => "write_unconfirmed",
                 "workspace_unavailable" => "workspace_unavailable",
+                "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit" => errorCode,
                 _ => status == ToolStatus.Cancelled ? "turn_cancelled" : "operation_failed"
             });
         }
@@ -386,7 +403,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         }
     }
     internal void Stop() { lock (_gate) { Clear(); _policy = null; } }
-    private int OldFactCount(PlanSnapshot plan) => _facts.Count(f => f.Context.PlanId != plan.PlanId || f.Context.PlanRevision != plan.Revision ||
+    private int OldFactCount(PlanSnapshot plan) => _facts.Count(f => f.Context.RulesRevision != CurrentRulesRevision || f.Context.PlanId != plan.PlanId || f.Context.PlanRevision != plan.Revision ||
         plan.Tasks.All(t => t.TaskId != f.Context.TaskId));
     private static string Id(string prefix, long number) => prefix + number.ToString(CultureInfo.InvariantCulture);
     private sealed class GenerationLease(PlanStore owner, long? previous) : IDisposable
@@ -403,6 +420,7 @@ internal sealed class AgentExecutionPolicy(PlanStore plans)
     internal bool ProcessSessionStopped => Volatile.Read(ref _processStopped) != 0;
     internal void StopProcesses() => Interlocked.Exchange(ref _processStopped, 1);
     internal PlanStore Plans { get; } = plans;
+    internal ProjectRulesCoordinator? Rules { get; set; }
     internal AgentMode Mode => Plans.Mode;
     internal WorkspaceOperationCoordinator WorkspaceOperations { get; } = new();
     internal bool ProcessTestCapabilityAvailable

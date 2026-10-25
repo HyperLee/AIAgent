@@ -32,6 +32,8 @@ internal sealed partial class WorkspaceFiles
             CheckActive(operation.Generation, token);
             if (!_executionPolicy.Allows(ToolCapability.WorkspaceWrite)) throw Rejected(WorkspaceErrorCode.ModeRestricted);
             path = ValidateArgument(rawPath, true);
+            if (kind == FileChangeKind.Replace) baselineChecked = _snapshots.TryGet(path, out _);
+            await CheckRulesOperationAsync(path, false, operation, token);
             BeginTaskOperation(operation, kind == FileChangeKind.Create ? "create_file" : "replace_text", path, write: true);
             var newBytes = EncodeEdit(text, token);
             if (oldText is not null) _ = EncodeEdit(oldText, token);
@@ -99,6 +101,7 @@ internal sealed partial class WorkspaceFiles
             if (decision == FileApprovalDecision.Declined) throw Rejected(WorkspaceErrorCode.ApprovalDeclined);
             if (decision is FileApprovalDecision.Cancelled or FileApprovalDecision.EndOfInput) throw new WorkspaceFailure(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
             if (decision != FileApprovalDecision.Approved) throw new WorkspaceFailure(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable);
+            await CheckRulesResultAsync(operation, token);
             RevalidateWriteParents(parents);
             if (snapshot is null) CheckMissingTarget(path, true);
             else
@@ -135,6 +138,7 @@ internal sealed partial class WorkspaceFiles
             }
             var stagedRead = await ReadVerifiedFileAsync(temporaryRelative, operation, token);
             RequireWrittenFile(stagedRead, ownedState.Value, newBytes, finalMode);
+            await CheckRulesResultAsync(operation, token);
             RevalidateWriteParents(parents);
             if (snapshot is null) CheckMissingTarget(path, true);
             else
@@ -168,6 +172,7 @@ internal sealed partial class WorkspaceFiles
             var actual = await ReadVerifiedFileAsync(path, operation, CancellationToken.None, settling: true);
             RequireWrittenFile(actual, ownedState.Value, newBytes, finalMode);
             result = WorkspaceWriteResult.Success(new(path, newBytes.LongLength, actual.HasBom));
+            await CheckRulesAfterPublicationAsync(path, actual.State, operation);
         }
         catch (Exception exception)
         {

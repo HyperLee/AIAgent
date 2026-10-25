@@ -84,7 +84,7 @@ public sealed class EditBoundaryTests
     {
         var fs = new ControlledWorkspaceFileSystem(); using var session = WorkspaceFixtures.Session();
         await using var files = new WorkspaceFiles(session.Workspace, session.Policy, fs, new EditApproval());
-        var registry = new ToolRegistry([new CreateFileTool(files, session.Policy), new ReplaceTextTool(files, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new CreateFileTool(files, session.Policy), new ReplaceTextTool(files, session.Policy)], session.Policy);
         foreach (var name in new[] { "create_file", "replace_text" })
         {
             var valid = name == "create_file" ? "\"path\":\"a\",\"content\":\"x\"" : "\"path\":\"a\",\"old_text\":\"x\",\"new_text\":\"y\"";
@@ -95,7 +95,7 @@ public sealed class EditBoundaryTests
                 Assert.AreEqual("invalid_arguments", result.ErrorCode, "EDIT-AC-004");
             }
         }
-        Assert.IsTrue(fs.Inspected.Count == 0 && fs.Opened == 0, "EDIT-AC-004-zero-workspace-io");
+        Assert.IsTrue(fs.ProductInspectionCount == 0 && fs.Opened == 0, "EDIT-AC-004-zero-workspace-io");
     }
 
     [TestMethod]

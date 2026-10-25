@@ -18,10 +18,11 @@ internal sealed partial class AgentRunner
             {
                 var appendix = registry.ExecutionPolicy.Plans.StateAppendix();
                 var memory = coordinator?.BuildMemoryAppendix() ?? "";
+                var rules = registry.ExecutionPolicy.Rules?.BuildAppendix() ?? throw new ProjectRulesFlowException("rules_unavailable");
                 _requestStamp = coordinator?.Capture();
-                if (appendix is null || !policy.CanSendOrUse(instruction + memory + appendix, ContentBoundary.ModelInput))
+                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + memory + appendix, _messages, registry.Definitions);
+                return new(instruction + rules + memory + appendix, _messages, registry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -39,6 +40,7 @@ internal sealed partial class AgentRunner
         private async Task<LlmResult> GenerateAsync(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? expectedStamp = null)
         {
             if (Cancelled) throw new OperationCanceledException(token);
+            await RequireRulesAsync();
             var stamp = expectedStamp ?? _requestStamp;
             Measure(request, purpose, stamp);
             using var report = stamp is not null && inspector is ILlmContextTelemetry telemetry
@@ -47,6 +49,7 @@ internal sealed partial class AgentRunner
             var notice = !maintenance && snapshot.TurnRemaining == 1 ? "本回合剩最後一次生成機會。" : null;
             if (budget.TakeNearLimitWarning()) notice = (notice is null ? "" : notice + "\n") + "程序生成額度已接近上限；請檢視 /budget。";
             Emit(new(AgentEventKind.Generating, _generations + 1, purpose: purpose, notice: notice));
+            await RequireRulesAsync();
             if (!budget.TryBeginGeneration(purpose, maintenance, token, () => !Cancelled && (stamp is null || coordinator!.IsCurrent(stamp))))
             {
                 if (Cancelled) throw new OperationCanceledException(token);
@@ -96,8 +99,10 @@ internal sealed partial class AgentRunner
             if (result.Status != LlmStatus.Completed)
                 throw new ContextFlowException(AgentStopReason.ContextCompactionFailed,
                     result.ErrorCode == LlmErrorCode.AuthenticationFailed ? AgentTurnStatus.Failed : AgentTurnStatus.Stopped);
+            await RequireRulesAsync();
             var candidate = coordinator.PrepareCandidate(stamp, result.SafeText);
             if (candidate is null) throw new ContextFlowException(AgentStopReason.ContextCompactionFailed);
+            await RequireRulesAsync();
             if (!coordinator.TryPublishCompaction(candidate, token))
             {
                 if (Cancelled) throw new OperationCanceledException(token);
@@ -110,6 +115,7 @@ internal sealed partial class AgentRunner
             try
             {
                 if (Cancelled) return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
+                await RequireRulesAsync();
                 if (coordinator is null) return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity);
                 var stamp = coordinator.Capture();
                 if (stamp.Context.CompletedTurns.Count < 3) return Finish(AgentTurnStatus.Stopped, AgentStopReason.None, "nothing_to_compact");
@@ -119,6 +125,8 @@ internal sealed partial class AgentRunner
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested || Cancelled)
             { return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled); }
+            catch (ProjectRulesFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
+            catch (ProjectRulesSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ContextFlowException failure) { return Finish(failure.Status, failure.Reason); }
             catch (ContextCapacityException) { return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity); }
             catch (ContextInspectionException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.InvalidProtocol); }

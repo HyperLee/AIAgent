@@ -39,6 +39,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         _approval = approval ?? UnavailableFileChangeApproval.Instance;
         _executionPolicy = executionPolicy ?? new(new PlanStore(policy));
         _snapshots = new(_gate, CancelActiveOperation);
+        _executionPolicy.Rules ??= new(this, policy, _executionPolicy);
     }
 
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken) =>
@@ -61,7 +62,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             generation = _snapshots.Generation;
             _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;
         }
-        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration), lease!);
+        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration) { Lease = lease! }, lease!);
     }
 
     private async Task<T> RunCoreAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
@@ -114,13 +115,15 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             _executionPolicy.Plans.Release(state.TaskReservation);
             TaskCompletionSource? finished;
             lock (_gate) { finished = _inFlight; _inFlight = null; _activeCancellation = null; }
+            _executionPolicy.Rules?.Settle();
             finished?.TrySetResult();
         }
     }
 
-    private Task<WorkspaceListResult> ListCoreAsync(string rawPath, WorkspaceOperation operation, CancellationToken token)
+    private async Task<WorkspaceListResult> ListCoreAsync(string rawPath, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, false);
+        await CheckRulesOperationAsync(path, true, operation, token);
         BeginTaskOperation(operation, "list_files", path);
         CheckActive(operation.Generation, token);
         var observations = InspectPath(path, WorkspaceNodeKind.Directory, operation);
@@ -160,12 +163,14 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             retained.Remove(retained.Last().Key); truncated = true;
         }
         Revalidate(observations);
-        lock (_gate) { CheckActive(operation.Generation, token); return Task.FromResult(result); }
+        await CheckRulesResultAsync(operation, token);
+        lock (_gate) { CheckActive(operation.Generation, token); return result; }
     }
 
     private async Task<WorkspaceReadResult> ReadCoreAsync(string rawPath, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, true);
+        await CheckRulesOperationAsync(path, false, operation, token);
         BeginTaskOperation(operation, "read_file", path);
         lock (_gate) { CheckActive(operation.Generation, token); _snapshots.Remove(path); }
         var file = await ReadVerifiedFileAsync(path, operation, token);
@@ -174,6 +179,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         Revalidate(file.Observations);
         if (_fileSystem is IWorkspaceWriteFileSystem modes && modes.GetMode(Path.Combine(_root, path)) != file.Mode)
             throw Rejected(WorkspaceErrorCode.PathChanged);
+        await CheckRulesResultAsync(operation, token);
         var snapshot = new WorkspaceReadSnapshot(path, file.Bytes, file.HasBom, file.State.Device, file.State.Identity, file.Mode);
         lock (_gate)
         {
@@ -331,6 +337,9 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
 
     private sealed class WorkspaceOperation(long generation, long planGeneration)
     {
+        internal ProjectRulesStamp? RulesStamp { get; set; }
+        internal WorkspaceOperationLease? Lease { get; init; }
+        internal List<ProjectRuleObservation> RuleBoundaries { get; } = [];
         internal long Generation { get; } = generation;
         internal long PlanGeneration { get; } = planGeneration;
         internal bool RootChecked { get; set; }

@@ -30,7 +30,7 @@ public sealed class DiscoveryTests
             var result = await f.Files.SearchFilesAsync(".", pattern, default);
             Assert.IsTrue(result.ErrorCode == WorkspaceErrorCode.InvalidPattern && result.Data is null, "SEARCH-AC-006");
         }
-        Assert.IsTrue(f.Fs.Inspected.Count == 0 && f.Fs.Opened == 0 && f.Fs.Scanned == 0, "SEARCH-AC-006-io");
+        Assert.IsTrue(f.Fs.ProductInspectionCount == 0 && f.Fs.Opened == 0 && f.Fs.Scanned == 0, "SEARCH-AC-006-io");
     }
 
     [TestMethod]
@@ -80,7 +80,7 @@ public sealed class DiscoveryTests
         await using var f = new DiscoveryFixture(); f.Fs.File("a", [65]);
         foreach (var (start, end) in new[] { (0, 1), (-1, 1), (2, 1), (1, 201), (int.MinValue, int.MaxValue) })
             Assert.IsTrue((await f.Files.ReadFileRangeAsync("a", start, end, default)).ErrorCode == WorkspaceErrorCode.InvalidLineRange, "SEARCH-AC-021");
-        Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.Inspected.Count == 0, "SEARCH-AC-021-io");
+        Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.ProductInspectionCount == 0, "SEARCH-AC-021-io");
         Assert.IsTrue((await f.Files.ReadFileRangeAsync("a", 2, 2, default)).ErrorCode == WorkspaceErrorCode.InvalidLineRange, "SEARCH-AC-021-eof");
     }
 

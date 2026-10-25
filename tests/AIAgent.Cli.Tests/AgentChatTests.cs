@@ -27,7 +27,7 @@ public sealed class AgentChatTests
         }));
         var usage = new UsageAccumulator();
         var result = await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage,
-            "test instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
+            "test instruction", new TestWorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
         Assert.IsTrue(result == 0 && handler.Calls == 3 && usage.Snapshot().DispatchedRequests == 3, "LOOP-AC-007");
         using var final = JsonDocument.Parse(handler.Bodies[2]);
         var declarations = final.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
@@ -58,7 +58,7 @@ public sealed class AgentChatTests
         async Task<(int Bytes, int Calls, AgentTurnResult Result)> Run(int padding)
         {
             using var session = WorkspaceFixtures.Session(root);
-            await using var workspace = new WorkspaceFilesFactory().Create(session);
+            await using var workspace = new TestWorkspaceFilesFactory().Create(session);
             var registry = new Tools.ToolRegistry([new Tools.ListFilesTool(workspace, session.Policy), new Tools.ReadFileTool(workspace, session.Policy)], session.Policy);
             var handler = new GeminiHandler();
             handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls switch
@@ -89,7 +89,7 @@ public sealed class AgentChatTests
         var root = WorkspaceFixtures.NewDirectory();
         await File.WriteAllTextAsync(Path.Combine(root, "notes.md"), "safe");
         using var session = WorkspaceFixtures.Session(root);
-        await using var workspace = new WorkspaceFilesFactory().Create(session);
+        await using var workspace = new TestWorkspaceFilesFactory().Create(session);
         var registry = new Tools.ToolRegistry([new Tools.ReadFileTool(workspace, session.Policy)], session.Policy);
         var handler = new GeminiHandler
         {
@@ -114,7 +114,7 @@ public sealed class AgentChatTests
         handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls == 2
             ? GeminiFixtures.Response("[{\"functionCall\":{\"name\":\"read_file\",\"args\":{\"path\":\"notes.md\"}}},{\"functionCall\":{\"name\":\"list_files\",\"args\":{\"path\":\".\"}}}]")
             : GeminiFixtures.Text()));
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new WorkspaceFilesFactory())
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default), "LOOP-AC-027");
         using var next = JsonDocument.Parse(handler.Bodies[2]);
         Assert.IsTrue(handler.Calls == 3 && next.RootElement.GetProperty("contents").GetArrayLength() == 3, "LOOP-AC-027");

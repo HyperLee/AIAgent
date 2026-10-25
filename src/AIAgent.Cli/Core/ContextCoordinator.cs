@@ -8,17 +8,20 @@ internal sealed class ContextCoordinator(ConversationContext context, PlanStore 
 {
     private ISensitiveDataPolicy _policy = policy;
     private long _sessionGeneration;
+    private ProjectRulesCoordinator? _rules;
+    internal void BindRules(ProjectRulesCoordinator? rules) { lock (context.DecisionGate) _rules = rules; }
     internal object DecisionGate => context.DecisionGate;
     internal IReadOnlyList<LlmMessage> BuildMessages(LlmMessage user) => context.BuildMessages(user);
     internal ContextMeasurement? LastMeasurement { get; private set; }
     internal ContextBodyMeasurement? LastBodyMeasurement { get; private set; }
     internal ContextOperationStamp Capture()
     {
-        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot);
+        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0);
     }
     internal bool IsCurrent(ContextOperationStamp stamp)
     {
         lock (context.DecisionGate) return stamp.SessionGeneration == _sessionGeneration &&
+            stamp.RulesRevision == (_rules?.Capture().RulesRevision ?? 0) && stamp.RulesGeneration == (_rules?.Capture().RulesGeneration ?? 0) &&
             stamp.ContextRevision == context.Revision && stamp.PinsRevision == context.PinsRevision &&
             stamp.PlanGeneration == plans.Generation && stamp.Mode == plans.Mode && ReferenceEquals(stamp.Plan, plans.Snapshot);
     }

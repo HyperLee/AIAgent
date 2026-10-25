@@ -88,7 +88,7 @@ public sealed class BudgetBoundaryTests
             using var session = WorkspaceFixtures.Session(); var fs = new ControlledWorkspaceFileSystem();
             fs.File("a", Encoding.UTF8.GetBytes(new string('\\', 98247) + new string('a', 1 + extra)));
             await using var files = new WorkspaceFiles(session.Workspace, session.Policy, fs);
-            var registry = new ToolRegistry([new ReadFileTool(files, session.Policy)], session.Policy);
+            var registry = TestRulesRegistry.Create([new ReadFileTool(files, session.Policy)], session.Policy);
             var result = await registry.DispatchAsync(BudgetFixture.Call("read_file", new { path = "a" }), default);
             Assert.IsTrue(extra == 0 ? result.Status == ToolStatus.Success && Encoding.UTF8.GetByteCount(result.Response!.Value.GetRawText()) == 196608 && files.Snapshots.Count == 1 :
                 result.ErrorCode == "result_too_large" && files.Snapshots.Count == 0, "BUD-AC-011-result-envelope");

@@ -23,7 +23,7 @@ public sealed class DiscoveryIntegrationTests
         handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls == 1 ? Batch(
             ("search_files", new { path = ".", pattern = "*" }), ("search_text", new { path = ".", query = "二" }),
             ("read_file_range", new { path = "a", start_line = 2, end_line = 20 })) : GeminiFixtures.Text()));
-        Assert.IsTrue(await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test instruction", new WorkspaceFilesFactory())
+        Assert.IsTrue(await new ChatApplication(interaction, new SdkChatFactory(handler), new(), new(), "test instruction", new TestWorkspaceFilesFactory())
             .RunAsync(WorkspaceFixtures.Session(root), default) == 0 && handler.Calls == 2, "SEARCH-AC-028-app");
         using var first = JsonDocument.Parse(handler.Bodies[0]); using var second = JsonDocument.Parse(handler.Bodies[1]);
         var definitions = first.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
@@ -44,15 +44,18 @@ public sealed class DiscoveryIntegrationTests
             "{\"path\":\"a\",\"p\\u0061th\":\"a\",\"start_line\":1,\"end_line\":1}" })
         {
             await using var f = new DiscoveryFixture();
-            var handler = new GeminiHandler { Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
-                "[{\"functionCall\":{\"name\":\"read_file_range\",\"args\":" + args + "}}]"))) };
+            var handler = new GeminiHandler
+            {
+                Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
+                "[{\"functionCall\":{\"name\":\"read_file_range\",\"args\":" + args + "}}]")))
+            };
             await using var client = new GeminiClient(f.Session, handler); var registry = DiscoveryToolTests.Registry(f.Files, f.Session);
             var result = await client.GenerateAsync(GeminiFixtures.Request(tools: registry.Definitions), default);
             if (args.Contains("p\\u0061th", StringComparison.Ordinal))
                 Assert.IsTrue(result.ErrorCode == LlmErrorCode.InvalidResponse && result.ToolCalls.Count == 0, "SEARCH-AC-003-sdk-duplicate");
             else
                 Assert.IsTrue((await registry.DispatchAsync(result.ToolCalls.Single(), default)).ErrorCode == "invalid_arguments", "SEARCH-AC-003-sdk-integer");
-            Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.Inspected.Count == 0, "SEARCH-AC-003-sdk-io");
+            Assert.IsTrue(f.Fs.Opened == 0 && f.Fs.ProductInspectionCount == 0, "SEARCH-AC-003-sdk-io");
         }
     }
 

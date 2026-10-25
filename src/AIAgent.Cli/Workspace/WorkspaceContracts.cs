@@ -7,6 +7,7 @@ namespace AIAgent.Cli.Workspace;
 internal interface IWorkspaceFiles : IAsyncDisposable
 {
     IReadSnapshotStore Snapshots { get; }
+    IProjectRulesWorkspace? ProjectRulesWorkspace => null;
     Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken cancellationToken);
@@ -40,7 +41,8 @@ internal enum WorkspaceErrorCode
     WorkspaceUnavailable, IoFailure, Unavailable, AlreadyExists, SnapshotRequired, EmptyOldText,
     TextNotFound, AmbiguousMatch, NoChange, EditTooLarge, PreviewTooLarge, BomChangeNotAllowed,
     UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure,
-    ModeRestricted, PlanNotApproved, TaskRequired, TaskScopeMismatch, EvidenceLimit, PlanTooLarge
+    ModeRestricted, PlanNotApproved, TaskRequired, TaskScopeMismatch, EvidenceLimit, PlanTooLarge,
+    RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit
 }
 
 internal static class WorkspaceLimits

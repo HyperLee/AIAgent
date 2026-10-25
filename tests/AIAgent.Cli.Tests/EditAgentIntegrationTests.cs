@@ -20,7 +20,7 @@ public sealed class EditAgentIntegrationTests
         var handler = new GeminiHandler();
         handler.Respond = (_, _) => Task.FromResult(GeminiHandler.Json(handler.Calls == 1 ? GeminiFixtures.Response(
             "[{\"functionCall\":{\"name\":\"read_file\",\"args\":{\"path\":\"a\"}},\"thoughtSignature\":\"c2ln\"},{\"functionCall\":{\"name\":\"replace_text\",\"args\":{\"path\":\"a\",\"old_text\":\"draft\",\"new_text\":\"final\"}}}]") : GeminiFixtures.Text()));
-        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default), "EDIT-AC-032");
+        Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction", new TestWorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default), "EDIT-AC-032");
         Assert.IsTrue(handler.Calls == 2 && interaction.Approvals == 1 && await File.ReadAllTextAsync(Path.Combine(root, "a")) == "final\r\n", "EDIT-AC-033-real-sequence");
         using var body = JsonDocument.Parse(handler.Bodies[1]);
         var responses = body.RootElement.GetProperty("contents")[2].GetProperty("parts");
@@ -41,7 +41,7 @@ public sealed class EditAgentIntegrationTests
             Respond = (_, _) => Task.FromResult(GeminiHandler.Json(GeminiFixtures.Response(
             "[{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"a\",\"content\":\"A\"}}},{\"functionCall\":{\"name\":\"create_file\",\"args\":{\"path\":\"b\",\"content\":\"B\"}}},{\"functionCall\":{\"name\":\"read_file\",\"args\":{\"path\":\"a\"}}}]")))
         };
-        await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction", new WorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
+        await new ChatApplication(interaction, new SdkChatFactory(handler), context, new(), "instruction", new TestWorkspaceFilesFactory()).RunAsync(WorkspaceFixtures.Session(root), default);
         var operations = interaction.Inner.Events.Where(e => e.Agent?.Operation is not null).Select(e => e.Agent!.Operation!).ToArray();
         Assert.IsTrue(handler.Calls == 1 && interaction.Approvals == 2 && operations.Length == 3 && operations[0].WriteState == FileWriteState.Verified &&
             operations[1].WriteState == FileWriteState.NotApplied && operations[2].Status == ToolStatus.NotExecuted, "EDIT-AC-033");
@@ -162,6 +162,6 @@ public sealed class EditAgentIntegrationTests
         Assert.IsTrue(result.Operations.Count == 2 && result.Operations[1].Status == ToolStatus.NotExecuted && result.Operations[1].ErrorCode == "turn_stopped", "EDIT-AC-060-parent-remainder");
     }
 
-    private static ToolRegistry Registry(IWorkspaceFiles files, BootstrapSession session) => new(
+    private static ToolRegistry Registry(IWorkspaceFiles files, BootstrapSession session) => TestRulesRegistry.Create(
         [new ListFilesTool(files, session.Policy), new ReadFileTool(files, session.Policy), new CreateFileTool(files, session.Policy), new ReplaceTextTool(files, session.Policy)], session.Policy);
 }

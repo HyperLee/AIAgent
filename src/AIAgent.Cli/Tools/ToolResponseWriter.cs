@@ -22,6 +22,7 @@ internal static class ToolResponseWriter
                 _ => throw new ArgumentException("工具分類無效")
             });
             writer.WriteString("error_code", code);
+            if (code is "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit") writer.WriteNull("data");
             writer.WriteEndObject();
         }
         using var document = JsonDocument.Parse(output.ToArray());

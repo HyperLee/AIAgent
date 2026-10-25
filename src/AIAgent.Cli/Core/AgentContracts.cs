@@ -10,7 +10,7 @@ internal enum AgentStopReason
     None, ModelOutcome, TurnCancelled, GenerationLimit, SensitiveData, InvalidProtocol,
     WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
     ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit,
-    ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed
+    ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed, RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 
@@ -53,8 +53,9 @@ internal sealed class AgentEvent(AgentEventKind kind, int generationNumber, int?
 internal sealed class AgentTurnResult(AgentTurnStatus status, AgentStopReason stopReason,
     LlmStatus? modelStatus, LlmErrorCode? modelErrorCode, string safeText,
     IReadOnlyList<LlmMessage> completedTurn, IReadOnlyList<LocalToolOutcome> operations,
-    int generationsStarted, UsageSnapshot turnUsage, bool requiresContextReset)
+    int generationsStarted, UsageSnapshot turnUsage, bool requiresContextReset, ProjectRulesStamp? rulesStamp = null)
 {
+    internal ProjectRulesStamp? RulesStamp { get; } = rulesStamp;
     internal AgentTurnStatus Status { get; } = status;
     internal AgentStopReason StopReason { get; } = stopReason;
     internal LlmStatus? ModelStatus { get; } = modelStatus;

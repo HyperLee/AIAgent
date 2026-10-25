@@ -40,7 +40,7 @@ public sealed class ContextPlanProcessTests
         client.Respond = (i, _, _) => Task.FromResult(i == 0 ? RunnerFixture.Calls(Update(0, 0, "in_progress"), Create(1, "a"), Update(2, 0, "completed"), Update(3, 1, "in_progress")) : RunnerFixture.Calls(Create(0, "b")));
         if (capacity) client.Inspect = _ => new(client.Requests.Count == 0 ? ContextMeasureStatus.Measured : ContextMeasureStatus.Unavailable, client.Requests.Count == 0 ? 1024 : null);
         var budget = new GenerationBudget(context.DecisionGate); budget.SetTurnLimit(2);
-        var registry = new ToolRegistry([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
+        var registry = TestRulesRegistry.Create([new CreateFileTool(files, session.Policy), new UpdateTaskTool(plans, session.Policy)], session.Policy, execution);
         var coordinator = new ContextCoordinator(context, plans, session.Policy);
         var runner = new AgentRunner(client, registry, session.Policy, "test", new(), _ => { }, budget, coordinator, client);
         var result = await runner.RunAsync([LlmMessage.FromUserText("start")], default);
@@ -76,7 +76,7 @@ public sealed class ContextPlanProcessTests
             new LlmToolCall(0, null, "run_dotnet_task", GeminiFixtures.Element("{\"task\":\"build\",\"project_path\":\"a.csproj\"}")), RunnerFixture.Read(1)))
         };
         var budget = new GenerationBudget(); budget.SetTurnLimit(20);
-        var registry = new ToolRegistry([new RunDotnetTaskTool(processes, session.Policy), new ReadFileTool(files, session.Policy)], session.Policy, execution);
+        var registry = TestRulesRegistry.Create([new RunDotnetTaskTool(processes, session.Policy), new ReadFileTool(files, session.Policy)], session.Policy, execution);
         var result = await new AgentRunner(client, registry, session.Policy, "test", new(), _ => { }, budget).RunAsync([LlmMessage.FromUserText("build")], default);
         Assert.AreEqual(AgentStopReason.ProcessResourceLimit, result.StopReason); Assert.AreEqual(1, result.GenerationsStarted);
         Assert.AreEqual("process_limit", result.Operations[0].ErrorCode); Assert.AreEqual(ToolStatus.NotExecuted, result.Operations[1].Status);
@@ -96,7 +96,7 @@ public sealed class ContextPlanProcessTests
         for (var i = 0; i < messages; i++) interaction.Inputs.Enqueue(() => ChatInputResult.Submitted("question"));
         if (!automatic) interaction.Inputs.Enqueue(() => ChatInputResult.Submitted("/compact"));
         var processes = new TestProcessFactory();
-        Assert.AreEqual(0, await new ChatApplication(interaction, runtime, new(), new(), "test", new WorkspaceFilesFactory(), processes).RunAsync(session, default));
+        Assert.AreEqual(0, await new ChatApplication(interaction, runtime, new(), new(), "test", new TestWorkspaceFilesFactory(), processes).RunAsync(session, default));
         Assert.AreEqual(messages, processes.Turns); Assert.AreEqual(messages + 1, client.Requests.Count);
     }
 }

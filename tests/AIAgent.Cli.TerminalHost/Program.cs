@@ -147,6 +147,7 @@ internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate)
     public FileChangeApprovalBridge ApprovalBridge => _factory.ApprovalBridge;
     public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
+        if (scenario == "rules-busy") return new WorkspaceFiles(session.Workspace, session.Policy, new GatedRulesFileSystem(gate!), executionPolicy: executionPolicy);
         if (scenario is "edit-stage-gated" or "edit-publish-gated")
             return new ObservedWriteWorkspace(new WorkspaceFiles(session.Workspace, session.Policy,
                 new GatedEditFileSystem(scenario, gate!), ApprovalBridge.ForSession(session), executionPolicy));
@@ -158,6 +159,7 @@ internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate)
 internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : IWorkspaceFiles
 {
     private bool _waited;
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => inner.ProjectRulesWorkspace;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
     public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
     public async Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token)
@@ -257,6 +259,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
 
 internal sealed class ObservedWriteWorkspace(IWorkspaceFiles inner) : IWorkspaceFiles
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => inner.ProjectRulesWorkspace;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
     public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
     public Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token) => inner.SearchTextAsync(path, query, filePattern, caseSensitive, contextLines, token);
@@ -346,4 +349,54 @@ internal sealed class OfflineProcessTasks(string scenario, FileStream? gate, ISe
             unconfirmed ? "process_unconfirmed" : cancelled ? "turn_cancelled" : "none", summary, null, policy));
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+internal sealed class GatedRulesFileSystem(FileStream gate) : IWorkspaceReadFileSystem
+{
+    private readonly MacWorkspaceFileSystem _inner = new();
+    private int _reads;
+    public WorkspaceNodeState Inspect(string path) => _inner.Inspect(path);
+    public IEnumerable<string> EnumerateNames(string path) => _inner.EnumerateNames(path);
+    public IWorkspaceReadFile OpenRead(string path)
+    {
+        var file = _inner.OpenRead(path);
+        return ++_reads == 3 ? new GatedFile(file, gate) : file;
+    }
+    private sealed class GatedFile(IWorkspaceReadFile inner, FileStream gate) : IWorkspaceReadFile
+    {
+        private readonly Stream _stream = new GatedStream(inner.Stream, gate);
+        public Stream Stream => _stream;
+        public WorkspaceNodeState GetState() => inner.GetState();
+        public UnixFileMode GetMode() => inner.GetMode();
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+    private sealed class GatedStream(Stream inner, FileStream gate) : Stream
+    {
+        private bool _waited;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        {
+            if (!_waited)
+            {
+                _waited = true; Console.WriteLine("OFFLINE_RULES_READING");
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine("OFFLINE_RULES_CANCEL_OBSERVED");
+                    _ = await gate.ReadAsync(new byte[1], CancellationToken.None);
+                    throw;
+                }
+            }
+            return await inner.ReadAsync(buffer, token);
+        }
+        public override bool CanRead => true;
+        public override bool CanWrite => false;
+        public override bool CanSeek => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }

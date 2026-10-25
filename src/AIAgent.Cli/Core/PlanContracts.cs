@@ -36,8 +36,9 @@ internal sealed class TaskRequirement(string toolName, string path, int? startLi
 internal sealed class PlanTaskSnapshot(string taskId, PlanTaskKind kind, string title, string acceptance,
     IReadOnlyList<TaskRequirement> requirements, PlanTaskState state = PlanTaskState.Pending,
     string? summary = null, string? blockReason = null, TaskCompletionBasis completionBasis = TaskCompletionBasis.None,
-    IReadOnlyList<string>? completionFactIds = null, int requirementsVersion = 1)
+    IReadOnlyList<string>? completionFactIds = null, int requirementsVersion = 1, long? completionRulesRevision = null)
 {
+    internal long? CompletionRulesRevision { get; } = completionRulesRevision;
     internal int RequirementsVersion { get; } = requirementsVersion;
     internal string TaskId { get; } = taskId;
     internal PlanTaskKind Kind { get; } = kind;
@@ -50,8 +51,8 @@ internal sealed class PlanTaskSnapshot(string taskId, PlanTaskKind kind, string 
     internal TaskCompletionBasis CompletionBasis { get; } = completionBasis;
     internal IReadOnlyList<string> CompletionFactIds { get; } = Array.AsReadOnly(completionFactIds?.ToArray() ?? []);
     internal PlanTaskSnapshot WithState(PlanTaskState value, string? text, string? reason = null,
-        TaskCompletionBasis basis = TaskCompletionBasis.None, IReadOnlyList<string>? facts = null) =>
-        new(TaskId, Kind, Title, Acceptance, Requirements, value, text, reason, basis, facts, RequirementsVersion);
+        TaskCompletionBasis basis = TaskCompletionBasis.None, IReadOnlyList<string>? facts = null, long? rulesRevision = null) =>
+        new(TaskId, Kind, Title, Acceptance, Requirements, value, text, reason, basis, facts, RequirementsVersion, value == PlanTaskState.Completed ? rulesRevision ?? CompletionRulesRevision : null);
     internal bool SameDefinition(PlanTaskSnapshot other) => RequirementsVersion == other.RequirementsVersion && Kind == other.Kind && Title == other.Title && Acceptance == other.Acceptance &&
         Requirements.Count == other.Requirements.Count && Requirements.All(r => other.Requirements.Any(r.Matches));
     public override string ToString() => "[PlanTaskSnapshot]";
@@ -69,11 +70,12 @@ internal sealed class PlanSnapshot(string planId, long revision, string objectiv
     public override string ToString() => "[PlanSnapshot]";
 }
 
-internal sealed class TaskExecutionContext(string planId, long planRevision, string taskId)
+internal sealed class TaskExecutionContext(string planId, long planRevision, string taskId, long rulesRevision = 0)
 {
     internal string PlanId { get; } = planId;
     internal long PlanRevision { get; } = planRevision;
     internal string TaskId { get; } = taskId;
+    internal long RulesRevision { get; } = rulesRevision;
     public override string ToString() => "[TaskExecutionContext]";
 }
 
@@ -101,11 +103,12 @@ internal sealed class TaskOperationFact(string operationId, TaskExecutionContext
     public override string ToString() => "[TaskOperationFact]";
 }
 
-internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock)
+internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock, long rulesRevision = 0)
 {
     internal string PlanId { get; } = planId;
     internal long Revision { get; } = revision;
     internal long Generation { get; } = generation;
+    internal long RulesRevision { get; } = rulesRevision;
     internal string DisplayBlock { get; } = displayBlock;
     public override string ToString() => "[PlanApprovalPreview]";
 }

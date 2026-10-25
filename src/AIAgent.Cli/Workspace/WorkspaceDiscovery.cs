@@ -27,6 +27,7 @@ internal sealed partial class WorkspaceFiles
     private async Task<WorkspaceFileSearchResult> SearchFilesCoreAsync(string rawPath, string pattern, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, false);
+        await CheckRulesOperationAsync(path, true, operation, token);
         BeginTaskOperation(operation, "search_files", path);
         var glob = ValidatePattern(pattern);
         var scan = new DiscoveryScan(); operation.Discovery = scan; var matches = new SortedDictionary<string, WorkspaceFileMatch>(StringComparer.Ordinal);
@@ -47,6 +48,7 @@ internal sealed partial class WorkspaceFiles
             matches.Remove(matches.Last().Key); scan.Truncated = true;
         }
         RevalidateDiscovery(scan, operation, token);
+        await CheckRulesResultAsync(operation, token);
         lock (_gate) { CheckActive(operation.Generation, token); return result; }
     }
 
@@ -54,6 +56,7 @@ internal sealed partial class WorkspaceFiles
         int contextLines, WorkspaceOperation operation, CancellationToken token)
     {
         var path = ValidateArgument(rawPath, false);
+        await CheckRulesOperationAsync(path, true, operation, token);
         BeginTaskOperation(operation, "search_text", path);
         if (contextLines is < 0 or > WorkspaceLimits.MaxSearchContextLines) throw Rejected(WorkspaceErrorCode.InvalidArguments);
         if (query is not null) CheckSensitive(query, ContentBoundary.ToolArguments);
@@ -109,6 +112,7 @@ internal sealed partial class WorkspaceFiles
             matches.Remove(matches.Last().Key); scan.Truncated = true;
         }
         RevalidateDiscovery(scan, operation, token);
+        await CheckRulesResultAsync(operation, token);
         lock (_gate) { CheckActive(operation.Generation, token); return result; }
     }
 
@@ -116,6 +120,7 @@ internal sealed partial class WorkspaceFiles
     {
         var path = ValidateArgument(rawPath, true);
         if (start < 1 || end < start || (long)end - start + 1 > WorkspaceLimits.MaxRangeLines) throw Rejected(WorkspaceErrorCode.InvalidLineRange);
+        await CheckRulesOperationAsync(path, false, operation, token);
         BeginTaskOperation(operation, "read_file_range", path, start, end);
         lock (_gate) { CheckActive(operation.Generation, token); _snapshots.Remove(path); }
         var scan = new DiscoveryScan(); operation.Discovery = scan;
@@ -131,6 +136,7 @@ internal sealed partial class WorkspaceFiles
         var result = WorkspaceRangeReadResult.Success(data);
         if (!WorkspaceResponseWriter.TryCreateResponse(result, _policy!, out _, out var error, token)) throw Rejected(error);
         RevalidateDiscovery(scan, operation, token);
+        await CheckRulesResultAsync(operation, token);
         lock (_gate) { CheckActive(operation.Generation, token); return result; }
     }
 
@@ -142,6 +148,7 @@ internal sealed partial class WorkspaceFiles
         foreach (var observation in observations) ObserveDiscovery(scan, observation.Path, observation.State);
         async Task<bool> Walk(string directory, int depth)
         {
+            await CheckRulesOperationAsync(directory, true, operation, token);
             RevalidateDiscovery(scan, operation, token);
             var children = new List<(string Relative, string Name, WorkspaceNodeState State)>();
             using (var entries = _fileSystem.EnumerateNames(directory == "." ? _root : Path.Combine(_root, directory)).GetEnumerator())

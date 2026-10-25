@@ -7,6 +7,7 @@ internal sealed class WorkspaceOperationCoordinator : IAsyncDisposable
     private WorkspaceOperationLease? _active;
     private long _generation;
     private bool _disposed;
+    internal bool IsDisposed { get { lock (_gate) return _disposed; } }
     internal long Generation { get { lock (_gate) return _generation; } }
 
     internal bool TryAcquire(CancellationToken cancellationToken, out WorkspaceOperationLease? lease)

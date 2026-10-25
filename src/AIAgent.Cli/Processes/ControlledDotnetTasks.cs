@@ -69,6 +69,13 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             if (lifetime.IsCancellationRequested) return Reject("turn_cancelled", ToolStatus.Cancelled);
             if (!execution.WorkspaceOperations.TryAcquire(lifetime.Token, out lease)) return Reject("workspace_unavailable");
             if (files is not WorkspaceFiles workspaceFiles) return Reject("capability_unavailable");
+            if (execution.Rules is not { } rules) return Reject("rules_unavailable");
+            var rulesError = await rules.ValidateAsync(lease!.CancellationToken, lease);
+            if (rulesError != "none") return Reject(rulesError);
+            var boundaries = new List<ProjectRuleObservation>();
+            var scopeError = await workspaceFiles.CheckProjectRulesPathAsync(rules.Capture().Scope, path, false, boundaries, lease, lease.CancellationToken);
+            if (scopeError != WorkspaceErrorCode.None) return Reject(WorkspaceToolProjection.Code(scopeError));
+            var rulesStamp = rules.Capture();
             if (!_budget.CanStart) return Reject("process_limit");
             var installation = DotnetInstallation.Discover(); if (installation is null) return Reject("capability_unavailable");
             var admission = new DotnetProjectAdmission(new MacWorkspaceFileSystem(), policy);
@@ -94,6 +101,10 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                     decision is ProcessApprovalDecision.Cancelled or ProcessApprovalDecision.EndOfInput ? ToolStatus.Cancelled : decision == ProcessApprovalDecision.Unavailable ? ToolStatus.Failed : ToolStatus.Rejected);
             if (!lease.IsCurrent || preview.Generation != execution.Plans.Generation || lifetime.IsCancellationRequested)
                 return NotStarted("turn_cancelled", ToolStatus.Cancelled);
+            rulesError = await rules.ValidateAsync(lease.CancellationToken, lease);
+            if (rulesError != "none" || !rules.IsCurrent(rulesStamp)) return NotStarted(rulesError == "none" ? "rules_changed" : rulesError);
+            scopeError = workspaceFiles.RevalidateProjectRulesPaths(boundaries, lease);
+            if (scopeError != WorkspaceErrorCode.None) return NotStarted(WorkspaceToolProjection.Code(scopeError));
             permission = execution.Plans.CheckProcess(task, path); if (permission != "none") return NotStarted(permission);
             var renewedInstallation = DotnetInstallation.Discover();
             if (renewedInstallation is null || renewedInstallation.Root != installation.Root ||
@@ -102,6 +113,10 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             var recheck = await admission.InspectAsync(workspace.RootPath, path, task, installation, lease.CancellationToken);
             if (!snapshot.Matches(recheck)) return NotStarted("path_changed");
             if (!lease.IsCurrent || lifetime.IsCancellationRequested) return NotStarted("turn_cancelled", ToolStatus.Cancelled);
+            rulesError = await rules.ValidateAsync(lease.CancellationToken, lease);
+            if (rulesError != "none") return NotStarted(rulesError);
+            scopeError = workspaceFiles.RevalidateProjectRulesPaths(boundaries, lease);
+            if (scopeError != WorkspaceErrorCode.None) return NotStarted(WorkspaceToolProjection.Code(scopeError));
             workspaceFiles.InvalidateForProcess(lease);
             // No await separates final authority checks from the single budget/consent consumption point.
             if (!_budget.TryStart(task, out var budget)) return NotStarted("process_limit");
@@ -113,6 +128,8 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             }
             if (result.Summary is { } fact) execution.Plans.RecordProcess(reservation, result.Status, result.ErrorCode, fact);
             reservation = null;
+            try { if (lease.IsCurrent) _ = await rules.ValidateAsync(CancellationToken.None, lease); }
+            catch (Exception) { rules.MarkFatalFailure(); }
             return result;
         }
         catch (ProcessAdmissionException ex) { return Reject(ex.Code); }
@@ -136,6 +153,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             {
                 if (reservation is not null) execution.Plans.Release(reservation);
                 lease?.Dispose();
+                execution.Rules?.Settle();
                 lock (_gate) { _active?.TrySetResult(); _active = null; }
             }
         }

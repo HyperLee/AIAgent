@@ -1,5 +1,11 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 12 份產品實作接續（2026-10-25）
+
+一般請求新增完整當前規則附錄，位於既有應用指示與記憶／計畫附錄之間；摘要來源與請求不直接加入規則全文。規則版本及世代納入操作、候選與量測戳記；生成結果、摘要及成功歷史發布前重驗。規則指令不生成、不重置／退還額度；既有 196608 估算門檻及 262144 bytes 實際 body 上限保持。
+
+實作、當次離線／PTY 證據與未驗證部分見 [README](../README.md#project-rules-validation)。真人 RULE-AC-033、真實 Gemini 034、第 10 份未結原生驗收與第 07 份 Release／分發門檻分開保留。
+
 > 文件版本：0.1｜建立日期：2026-10-24｜狀態：待實作規格
 >
 > 選題依據：[未來開發大綱 FUT-04](../ROADMAP.md)。上位文件：[開發總規格](../SPEC.md)第 5、7～10、13～15 章；承接 [03：CLI 與 Context](03-cli-and-context.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](09-plan-mode-and-task-list.md)及 [10：受控建置與測試](10-controlled-build-and-test.md)。第 09 份 [FUT-04 固定交接](09-plan-mode-and-task-list.md#fut-04-handoff)及第 10 份第 10、12.3 節是必要交接來源。

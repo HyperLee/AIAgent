@@ -122,7 +122,7 @@ internal sealed class RunnerFixture : IAsyncDisposable
     {
         FileSystem.File("a", [65]); Client.Session = Session;
         Workspace = new(Session.Workspace, Session.Policy, FileSystem);
-        Registry = new([new ListFilesTool(Workspace, Session.Policy), new ReadFileTool(Workspace, Session.Policy)], Session.Policy);
+        Registry = TestRulesRegistry.Create([new ListFilesTool(Workspace, Session.Policy), new ReadFileTool(Workspace, Session.Policy)], Session.Policy);
         Runner = new(Client, Registry, Session.Policy, "test instruction", Usage, e => { Events.Add(e); OnEvent?.Invoke(e); });
     }
     internal static LlmToolCall Read(int index) => new(index, null, "read_file", GeminiFixtures.Element("{\"path\":\"a\"}"));

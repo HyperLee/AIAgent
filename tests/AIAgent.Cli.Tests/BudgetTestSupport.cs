@@ -25,7 +25,7 @@ internal sealed class BudgetFixture : IAsyncDisposable
         Instruction = instruction;
         Session = WorkspaceFixtures.Session(Root);
         Files = new(Session.Workspace, Session.Policy, FileSystem, Approval);
-        Registry = new([new ListFilesTool(Files, Session.Policy), new ReadFileTool(Files, Session.Policy),
+        Registry = TestRulesRegistry.Create([new ListFilesTool(Files, Session.Policy), new ReadFileTool(Files, Session.Policy),
             new CreateFileTool(Files, Session.Policy), new ReplaceTextTool(Files, Session.Policy)], Session.Policy);
         Client = new(Session, Handler);
     }

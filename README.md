@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -21,10 +21,61 @@
 | 09：Plan 模式與任務清單 | 模式限制、版本確認、任務狀態、本機完成證據與有界投影。 | 已實作並接入正式聊天。 | 證據見第 09 份驗證紀錄。 | PLAN-AC-034 真人、035 真實 Gemini；第 07 份門檻保留。 |
 | 10：受控建置與測試 | 固定 Debug 任務、逐次程序核准、原生限制與 Validation v2。 | 建置已接入；測試不支援。 | 離線回歸、真實建置 fixtures 與 PTY 通過，範圍見下方紀錄。 | MTP 與部分原生邊界待驗，第 10 階段未完整驗收；BUILD-AC-036 真人、037 真實 Gemini 及第 07 份門檻另計。 |
 | 11：Context 與預算管理 | 摘要、原文備註、容量與可調生成額度。 | 已實作並接入正式聊天。 | 當次離線／PTY證據見下方紀錄。 | CTX-AC-034真人、035真實Gemini；其他階段未結門檻保留。 |
+| 12：專案規則載入 | 根目錄自動載入、明確 Scope、來源顯示、重驗與失效收尾。 | 已實作並接入正式聊天／工具／程序。 | 當次證據見第 12 份驗證紀錄。 | RULE-AC-033 真人、034 真實 Gemini；既有原生與發布門檻保留。 |
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，依目前模式提供其中六／九項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="project-rules-validation"></a>
+
+## 第 12 份專案規則載入
+
+確認工作區及隱藏輸入 Key 後，先在本機載入根 `AGENTS.md`，初始 Scope 為 `.`；沒有規則是正式的空來源快照，載入失敗則拒絕一般生成、整理及 Execute 確認。規則可能傳送至 Gemini。只讀目前工作區根至明確選定目錄的祖先鏈，不探查家目錄或工作區外祖先，不展開引用、連結、Skills 或程式碼。
+
+| 本機指令 | 行為 |
+|---|---|
+| `/rules` | 顯示 Scope、狀態、RulesRevision、來源相對路徑／範圍、原始 bytes、SHA-256 與完整投影 bytes。 |
+| `/rules show` | 顯示來源資訊及每份完整安全文字；過時快照明標不適用，不能安全完整顯示時整段拒絕。 |
+| `/rules scope DIR` | 原子載入根到 DIR 的完整鏈；DIR 為字面相對目錄，保留前後空白，不解析引號、變數或 `~`；`.` 返回根。 |
+| `/rules reload` | 明確重載目前 Scope；Valid 且來源完全相同為 `no_change`，失效後恢復相同 bytes 仍發布新版本。 |
+
+四種指令大小寫敏感，零模型生成與額度重置，完成後等待新指示。檔案與直接 `.csproj` 目標必須在 Scope 內；途中有未載入的 `AGENTS.md` 即拒絕，須先明確切換。遞迴搜尋遇新邊界整次拒絕，第一層列檔不探查子目錄內部；原忽略及工作量上限保持。建置仍以工作區根為 cwd，不承諾解析間接輸入的規則。
+
+來源變動會停止目前鏈、使修改快照與核准失效；重載後須重新確認計畫、給新指示及取得新的操作核准。原歷史、摘要、pins、PlanId／Revision、任務與已知事實保留，完成依據記錄原 RulesRevision。已開始的寫入／程序先完成核對及事實入帳，再撤確認；合法修改規則檔也遵守此順序。取消不是復原，不自動續跑、重試或補送。
+
+規則單檔最多 16384 原始 bytes（含 BOM）、8 份存在來源、根起深度32；完整 JSON 投影32768、CLI完整區塊65536 bytes。UTF-8、敏感路徑／內容、身分與缺席位置均重驗，原文不壓縮或截斷。規則與工具共用排他租約，載入不建立修改快照或任務證據。一般模型請求重建完整規則附錄，摘要不直接加入規則全文；規則版本／世代使過時候選與量測失效。既有196608估算／262144實際body、計畫、證據、生成與程序限制不放寬。
+
+程式保證來源、排序、Scope 與操作閘門；自然語言慣例不增加權限，也不保證模型理解全部矛盾。`.agents`／`.codex` 等敏感位置仍拒絕。沒有規則持久化、背景監看、技能引擎或新增模型工具。
+
+### 第 12 份驗證紀錄（2026-10-25）
+
+基線為乾淨 `main@11b7100`，本次產品／測試／文件變更尚未提交。環境為 macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6；使用合成 Key、替身、真實暫存檔與真實 SDK 配假 HTTP，全程沒有呼叫真實 Gemini。
+
+| 命令／檢查 | 實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原完成。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI、ProcessHost、TerminalHost 及測試成功，0警告／0錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；627通過、0失敗、0略過，含原558及新增69個執行案例。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33通過。 |
+| `python3 -B tests/terminal_smoke.py` | 0；78組通過，含原74及新增4組規則指令、Scope／重載、Unavailable恢復、busy取消／EOF與終端機恢復。PTY不呼叫Gemini或執行專案建置。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；用途及規則說明通過，既有 help 零 Key／client／規則 I/O 回歸保留。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`、變更測試 whitespace verify | 0；產品與變更測試格式通過，未改寫無關舊測試檔。 |
+| CRLF／C#無檔尾換行、文件／JSON／連結與差異查核 | 0；變更 C# 格式、158個本機連結、36個JSON區塊、程式碼圍欄、`git diff --check` 與新檔 no-index 空白查核通過。 |
+| 公開 LLM 契約、套件、設定與 global.json 差異 | 無變更。 |
+
+基線及最終完整 MSTest 在允許測試初始化自身原生 sandbox 的外層環境執行。初始受限環境有三項既有原生案例因 `sandbox_apply: Operation not permitted` 失敗；未修改產品隔離政策或刪除案例。新增真實離線建置案例僅驗「程序事實已確認後，規則 I/O 故障不得抹去該結果」，不取代第10份完整原生驗收。
+
+| 規則案例群 | 實際驗證範圍 |
+|---|---|
+| RULE-AC-001～009 | 正式組裝及既有契約回歸、來源鏈／缺席／BOM／指紋、嚴格編碼、敏感／非普通來源、8／9來源、32／33深度、16384／16385、32768／32769、65536／65537邊界與租約互斥／取消收尾。 |
+| RULE-AC-010～018 | 直接入口Scope、新建目標父鏈、搜尋整次拒絕及發布前新邊界、程序准入前拒絕、完整附錄、Context量測過時、保留計畫／事實、no_change、失敗候選保留舊鏈、同長改寫／身分／時間／缺席變動與無關目錄時間戳。 |
+| RULE-AC-019～027 | 純文字與SDK await期間變動、已發布新版本拒絕舊生成、摘要不直接含規則、整批取消配對、核准世代失效、合法規則修改、檔案系統解析名稱、已知來源變更後取消、最終提交閘門取消、Dispose等待、clear／共同重設／換Key及255→256事實收尾。 |
+| RULE-AC-028～031 | 既有工具Schema／成功資料及SDK所有權回歸、四種新錯誤與data=null、無額外FUT能力、真實SDK多呼叫／簽章及262144／262145實際body；額度與嚴格故障優先順序回歸。 |
+| RULE-AC-032 | 離線macOS PTY：字面中文／空白目錄、完整來源、Stale與Unavailable、手動恢復、預輸入丟棄、Ctrl+C／Ctrl+D等待讀取收尾。 |
+
+獨立唯讀審查指出：實際計畫修訂保留 Completed 任務時遺失 CompletionRulesRevision，以及第二次來源重驗已觀察變更後取消可能保留 Valid。兩項皆先補失敗回歸，再修正來源版本複製與兩次觀察的失效記錄；新增3個執行案例，修正後完整627項通過。沒有另行獨立複審。
+
+RULE-AC-033真人終端機、034真實Gemini、第10份未結原生案例及第07份Release掃描／人工分發仍待獨立驗收。未執行Release發佈、真實服務、提交或推送，未宣告整體初版驗收完成。RULE-AC-035保留原文件撰寫階段的交付案例；本次改以產品增量與實際分層證據記錄。
 
 <a id="context-budget-validation"></a>
 

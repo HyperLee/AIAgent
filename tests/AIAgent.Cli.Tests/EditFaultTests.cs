@@ -105,7 +105,7 @@ public sealed class EditFaultTests
     {
         var root = WorkspaceFixtures.NewDirectory(); using var session = WorkspaceFixtures.Session(root, "status");
         var approval = new EditApproval(); await using var files = new WorkspaceFiles(session.Workspace, session.Policy, new MacWorkspaceFileSystem(), approval);
-        var registry = new ToolRegistry([new CreateFileTool(files, session.Policy)], session.Policy);
+        var registry = TestRulesRegistry.Create([new CreateFileTool(files, session.Policy)], session.Policy);
         using var arguments = JsonDocument.Parse("{\"path\":\"a\",\"content\":\"x\"}");
         var result = await registry.DispatchAsync(new(0, null, "create_file", arguments.RootElement), default);
         Assert.IsTrue(result.Response is null && result.WriteState == FileWriteState.Verified && result.VerifiedPath == "a" && result.VerifiedByteCount == 1, "EDIT-AC-025");
@@ -165,7 +165,8 @@ internal sealed class EditFileSystem : IWorkspaceWriteFileSystem
     private string? _staged;
     internal string? StagedPath => _staged;
     internal Action<string>? OnOpen { get; set; }
-    public WorkspaceNodeState Inspect(string path) => _inner.Inspect(path);
+    internal Action<string>? OnInspect { get; set; }
+    public WorkspaceNodeState Inspect(string path) { OnInspect?.Invoke(path); return _inner.Inspect(path); }
     public IEnumerable<string> EnumerateNames(string path) => _inner.EnumerateNames(path);
     public UnixFileMode GetMode(string path) => _inner.GetMode(path);
     public IWorkspaceReadFile OpenRead(string path)

@@ -215,7 +215,7 @@ public sealed class ContextFlowTests
     public async Task CTXAC028_TelemetryPrecheckFailureDoesNotChargeModelStart()
     {
         await using var f = new ContextFlowFixture(0);
-        var registry = new ToolRegistry([], f.Session.Policy, new(f.Plans));
+        var registry = TestRulesRegistry.Create([], f.Session.Policy, new(f.Plans));
         var runner = new AgentRunner(f.Client, registry, f.Session.Policy, "test", new(), _ => { }, f.Budget, f.Coordinator, new ThrowingTelemetry());
         var result = await runner.RunAsync(f.Context.BuildMessages(LlmMessage.FromUserText("question")), default);
         Assert.AreEqual(0, result.GenerationsStarted); Assert.AreEqual(0, f.Budget.Snapshot().ProgramGenerationsStarted);
@@ -298,7 +298,7 @@ internal sealed class ContextFlowFixture : IAsyncDisposable
         Plans = new(Session.Policy, Context.DecisionGate); Coordinator = new(Context, Plans, Session.Policy); Budget = new(Context.DecisionGate);
         FileSystem.File("a", [65]); Files = new(Session.Workspace, Session.Policy, FileSystem);
         Client = new() { Session = Session, Respond = (_, request, _) => Task.FromResult(ChatFixture.Completed(request.Tools.Count == 0 ? ContextTestData.Summary : "answer")) };
-        var registry = new ToolRegistry([new ReadFileTool(Files, Session.Policy)], Session.Policy, new(Plans));
+        var registry = TestRulesRegistry.Create([new ReadFileTool(Files, Session.Policy)], Session.Policy, new(Plans));
         Runner = new(Client, registry, Session.Policy, "test instruction", new(), e => { Events.Add(e); OnEvent?.Invoke(e); }, Budget, Coordinator, Client);
     }
     internal Task<AgentTurnResult> Run(CancellationToken token = default) => Runner.RunAsync(Context.BuildMessages(LlmMessage.FromUserText("current")), token);

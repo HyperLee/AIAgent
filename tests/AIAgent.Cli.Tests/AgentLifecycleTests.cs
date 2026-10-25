@@ -18,7 +18,7 @@ public sealed class AgentLifecycleTests
         var client = new ScriptClient { Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(RunnerFixture.Read(0))) };
         var session = WorkspaceFixtures.Session(root);
         var factory = new ScriptFactory(client); factory.Sessions.Add(session);
-        var app = new ChatApplication(interaction, factory, new(), new(), "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(interaction, factory, new(), new(), "instruction", new TestWorkspaceFilesFactory());
         interaction.OnShow = e =>
         {
             if (e.Agent?.Operation?.Status != ToolStatus.Success) return;
@@ -33,7 +33,7 @@ public sealed class AgentLifecycleTests
     {
         var fixture = new ChatFixture("read", "/exit");
         fixture.Client.Respond = (_, _, _) => Task.FromResult(ChatFixture.Authentication());
-        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         fixture.Interaction.OnShow = e => { if (e.Kind == ChatEventKind.Usage) app.Interrupt(); };
         var session = WorkspaceFixtures.Session(); fixture.Factory.Sessions.Add(session);
         Assert.AreEqual(0, await app.RunAsync(session, default), "LOOP-AC-024");
@@ -66,14 +66,14 @@ public sealed class AgentLifecycleTests
         foreach (var unexpected in new[] { false, true })
         {
             await using var f = new RunnerFixture();
-            var registry = new ToolRegistry([new ReadFileTool(f.Workspace, f.Session.Policy), new ThrowingTool()], f.Session.Policy);
+            var registry = TestRulesRegistry.Create([new ReadFileTool(f.Workspace, f.Session.Policy), new ThrowingTool()], f.Session.Policy);
             if (!unexpected) f.OnEvent = e => { if (e.Operation?.Status == ToolStatus.Success) f.Workspace.DisposeAsync().AsTask().GetAwaiter().GetResult(); };
             f.Client.Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(RunnerFixture.Read(0),
                 unexpected ? new(1, null, "throw", GeminiFixtures.Element("{\"path\":\"a\"}")) : RunnerFixture.Read(1), RunnerFixture.Read(2)));
             var runner = new AgentRunner(f.Client, registry, f.Session.Policy, "instruction", f.Usage, e => f.OnEvent?.Invoke(e));
             var result = await runner.RunAsync([LlmMessage.FromUserText("read")], default);
             Assert.IsTrue(result.StopReason == AgentStopReason.LocalFailure && result.Operations.Count == 3 &&
-                result.Operations[0].Status == ToolStatus.Success && result.Operations[1].Status == ToolStatus.Failed &&
+                result.Operations[0].Status == ToolStatus.Success && result.Operations[1].Status == (unexpected ? ToolStatus.Failed : ToolStatus.NotExecuted) &&
                 result.Operations[2].Status == ToolStatus.NotExecuted && f.Client.Requests.Count == 1, "LOOP-AC-014");
         }
     }
@@ -112,7 +112,7 @@ public sealed class AgentLifecycleTests
     {
         var fixture = new ChatFixture("request", "/exit");
         fixture.Client.Respond = (_, _, _) => Task.FromResult(ChatFixture.Authentication());
-        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         var session = WorkspaceFixtures.Session(); fixture.Factory.Sessions.Add(session);
         if (duringClientDisposal) fixture.Client.OnDispose = app.Interrupt;
         else fixture.Interaction.OnBusyDisposed = app.Interrupt;
@@ -148,7 +148,7 @@ public sealed class AgentLifecycleTests
     {
         using var session = WorkspaceFixtures.Session(key: projectionFails ? "status" : GeminiFixtures.Key);
         using var cancel = new CancellationTokenSource();
-        var registry = new ToolRegistry([new ThrowingTool()], session.Policy);
+        var registry = TestRulesRegistry.Create([new ThrowingTool()], session.Policy);
         var client = new ScriptClient
         {
             Session = session,
@@ -177,7 +177,7 @@ internal sealed class ObservedWorkspaceFactory : IWorkspaceFilesFactory
     internal List<IWorkspaceFiles> Services { get; } = [];
     public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
-        var service = new WorkspaceFilesFactory().Create(session, executionPolicy); Services.Add(service); return service;
+        var service = new TestWorkspaceFilesFactory().Create(session, executionPolicy); Services.Add(service); return service;
     }
 }
 
@@ -185,7 +185,8 @@ internal sealed class UnavailableWorkspaceFactory : IWorkspaceFilesFactory
 {
     public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
-        var workspace = new WorkspaceFilesFactory().Create(session, executionPolicy);
+        var workspace = new TestWorkspaceFilesFactory().Create(session);
+        if (executionPolicy is not null) executionPolicy.Rules = new(new TestRulesRegistry.EmptyProjectRulesReader(executionPolicy), session.Policy, executionPolicy);
         workspace.DisposeAsync().AsTask().GetAwaiter().GetResult();
         return workspace;
     }

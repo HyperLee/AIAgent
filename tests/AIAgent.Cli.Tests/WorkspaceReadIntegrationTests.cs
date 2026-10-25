@@ -15,7 +15,7 @@ public sealed class WorkspaceReadIntegrationTests
     {
         var root = WorkspaceFixtures.NewDirectory();
         using var session = WorkspaceFixtures.Session(root);
-        await using var files = new WorkspaceFilesFactory().Create(session);
+        await using var files = new TestWorkspaceFilesFactory().Create(session);
         foreach (var item in new[] { ("empty", Array.Empty<byte>()), ("bom", new byte[] { 239, 187, 191 }), ("中文😀", new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes("中文😀\r\n\n\r\ufefftail")).ToArray()), ("   ", Encoding.UTF8.GetBytes("literal")) })
         {
             var full = Path.Combine(root, item.Item1); File.WriteAllBytes(full, item.Item2);
@@ -38,7 +38,7 @@ public sealed class WorkspaceReadIntegrationTests
         File.CreateSymbolicLink(Path.Combine(root, "cycle1"), "cycle2"); File.CreateSymbolicLink(Path.Combine(root, "cycle2"), "cycle1");
         Directory.CreateSymbolicLink(Path.Combine(root, "nested"), "dir"); Directory.CreateSymbolicLink(Path.Combine(parent, "alias"), "real");
         var resolved = new Cli.WorkspaceResolver(new Cli.WorkspaceFileSystem()).Resolve(new(parent, "alias"));
-        using var session = WorkspaceFixtures.Session(resolved.RootPath); await using var files = new WorkspaceFilesFactory().Create(session);
+        using var session = WorkspaceFixtures.Session(resolved.RootPath); await using var files = new TestWorkspaceFilesFactory().Create(session);
         foreach (var name in new[] { "in", "out", "broken", "cycle1", "nested/a" })
             WorkspaceFixtures.Check(await files.ReadFileAsync(name, default), WorkspaceStatus.Rejected, WorkspaceErrorCode.SymbolicLink, "WS-AC-006");
         var list = await files.ListFilesAsync(".", default);
@@ -56,7 +56,7 @@ public sealed class WorkspaceReadIntegrationTests
         Assert.IsTrue(MakeFifo(fifo, 384) == 0, "WS-AC-007-fixture");
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         socket.Bind(new UnixDomainSocketEndPoint(Path.Combine(root, "socket")));
-        using var session = WorkspaceFixtures.Session(root); await using var files = new WorkspaceFilesFactory().Create(session);
+        using var session = WorkspaceFixtures.Session(root); await using var files = new TestWorkspaceFilesFactory().Create(session);
         foreach (var name in new[] { "fifo", "socket" })
             WorkspaceFixtures.Check(await files.ReadFileAsync(name, default).WaitAsync(TimeSpan.FromSeconds(5)), WorkspaceStatus.Rejected, WorkspaceErrorCode.WrongEntryType, "WS-AC-007");
         Assert.IsTrue((await files.ListFilesAsync(".", default)).Data!.Entries.Count == 0, "WS-AC-007");
@@ -70,7 +70,7 @@ public sealed class WorkspaceReadIntegrationTests
         File.WriteAllBytes(Path.Combine(root, "invalid"), [255]); File.WriteAllText(Path.Combine(root, ".env.example"), "PLACEHOLDER_ONLY");
         var before = Directory.GetFileSystemEntries(root).Order(StringComparer.Ordinal).ToArray();
         var bytes = before.Where(File.Exists).ToDictionary(path => path, File.ReadAllBytes, StringComparer.Ordinal);
-        using var session = WorkspaceFixtures.Session(root); await using var files = new WorkspaceFilesFactory().Create(session);
+        using var session = WorkspaceFixtures.Session(root); await using var files = new TestWorkspaceFilesFactory().Create(session);
         await files.ListFilesAsync(".", default); await files.ReadFileAsync("notes", default); await files.ReadFileAsync("invalid", default);
         await files.ReadFileAsync(".env.example", default); await files.ReadFileAsync("notes", new(true)); await files.ReadFileAsync("missing", default);
         Assert.IsTrue(Directory.GetFileSystemEntries(root).Order(StringComparer.Ordinal).SequenceEqual(before), "WS-AC-029");

@@ -10,7 +10,7 @@ namespace AIAgent.Cli.Tests;
 [TestClass]
 public sealed class DiscoveryToolTests
 {
-    internal static ToolRegistry Registry(IWorkspaceFiles files, BootstrapSession session) => new(
+    internal static ToolRegistry Registry(IWorkspaceFiles files, BootstrapSession session) => TestRulesRegistry.Create(
         [new ListFilesTool(files, session.Policy), new ReadFileTool(files, session.Policy),
             new CreateFileTool(files, session.Policy), new ReplaceTextTool(files, session.Policy),
             new SearchFilesTool(files, session.Policy), new SearchTextTool(files, session.Policy), new ReadFileRangeTool(files, session.Policy)], session.Policy);
@@ -36,7 +36,7 @@ public sealed class DiscoveryToolTests
             var result = await registry.DispatchAsync(new(0, null, name, GeminiFixtures.Element(args)), default);
             Assert.IsTrue(result.ErrorCode == "invalid_arguments" && result.Status == ToolStatus.Rejected && result.DiscoverySummary is null, "SEARCH-AC-003");
         }
-        Assert.IsTrue(f.Fs.Inspected.Count == 0 && f.Fs.Scanned == 0 && f.Fs.Opened == 0, "SEARCH-AC-003-io");
+        Assert.IsTrue(f.Fs.ProductInspectionCount == 0 && f.Fs.Scanned == 0 && f.Fs.Opened == 0, "SEARCH-AC-003-io");
     }
 
     [TestMethod]
@@ -46,7 +46,7 @@ public sealed class DiscoveryToolTests
         var registry = Registry(f.Files, f.Session);
         Assert.IsTrue(registry.Definitions.Select(d => d.Name).SequenceEqual(new[] {
             "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range" }), "SEARCH-AC-001");
-        Assert.IsTrue(f.Fs.Inspected.Count == 0, "SEARCH-AC-001-factory");
+        Assert.IsTrue(f.Fs.ProductInspectionCount == 0, "SEARCH-AC-001-factory");
         var result = await registry.DispatchAsync(BudgetFixture.Call("search_text", new { path = ".", query = "A" }), default);
         var match = result.Response!.Value.GetProperty("data").GetProperty("matches")[0];
         Assert.IsTrue(match.GetProperty("after_lines").GetArrayLength() == 1 && result.DiscoverySummary?.ReturnedCount == 1 &&

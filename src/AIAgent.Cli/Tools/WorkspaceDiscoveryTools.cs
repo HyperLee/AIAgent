@@ -8,6 +8,7 @@ namespace AIAgent.Cli.Tools;
 
 internal sealed class SearchFilesTool(IWorkspaceFiles workspace, ISensitiveDataPolicy policy) : ITool
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => workspace.ProjectRulesWorkspace;
     public ToolCapability Capability => ToolCapability.WorkspaceRead;
     public LlmToolDefinition Definition { get; } = DiscoveryToolArguments.Definition("search_files",
         "遞迴搜尋指定工作區相對目錄中的安全檔名或路徑，使用有限 glob 樣式",
@@ -28,6 +29,7 @@ internal sealed class SearchFilesTool(IWorkspaceFiles workspace, ISensitiveDataP
 
 internal sealed class SearchTextTool(IWorkspaceFiles workspace, ISensitiveDataPolicy policy) : ITool
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => workspace.ProjectRulesWorkspace;
     public ToolCapability Capability => ToolCapability.WorkspaceRead;
     public LlmToolDefinition Definition { get; } = DiscoveryToolArguments.Definition("search_text",
         "在小型 UTF-8 文字檔中搜尋單行字面文字，回傳行號及附近內容",
@@ -48,6 +50,7 @@ internal sealed class SearchTextTool(IWorkspaceFiles workspace, ISensitiveDataPo
 
 internal sealed class ReadFileRangeTool(IWorkspaceFiles workspace, ISensitiveDataPolicy policy) : ITool
 {
+    public IProjectRulesWorkspace? ProjectRulesWorkspace => workspace.ProjectRulesWorkspace;
     public ToolCapability Capability => ToolCapability.WorkspaceRead;
     public LlmToolDefinition Definition { get; } = DiscoveryToolArguments.Definition("read_file_range",
         "取得小型 UTF-8 文字檔的指定行範圍，不建立修改快照",

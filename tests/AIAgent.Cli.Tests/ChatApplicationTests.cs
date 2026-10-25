@@ -12,7 +12,7 @@ public sealed class ChatApplicationTests
     public async Task CLIAC016_InterruptDuringUserMessageNeverStartsGeneration()
     {
         var fixture = new ChatFixture("question");
-        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         var session = GeminiFixtures.Session(); fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
         fixture.Interaction.OnShow = message => { if (message.Kind == ChatEventKind.UserMessage) app.Interrupt(); };
         Assert.AreEqual(130, await app.RunAsync(session, default));
@@ -24,7 +24,7 @@ public sealed class ChatApplicationTests
     public async Task CLIAC016_ExternalInterruptBetweenInputAndGenerationUsesIdleState()
     {
         var fixture = new ChatFixture();
-        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         var session = GeminiFixtures.Session(); fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
         fixture.Interaction.Inputs.Enqueue(() => { app.Interrupt(); return ChatInputResult.Submitted("not submitted"); });
         Assert.AreEqual(130, await app.RunAsync(session, default));
@@ -37,7 +37,7 @@ public sealed class ChatApplicationTests
     {
         using var terminal = new ConsoleChatInteraction(new FakeTerminal());
         var factory = new ScriptFactory(new ScriptClient());
-        var app = new ChatApplication(terminal, factory, new(), new(), "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(terminal, factory, new(), new(), "instruction", new TestWorkspaceFilesFactory());
         Assert.AreEqual(130, await app.RunAsync(GeminiFixtures.Session(), new CancellationToken(true)), "CLI-AC-016");
     }
 
@@ -47,7 +47,7 @@ public sealed class ChatApplicationTests
         var fixture = new ChatFixture("one", "two", "/exit");
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource<LlmResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new WorkspaceFilesFactory());
+        var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         var session = GeminiFixtures.Session(); fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
         fixture.Client.Respond = async (i, _, token) =>
         {
@@ -397,7 +397,7 @@ internal sealed class ChatFixture
     internal Task<int> Run(BootstrapSession? session = null, CancellationToken cancellationToken = default)
     {
         var initial = session ?? GeminiFixtures.Session(); Factory.Sessions.Add(initial); Client.Session = initial;
-        return new ChatApplication(Interaction, Factory, Context, Usage, "test instruction", new WorkspaceFilesFactory()).RunAsync(initial, cancellationToken);
+        return new ChatApplication(Interaction, Factory, Context, Usage, "test instruction", new TestWorkspaceFilesFactory()).RunAsync(initial, cancellationToken);
     }
     internal static LlmResult Completed(string text = "answer") => new(LlmStatus.Completed, LlmErrorCode.None, text, [], LlmMessage.FromModel(new object()), new(1, 2, 3, 4, 5), true, false);
     internal static LlmResult Authentication() => new(LlmStatus.Failed, LlmErrorCode.AuthenticationFailed, "untrusted error", [], null, new(1, null, null, null, 1), true, false);
@@ -411,6 +411,7 @@ internal sealed class ScriptInteraction : IChatInteraction
     internal List<ChatEvent> Events { get; } = [];
     internal Action<ChatControlSignal>? Signal { get; private set; }
     internal Action<Action<ChatControlSignal>>? OnBusy { get; set; }
+    internal Action<Action<ChatControlSignal>>? OnRulesBusy { get; set; }
     internal Action<ChatEvent>? OnShow { get; set; }
     internal Action? OnChoice { get; set; }
     internal Action? OnBusyDisposed { get; set; }
@@ -431,7 +432,10 @@ internal sealed class ScriptInteraction : IChatInteraction
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> onSignal)
     {
         if (ObserverFails) throw new IOException("FAKE_OBSERVER_ONLY");
-        Signal = onSignal; OnBusy?.Invoke(onSignal); return new Scope(() => { Signal = null; OnBusyDisposed?.Invoke(); });
+        var rulesBusy = Events.LastOrDefault()?.Text == "正在讀取專案規則。";
+        Signal = onSignal;
+        if (rulesBusy) OnRulesBusy?.Invoke(onSignal); else OnBusy?.Invoke(onSignal);
+        return new Scope(() => { Signal = null; if (!rulesBusy) OnBusyDisposed?.Invoke(); });
     }
     public void SetPolicy(Security.ISensitiveDataPolicy policy)
     { if (++_policyChanges > 1 && FailPolicyChange) throw new IOException("FAKE_POLICY_ONLY"); }

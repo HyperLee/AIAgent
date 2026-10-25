@@ -92,6 +92,10 @@ internal static class ChatDisplay
 
     private static string TurnText(ChatEvent message) => message.StopReason switch
     {
+        AgentStopReason.RulesChanged => "專案規則已變動；停止本回合，請 /rules reload、重新確認計畫後給予新指示。",
+        AgentStopReason.RulesUnavailable => "專案規則不可用；請 /rules 檢視或明確重載。",
+        AgentStopReason.RulesScopeMismatch => "目標超出目前規則 Scope 或遇到新巢狀規則；請明確選擇 Scope。",
+        AgentStopReason.RulesLimit => "專案規則鏈或容量超出上限；本回合停止。",
         AgentStopReason.ProcessFailed => "受控 .NET 任務未成功；本回合停止，下一則明確指示須重新核准。",
         AgentStopReason.ProcessResourceLimit => "已達本回合程序次數或時間上限；本回合停止。",
         AgentStopReason.ProcessUnconfirmed => "程序狀態或收尾未確認；已停止此 session，需使用者人工處理殘留程序。",
