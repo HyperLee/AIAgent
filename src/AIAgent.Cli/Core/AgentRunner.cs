@@ -1,3 +1,4 @@
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
@@ -15,18 +16,19 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
     private readonly GenerationBudget _budget = generationBudget ?? new();
     private readonly ILlmContextInspector? _inspector = contextInspector ?? client as ILlmContextInspector;
 
-    internal async Task<AgentTurnResult> RunAsync(IReadOnlyList<LlmMessage> initialMessages, CancellationToken cancellationToken)
+    internal async Task<AgentTurnResult> RunAsync(IReadOnlyList<LlmMessage> initialMessages, CancellationToken cancellationToken, CodeReviewCoordinator? review = null)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
             return Unavailable(AgentStopReason.RunnerUnavailable);
         try
         {
+            using var reviewScope = review is not null && !registry.ExecutionPolicy.Plans.ReviewTurnActive ? registry.ExecutionPolicy.EnterReview() : null;
             using var generation = registry.ExecutionPolicy.Plans.BorrowGeneration();
             if (initialMessages is null || initialMessages.Count == 0 || initialMessages.Any(message => message is null) ||
                 initialMessages[^1] is not { Kind: LlmMessageKind.User } user || string.IsNullOrWhiteSpace(user.UserText))
                 return Unavailable(AgentStopReason.LocalFailure);
             var turn = new Turn(client, registry, policy, systemInstruction, programUsage, onEvent,
-                initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector);
+                initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector, review: review);
             _budget.BeginConversation();
             return await turn.RunAsync();
         }
@@ -53,7 +55,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
     private sealed partial class Turn(ILlmClient client, ToolRegistry registry, ISensitiveDataPolicy policy,
         string instruction, UsageAccumulator programUsage, Action<AgentEvent> onEvent,
         IReadOnlyList<LlmMessage> initial, CancellationToken token, GenerationBudget budget,
-        ContextCoordinator? coordinator, ILlmContextInspector? inspector, bool maintenance = false)
+        ContextCoordinator? coordinator, ILlmContextInspector? inspector, bool maintenance = false, CodeReviewCoordinator? review = null)
     {
         private readonly object _gate = coordinator?.DecisionGate ?? new();
         private readonly List<LlmMessage> _messages = initial.ToList();
@@ -83,6 +85,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     if (result is null) return Invalid();
                     _reset |= result.RequiresContextReset;
                     if (!ValidResult(result)) return Invalid();
+                    await RequireReviewAsync();
                     _modelStatus = result.Status; _modelError = result.ErrorCode;
                     _reset |= result.ErrorCode is LlmErrorCode.SensitiveOutput or LlmErrorCode.InvalidResponse or LlmErrorCode.UnexpectedToolCall;
                     if (policy.ContainsCurrentKey(result.SafeText))
@@ -136,9 +139,11 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                         return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
                     if (result.Status == LlmStatus.Completed)
                     {
+                        if (review is not null && review.Validate(result.SafeText) is null)
+                            return Finish(AgentTurnStatus.Failed, AgentStopReason.ReviewInvalid);
                         _current.Add(result.ModelMessage!);
                         if (!ToolCallPairing.ValidTurn(_current)) return Invalid();
-                        return Finish(AgentTurnStatus.Completed, AgentStopReason.None, result.SafeText, _current);
+                        return Finish(AgentTurnStatus.Completed, AgentStopReason.None, review?.Candidate is { } report ? review.Display(report, false)! : result.SafeText, _current);
                     }
                     return Finish(result.Status == LlmStatus.Failed ? AgentTurnStatus.Failed : AgentTurnStatus.Stopped,
                         AgentStopReason.ModelOutcome, result.Status == LlmStatus.Truncated ? result.SafeText : "");
@@ -151,6 +156,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             catch (ContextFlowException failure) { return Finish(failure.Status, failure.Reason); }
             catch (ContextCapacityException) { return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity); }
             catch (ContextInspectionException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.InvalidProtocol); }
+            catch (GitFailure failure)
+            { if (failure.Code == "sensitive_content") _reset = true; return Finish(AgentTurnStatus.Stopped, failure.Code == "sensitive_content" ? AgentStopReason.SensitiveData : failure.Code is "process_cleanup_failed" or "process_unconfirmed" ? AgentStopReason.ProcessUnconfirmed : failure.Code is "result_too_large" or "context_capacity" ? AgentStopReason.ContextCapacity : AgentStopReason.GitStopped); }
             catch (Exception) { return Finish(AgentTurnStatus.Failed, AgentStopReason.LocalFailure); }
         }
 
@@ -214,6 +221,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     : result.ErrorCode == "conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
                     : result.WriteState is not null && (result.Status == ToolStatus.Failed || result.StopAfterOperation || result.ErrorCode == "publish_unsupported") ? AgentStopReason.FileWriteFailed
                     : result.ErrorCode == "mode_restricted" ? AgentStopReason.ModeRestricted
+                    : result.GitSummary is not null && result.StopAfterOperation ? AgentStopReason.GitStopped
                     : registry.IsProcessTool(call.Name) && (result.StopAfterOperation || result.Status != ToolStatus.Success) ? AgentStopReason.ProcessFailed
                     : result.ErrorCode == "plan_required" ? AgentStopReason.PlanRequired
                     : result.ErrorCode == "plan_not_approved" ? AgentStopReason.PlanNotApproved
@@ -274,6 +282,15 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             if (_rulesStamp is { } previous && (previous.RulesGeneration != current.RulesGeneration || previous.RulesRevision != current.RulesRevision || previous.SessionGeneration != current.SessionGeneration))
                 throw new ProjectRulesFlowException("rules_changed");
             _rulesStamp ??= current;
+        }
+
+        private async Task RequireReviewAsync()
+        {
+            if (review is null) return;
+            await RequireRulesAsync();
+            var error = await review.Snapshots.ValidateAsync(token);
+            if (error is "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit") throw new ProjectRulesFlowException(error);
+            if (error != "none") { review.Failed(error); throw new GitFailure(error); }
         }
 
         private bool TryBeginTool(out AgentStopReason reason)

@@ -1,5 +1,14 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 產品實作接續與准入修訂（2026-10-26）
+
+本檔 GIT-001／090 與 GIT-AC-023 的「本次只交付文件」是原 0.1 撰寫階段的歷史界線。使用者後續明確要求依本規格實作產品；本次增量、當次證據與未驗證項目見 [README](../README.md#git-review-validation)，原需求、案例及固定交接編號保留。
+
+實際 Git 2.54 啟動會以 O_RDWR 開啟 `/dev/null`。使用者已明確選擇：GIT-026／031 的拒寫政策僅新增 `/dev/null` 的 `file-write-data` OS null-sink 例外；所有持久檔案寫入、建立、刪除、重新命名及其他權限仍禁止，不建立暫存或報告檔，不沿用 .NET 可寫權限。原生 fixture 與既有發布門檻仍須獨立驗證。
+
+`check-ignore --stdin` 不支援通用 `--literal-pathspecs`，且內部仍解析前綴 magic。GIT-024 的此項 recipe 改為不帶該旗標；每個已准入候選在 NUL stdin 前加固定 `./`，回傳 pathname 僅去除同一個固定前綴後精確比對候選集合。其餘 recipe 保留 literal pathspecs；模型仍不能提供 argv、oid 或未准入路徑，冒號及 glob 字元按字面檔名處理。
+
+
 > 文件版本：0.1｜建立日期：2026-10-25｜狀態：待實作
 >
 > 選題依據：[ROADMAP：FUT-06](../ROADMAP.md#fut-06git-差異與程式碼審查)。上位文件：[總規格](../SPEC.md)第 5、8～15 章；承接 [04：工作區與唯讀工具](04-workspace-and-read-tools.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與整體驗收](07-budget-and-acceptance.md)、[08：搜尋與局部讀檔](08-code-search-and-partial-read.md)、[09：Plan 與任務](09-plan-mode-and-task-list.md)、[10：受控建置](10-controlled-build-and-test.md)、[11：Context 與預算](11-context-and-budget-management.md)及 [12：專案規則](12-project-rules-loading.md)。尤其須承接第 12 份 [RULE-HO-005／008](12-project-rules-loading.md#future-handoffs)。FUT-06 是大綱代號，不是第 06 份寫入規格。

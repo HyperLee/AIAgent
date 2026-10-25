@@ -31,7 +31,7 @@ public sealed class AgentChatTests
         Assert.IsTrue(result == 0 && handler.Calls == 3 && usage.Snapshot().DispatchedRequests == 3, "LOOP-AC-007");
         using var final = JsonDocument.Parse(handler.Bodies[2]);
         var declarations = final.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
-        Assert.AreEqual(9, declarations.GetArrayLength(), "LOOP-AC-003");
+        Assert.AreEqual(12, declarations.GetArrayLength(), "LOOP-AC-003");
         for (var index = 0; index < 2; index++)
         {
             var declaration = declarations[index];

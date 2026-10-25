@@ -9,7 +9,8 @@ internal sealed partial class WorkspaceFiles
     /// <summary>完整關閉後才回傳；內部查核不發布快照或模型資料。</summary>
     private async Task<VerifiedWorkspaceFile> ReadVerifiedFileAsync(string path, WorkspaceOperation operation,
         CancellationToken token, bool settling = false, DiscoveryReadBudget? budget = null,
-        WorkspaceNodeState? expected = null, Action<UnixFileMode>? observeMode = null, int maxBytes = WorkspaceLimits.MaxFileBytes)
+        WorkspaceNodeState? expected = null, Action<UnixFileMode>? observeMode = null, int maxBytes = WorkspaceLimits.MaxFileBytes,
+        bool rawGitObservation = false)
     {
         void Active() { if (!settling) CheckActive(operation.Generation, token); }
         Active();
@@ -42,10 +43,12 @@ internal sealed partial class WorkspaceFiles
             Revalidate(observations);
             if (file.GetState() != initial || count != initial.Length || file.GetMode() != mode) throw Rejected(WorkspaceErrorCode.PathChanged);
             original = buffer.AsSpan(0, count).ToArray();
+            if (rawGitObservation) CheckSensitive(Encoding.UTF8.GetString(original), ContentBoundary.ToolResult);
             try { content = FileChangePreviewBuilder.Decode(original, out hasBom); }
+            catch (DecoderFallbackException) when (rawGitObservation) { content = ""; hasBom = false; }
             catch (DecoderFallbackException) { throw Rejected(WorkspaceErrorCode.InvalidUtf8); }
             Active();
-            if (content.Any(c => char.IsControl(c) && c is not ('\t' or '\n' or '\r'))) throw Rejected(WorkspaceErrorCode.BinaryContent);
+            if (!rawGitObservation && content.Any(c => char.IsControl(c) && c is not ('\t' or '\n' or '\r'))) throw Rejected(WorkspaceErrorCode.BinaryContent);
             CheckSensitive(content, ContentBoundary.ToolResult);
             Revalidate(observations);
             if (file.GetState() != initial || count != initial.Length || file.GetMode() != mode) throw Rejected(WorkspaceErrorCode.PathChanged);

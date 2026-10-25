@@ -92,7 +92,7 @@ public sealed class PlanChatTests
             var factory = new ScriptFactory(client); factory.Sessions.Add(session);
             await new ChatApplication(interaction, factory, new(), new(), "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default);
             Assert.IsTrue(client.Requests[^1].SystemInstruction.Contains("\"mode\":\"plan\",\"plan\":null}", StringComparison.Ordinal));
-            Assert.AreEqual(6, client.Requests[^1].Tools.Count);
+            Assert.AreEqual(9, client.Requests[^1].Tools.Count);
         }
     }
 

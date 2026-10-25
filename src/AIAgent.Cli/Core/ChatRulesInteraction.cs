@@ -38,6 +38,7 @@ internal sealed partial class ChatApplication
             ShowContextBlock("正在讀取專案規則。");
             _busyObserver = interaction.ObserveBusyInput(HandleSignal);
             var result = await operation(cancellation.Token);
+            if (result == "none") _reviews?.Invalidate(_rules!.Capture().Scope);
             if (result == "io_failure") RequestStop(StopReason.Failure);
             if (showResult && !Stopping) ShowContextBlock("規則操作：" + result + "；等待新指示。", result is not ("none" or "no_change"));
         }

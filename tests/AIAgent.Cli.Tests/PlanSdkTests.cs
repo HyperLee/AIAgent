@@ -29,8 +29,8 @@ public sealed class PlanSdkTests
         using var first = JsonDocument.Parse(handler.Bodies[0]); using var third = JsonDocument.Parse(handler.Bodies[2]); using var fourth = JsonDocument.Parse(handler.Bodies[3]);
         var planDefinitions = first.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
         var executeDefinitions = third.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
-        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "search_files", "search_text", "read_file_range", "submit_plan" }, Names(planDefinitions));
-        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "update_task", "run_dotnet_task" }, Names(executeDefinitions));
+        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "search_files", "search_text", "read_file_range", "submit_plan", "git_status", "git_diff", "read_git_file_range" }, Names(planDefinitions));
+        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range" }, Names(executeDefinitions));
         var schema = planDefinitions[5].GetProperty("parametersJsonSchema");
         Assert.IsFalse(schema.GetProperty("additionalProperties").GetBoolean());
         Assert.IsFalse(schema.GetProperty("properties").GetProperty("tasks").GetProperty("items").GetProperty("additionalProperties").GetBoolean());

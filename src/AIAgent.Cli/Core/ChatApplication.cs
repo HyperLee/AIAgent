@@ -1,3 +1,4 @@
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Processes;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
@@ -6,7 +7,7 @@ namespace AIAgent.Cli.Core;
 
 internal sealed partial class ChatApplication(IChatInteraction interaction, IChatRuntimeFactory runtimeFactory,
     ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory,
-    IControlledDotnetTasksFactory? controlledTasksFactory = null)
+    IControlledDotnetTasksFactory? controlledTasksFactory = null, IGitReadWorkspaceFactory? gitReadWorkspaceFactory = null)
 {
     private readonly object _gate = context.DecisionGate;
     private readonly CancellationTokenSource _stop = new();
@@ -76,10 +77,12 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command.Length == 0) continue;
                 if (await HandleRulesCommandAsync(text)) continue;
                 if (await HandleContextCommandAsync(text)) continue;
+                if (await HandleReviewCommandAsync(text)) continue;
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
                     ShowContextBlock("/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
+                        "/review [all|staged|unstaged|untracked]：目前 Scope 的唯讀模型審查；/review show：最近成功報告，零生成。差異可能送至 Gemini，消耗共用生成額度；使用原始 bytes 視角，排除範圍會明示，本回合不執行建置或測試。\n" +
                         "確認工作區及輸入 Key 後自動載入根規則，來源可能送至 Gemini；越過巢狀規則須先切 Scope，來源變動需重載及重新確認。\n" +
                         "/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
                         "/budget、/budget set turn N（1～20）、/budget set program N（1～1000）、/budget reset（恢復5／100，不清消耗）；/clear 不解除程序總額度。\n" +
@@ -149,7 +152,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         return _stopReason switch { StopReason.Failure => 1, StopReason.Cancelled => 130, _ => 0 };
     }
 
-    private async Task<bool> RunTurnAsync(LlmMessage? user, bool maintenance = false)
+    private async Task<bool> RunTurnAsync(LlmMessage? user, bool maintenance = false, GitSelection? reviewSelection = null)
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
         lock (_gate)
@@ -161,16 +164,34 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             _state = ChatState.Generating;
         }
         var keyHandoff = false;
+        IDisposable? reviewScope = null;
+        CodeReviewCoordinator? review = null;
         try
         {
             _busyObserver = interaction.ObserveBusyInput(HandleSignal);
+            if (reviewSelection is { } selection)
+            {
+                reviewScope = _executionPolicy!.EnterReview(); review = _reviews!; review.BeginAttempt();
+                SetState(ChatState.CapturingReview); ShowContextBlock("正在捕捉目前 Scope 的 Git 原始來源。");
+                var captureError = await _git!.CaptureAsync(cancellation.Token);
+                if (captureError != "none") { HandleReviewLocalFailure(captureError); return false; }
+                _git.Bind(selection);
+                if (_git.EligibleChangeCount == 0)
+                {
+                    var noChanges = !_git.Current!.Changes.Any(c => GitLimits.Selected(selection, c.Layer)) && _git.Exclusions.Count == 0;
+                    review.Failed(noChanges ? "no_changes" : "review_incomplete");
+                    ShowContextBlock((noChanges ? "no_changes：選定層在最後重驗時點沒有變更。" : "沒有可審查的文字差異；仍有未檢查範圍。") + "\nScope 限定、安全過濾、原始 bytes 視角；零新增生成。本回合未執行建置或測試。");
+                    return false;
+                }
+            }
             using var approvalBinding = workspaceFilesFactory.ApprovalBridge?.Bind(_session!, ConfirmChangeAsync);
             if (_processFatalStop) { RequestStop(StopReason.Failure); return false; }
             if (!maintenance && _processes is IProcessTurnLifecycle lifecycle) lifecycle.BeginTurn();
             var result = maintenance ? await _runner!.RunMaintenanceAsync(cancellation.Token) :
-                await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token);
+                await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token, review);
             var status = result.Status;
             var reason = result.StopReason;
+            var requiresContextReset = result.RequiresContextReset;
             var publishAnswer = false;
             if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
             {
@@ -180,8 +201,18 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
                 if (status == AgentTurnStatus.Completed && rulesError == "none" && result.RulesStamp is { } stamp && !_rules!.IsCurrent(stamp)) rulesError = "rules_changed";
                 if (rulesError != "none") { status = AgentTurnStatus.Stopped; reason = new ProjectRulesFlowException(rulesError).Reason; }
+                if (status == AgentTurnStatus.Completed && review is not null)
+                {
+                    var error = await _git!.ValidateAsync(cancellation.Token);
+                    if (error != "none")
+                    {
+                        review.Failed(error); status = AgentTurnStatus.Stopped;
+                        requiresContextReset |= error == "sensitive_content";
+                        reason = error == "sensitive_content" ? AgentStopReason.SensitiveData : error is "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit" ? new ProjectRulesFlowException(error).Reason : error is "process_unconfirmed" or "process_cleanup_failed" ? AgentStopReason.ProcessUnconfirmed : AgentStopReason.GitStopped;
+                    }
+                }
             }
-            if (result.RequiresContextReset)
+            if (requiresContextReset)
             {
                 ClearConversationState();
                 if (_rules?.Capture().Status == ProjectRulesStatus.Valid) _ = await _rules.ValidateAsync(CancellationToken.None);
@@ -192,32 +223,34 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
                     reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
-                else if (status == AgentTurnStatus.Completed && !result.RequiresContextReset && !maintenance)
+                else if (status == AgentTurnStatus.Completed && !requiresContextReset && !maintenance)
                 {
-                    context.CommitCompletedTurn(result.CompletedTurn);
-                    publishAnswer = true;
+                    if (review is not null && (review.Candidate is not { } candidate || !review.Publish(candidate)))
+                    { status = AgentTurnStatus.Stopped; reason = AgentStopReason.GitStopped; }
+                    else { context.CommitCompletedTurn(result.CompletedTurn); publishAnswer = true; }
                 }
-                if (result.StopReason == AgentStopReason.ProcessUnconfirmed || result.Operations.Any(o => o.ProcessCleanupFailed || o.ProcessSummary?.EndState == ProcessEndState.Unconfirmed))
+                if (reason == AgentStopReason.ProcessUnconfirmed || result.Operations.Any(o => o.ProcessCleanupFailed || o.ProcessSummary?.EndState == ProcessEndState.Unconfirmed))
                 {
                     _processFatalStop = true; _executionPolicy!.StopProcesses(); RequestStop(StopReason.Failure);
                 }
-                if (maintenance) LastMaintenance = result.RequiresContextReset ? null : new(result);
-                else LastOutcome = result.RequiresContextReset ? null : new(result, status, reason);
+                if (maintenance) LastMaintenance = requiresContextReset ? null : new(result);
+                else LastOutcome = requiresContextReset ? null : new(result, status, reason);
             }
             if (publishAnswer) interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Completed));
+            else if (review is not null && !requiresContextReset) review.Failed(review.LastAttemptError ?? (reason == AgentStopReason.ReviewInvalid ? "review_invalid" : reason == AgentStopReason.TurnCancelled ? "turn_cancelled" : "review_incomplete"));
             ShowTaskSummary();
             if (maintenance && (status == AgentTurnStatus.Completed || result.SafeText == "nothing_to_compact"))
                 ShowContextBlock(status == AgentTurnStatus.Completed ? "對話整理已完成；未釘選資訊可能遺失，等待下一則指示。" : "nothing_to_compact：至少需要三個原始完整回合。");
             else if (status != AgentTurnStatus.Completed)
             {
-                if (status != AgentTurnStatus.Cancelled && result.ModelStatus == LlmStatus.Truncated &&
-                    !result.RequiresContextReset && !string.IsNullOrWhiteSpace(result.SafeText))
+                if (review is null && status != AgentTurnStatus.Cancelled && result.ModelStatus == LlmStatus.Truncated &&
+                    !requiresContextReset && !string.IsNullOrWhiteSpace(result.SafeText))
                     interaction.Show(new(ChatEventKind.Answer, text: result.SafeText, status: LlmStatus.Truncated));
                 else interaction.Show(new(ChatEventKind.TurnEnded,
                     status: status == AgentTurnStatus.Cancelled ? LlmStatus.Cancelled : result.ModelStatus,
                     errorCode: result.ModelErrorCode, turnStatus: status, stopReason: reason));
             }
-            if (result.RequiresContextReset)
+            if (requiresContextReset)
                 interaction.Show(new(ChatEventKind.ContextCleared, text: "模型 Context、讀取快照、計畫、確認與證據已清除；模式保留，請開始新的對話。"));
             interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(),
                 generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage, purpose: maintenance ? GenerationPurpose.Compaction : GenerationPurpose.Conversation));
@@ -236,6 +269,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         }
         finally
         {
+            if (review is not null) _git?.Unbind();
+            reviewScope?.Dispose();
             try { StopBusyObserver(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             lock (_gate)
@@ -291,6 +326,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private (ToolRegistry Registry, AgentRunner Runner) CreateAgent(BootstrapSession session, ILlmClient client, IWorkspaceFiles workspace)
     {
+        _git = new((gitReadWorkspaceFactory ?? new GitReadWorkspaceFactory()).Create(session, workspace), session.Policy,
+            () => "g" + checked(++_gitSequence).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        _reviews = new(_git, session.Policy);
         var processFactory = controlledTasksFactory ?? new ControlledDotnetTasksFactory();
         _processes = processFactory.Create(session.Workspace, session.Policy, _executionPolicy!, workspace,
             ConfirmProcessAsync, text => interaction.Show(new(ChatEventKind.Ready, text: text)));
@@ -300,7 +338,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy),
             new SearchFilesTool(workspace, session.Policy), new SearchTextTool(workspace, session.Policy),
             new ReadFileRangeTool(workspace, session.Policy), new SubmitPlanTool(_plans!, session.Policy),
-            new UpdateTaskTool(_plans!, session.Policy), new RunDotnetTaskTool(_processes, session.Policy)], session.Policy, _executionPolicy);
+            new UpdateTaskTool(_plans!, session.Policy), new RunDotnetTaskTool(_processes, session.Policy),
+            new GitStatusTool(_git, session.Policy, _executionPolicy), new GitDiffTool(_git, session.Policy, _executionPolicy),
+            new ReadGitFileRangeTool(_git, session.Policy, _executionPolicy)], session.Policy, _executionPolicy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent,
             _generationBudget, _contexts, runtimeFactory.CreateContextInspector(client)));
     }
@@ -378,6 +418,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         lock (_gate)
         {
             _rules?.InvalidateCandidates();
+            _reviews?.Clear();
             if (_contexts is not null) _contexts.Clear(); else context.Clear();
             LastMaintenance = null;
             LastOutcome = null;
@@ -389,6 +430,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     private async Task DisposeWorkspaceAsync()
     {
         _runner = null; _registry = null;
+        var git = _git; _git = null; _reviews = null;
+        if (git is not null) await git.DisposeAsync();
         var processes = _processes; _processes = null;
         if (processes is not null) await processes.DisposeAsync();
         var workspace = _workspace;
@@ -415,7 +458,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.LoadingRules or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
+            else if (_state is ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

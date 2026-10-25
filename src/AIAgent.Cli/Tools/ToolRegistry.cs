@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Tools;
@@ -35,7 +36,7 @@ internal sealed class ToolRegistry
         capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite;
 
     internal bool IsTaskOperation(string name) => _capabilities.TryGetValue(name, out var capability) &&
-        capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite or ToolCapability.DotnetTask;
+        capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite or ToolCapability.DotnetTask or ToolCapability.GitRead;
     internal bool IsProcessTool(string name) => _capabilities.TryGetValue(name, out var capability) && capability == ToolCapability.DotnetTask;
 
     internal string? SafeName(string name) => _tools.ContainsKey(name) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
@@ -61,9 +62,12 @@ internal sealed class ToolRegistry
             return result.WithoutResponse();
         return result;
     }
-    internal ToolExecutionResult PreserveWriteKind(LlmToolCall call, ToolExecutionResult result) =>
-        result.WriteState is null && _tools.ContainsKey(call.Name) && call.Name is "create_file" or "replace_text"
-            ? EditToolProjection.NotApplied(result) : result;
+    internal ToolExecutionResult PreserveWriteKind(LlmToolCall call, ToolExecutionResult result)
+    {
+        if (_capabilities.TryGetValue(call.Name, out var capability) && capability == ToolCapability.GitRead && result.Status != ToolStatus.Success && result.Response is { } response && !response.TryGetProperty("data", out _))
+            return GitProjection.Result(result.Status, result.ErrorCode, _policy, result.GitSummary);
+        return result.WriteState is null && _tools.ContainsKey(call.Name) && call.Name is "create_file" or "replace_text" ? EditToolProjection.NotApplied(result) : result;
+    }
     public override string ToString() => "[ToolRegistry]";
 }
 

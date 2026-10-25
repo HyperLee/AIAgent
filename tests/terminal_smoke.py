@@ -169,6 +169,7 @@ def main():
     controlled_build_cases(["dotnet", str(args.host.resolve())])
     context_cases(["dotnet", str(args.host.resolve())])
     rules_cases(["dotnet", str(args.host.resolve())])
+    review_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -774,6 +775,47 @@ def rules_cases(host):
             print("RULE-AC-032-busy-" + control + ": PASS", flush=True)
         finally:
             os.close(write_fd); terminal.close()
+
+
+def review_cases(host):
+    workspace = Path(tempfile.mkdtemp(prefix="aiagent-review-pty-"))
+    for scenario in ("review", "review-empty"):
+        terminal = TerminalProcess(host + [scenario], workspace)
+        try:
+            terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+            terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/review staged\r")
+            terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/review show\r")
+            terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/exit\r"); terminal.finish(0)
+            check("本回合未執行建置或測試".encode() in terminal.output, "GIT-AC-020-local-verification-label")
+            if scenario == "review":
+                check("中文 空白.cs".encode() in terminal.output and b"1/1" in terminal.output, "GIT-AC-020-layer-delivery")
+            else:
+                check(b"no_changes" in terminal.output and "處理中".encode() not in terminal.output, "GIT-AC-020-zero-generation")
+            print("GIT-AC-020-" + scenario + ": PASS", flush=True)
+        finally:
+            terminal.close()
+    for phase in ("capture", "model", "tool"):
+        for control in ("CtrlC", "EOF"):
+            read_fd, write_fd = os.pipe()
+            terminal = TerminalProcess(host + ["review-" + phase + "-busy", str(read_fd)], workspace, (read_fd,))
+            os.close(read_fd)
+            try:
+                terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+                terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+                terminal.wait_for(CHAT_PROMPT); terminal.send(b"/review staged\r")
+                terminal.wait_for(("OFFLINE_REVIEW_" + phase.upper() + "_PAUSED").encode())
+                terminal.send(b"discarded-review-input\r" + (b"\x03" if control == "CtrlC" else b"\x04"))
+                terminal.wait_for(b"OFFLINE_REVIEW_CANCEL_OBSERVED")
+                check(terminal.process.poll() is None, "GIT-AC-020-wait-cleanup")
+                os.write(write_fd, b"x")
+                if control == "CtrlC":
+                    terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/exit\r")
+                terminal.finish(0)
+                check(b"discarded-review-input" not in terminal.output, "GIT-AC-020-discard-busy")
+                print("GIT-AC-020-" + phase + "-" + control + ": PASS", flush=True)
+            finally:
+                os.close(write_fd); terminal.close()
 
 
 if __name__ == "__main__":

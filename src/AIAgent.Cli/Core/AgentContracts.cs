@@ -1,3 +1,4 @@
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Processes;
 using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
@@ -10,7 +11,8 @@ internal enum AgentStopReason
     None, ModelOutcome, TurnCancelled, GenerationLimit, SensitiveData, InvalidProtocol,
     WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
     ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit,
-    ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed, RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit
+    ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed, RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit,
+    GitStopped, ReviewInvalid
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 
@@ -33,6 +35,7 @@ internal sealed class LocalToolOutcome(int generationNumber, int partIndex, stri
     internal bool CleanupFailed { get; } = result.CleanupFailed;
     internal bool ProcessCleanupFailed { get; } = result.ProcessCleanupFailed;
     internal ProcessExecutionSummary? ProcessSummary { get; } = result.ProcessSummary;
+    internal GitSummary? GitSummary { get; } = result.GitSummary;
     public override string ToString() => "[LocalToolOutcome]";
 }
 

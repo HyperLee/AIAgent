@@ -54,6 +54,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         WorkspaceOperationLease? lease;
         lock (_gate)
         {
+            if (_executionPolicy.Plans.ReviewTurnActive) return Task.FromResult(end(WorkspaceStatus.Rejected, WorkspaceErrorCode.ModeRestricted));
             if (_disposal is not null || _inFlight is not null) return Task.FromResult(end(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable));
             if (external.IsCancellationRequested) return Task.FromResult(end(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None));
             if (!_executionPolicy.WorkspaceOperations.TryAcquire(external, out lease))

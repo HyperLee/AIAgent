@@ -1,5 +1,14 @@
 # 10：受控建置與測試開發規格書
 
+## 第 13 份產品實作接續（2026-10-26）
+
+[第 13 份 Git 差異與程式碼審查](13-git-diff-and-code-review.md) 新增專用 GitRead 能力與三項唯讀工具，依 Plan／Execute 提供九／十二項；`/review` 為共用 Runner 與生成預算的新入口，該回合只允許三項 Git 工具。原十項工具的順序、輸入與成功資料保持，公開 LLM 契約與 SDK 訊息所有權保持。
+
+Git 來源、覆蓋與報告不建立修改快照、Plan Read requirements 或 Verified／Validation 事實；一般 Git 探索與正式審查分開。僅審目前 Scope 的安全子集；忽略來源的祖先 metadata 例外不放寬一般 `.git`、跨 Scope 讀取或搜尋遇新規則邊界整次拒絕的契約。規則失效、共同重設及已發生操作事實仍依原契約收尾。
+
+實作、當次分層證據與未驗證項目見 [README](../README.md#git-review-validation)。真人、真實 Gemini、第 10 份 test 不支援／未結原生驗收，以及第 07 份 Release／分發門檻分開保留。
+
+
 ## 第 12 份產品實作接續（2026-10-25）
 
 直接 project_path 新增目前 Scope／祖先規則檢查，核准預覽綁來源版本並在啟動前重驗。已確認的程序結果先記錄，規則收尾失敗不得改造成程序未確認；原生未確認與清理失敗仍維持較嚴格退出。固定 recipe、工作區根 cwd、私人 IPC、每回合兩次／300 秒、test 不支援及間接輸入限制均保留。

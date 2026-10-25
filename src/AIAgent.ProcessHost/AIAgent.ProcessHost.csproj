@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <DefineConstants>$(DefineConstants);GIT_PROCESS_HOST</DefineConstants>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -9,5 +10,10 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AIAgent.Cli.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../AIAgent.Cli/Git/GitProcessContracts.cs" Link="GitProcessContracts.cs" />
+    <Compile Include="../AIAgent.Cli/Git/GitProcessProtocol.cs" Link="GitProcessProtocol.cs" />
+    <Compile Include="../AIAgent.Cli/Git/GitInstallation.cs" Link="GitInstallation.cs" />
   </ItemGroup>
 </Project>

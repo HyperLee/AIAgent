@@ -27,7 +27,7 @@ public sealed class EditChatTests
         Assert.IsTrue(interaction.Approvals == 1 && handler.Calls == 2 && usage.Snapshot().DispatchedRequests == 2, "EDIT-AC-032-counts");
         using var body = JsonDocument.Parse(handler.Bodies[1]);
         var declarations = body.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations");
-        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "update_task", "run_dotnet_task" }, declarations.EnumerateArray().Select(d => d.GetProperty("name").GetString()).ToArray(), "EDIT-AC-003-seven-tools");
+        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range" }, declarations.EnumerateArray().Select(d => d.GetProperty("name").GetString()).ToArray(), "EDIT-AC-003-seven-tools");
         var contents = body.RootElement.GetProperty("contents");
         Assert.AreEqual("c2ln", contents[1].GetProperty("parts")[0].GetProperty("thoughtSignature").GetString(), "EDIT-AC-032-signature");
         var response = contents[2].GetProperty("parts")[0].GetProperty("functionResponse");

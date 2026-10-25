@@ -3,6 +3,7 @@ using System.Text.Json;
 using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Llm;
 using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
@@ -23,7 +24,8 @@ try
     using var result = await new Bootstrapper(new FixedSettings(), new WorkspaceResolver(new WorkspaceFileSystem()), bootstrap, bootstrap).StartAsync([], cancellation.Token);
     if (result.Status != BootstrapStatus.Ready) { bootstrap.ShowStatus(StatusMessages.For(result)); return result.ExitCode; }
     using var interaction = new ConsoleChatInteraction(terminal);
-    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate), scenario.StartsWith("build", StringComparison.Ordinal) ? new OfflineProcessFactory(scenario, gate) : null);
+    var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate), scenario.StartsWith("build", StringComparison.Ordinal) ? new OfflineProcessFactory(scenario, gate) : null,
+        scenario.StartsWith("review", StringComparison.Ordinal) ? new OfflineGitFactory(scenario, gate) : null);
     interrupts.RouteTo(chat.Interrupt);
     return await chat.RunAsync(result.TakeSession(), cancellation.Token);
 }
@@ -53,6 +55,17 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("review", StringComparison.Ordinal))
+            {
+                if (scenario == "review-model-busy")
+                {
+                    Console.WriteLine("OFFLINE_REVIEW_MODEL_PAUSED");
+                    using var observed = cancellationToken.Register(() => Console.WriteLine("OFFLINE_REVIEW_CANCEL_OBSERVED"));
+                    await gate!.ReadExactlyAsync(new byte[1], CancellationToken.None); cancellationToken.ThrowIfCancellationRequested();
+                }
+                if (_calls == 1) return PlanCalls(("git_diff", new { snapshot_id = "g1", layer = "staged", path = "中文 空白.cs" }));
+                return new(LlmStatus.Completed, LlmErrorCode.None, "{\"version\":1,\"snapshot_id\":\"g1\",\"selection\":\"staged\",\"summary\":\"離線審查\",\"findings\":[]}", [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("context", StringComparison.Ordinal) && request.Tools.Count == 0)
             {
                 if (scenario.EndsWith("busy", StringComparison.Ordinal))

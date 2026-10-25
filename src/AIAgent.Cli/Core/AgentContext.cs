@@ -19,10 +19,11 @@ internal sealed partial class AgentRunner
                 var appendix = registry.ExecutionPolicy.Plans.StateAppendix();
                 var memory = coordinator?.BuildMemoryAppendix() ?? "";
                 var rules = registry.ExecutionPolicy.Rules?.BuildAppendix() ?? throw new ProjectRulesFlowException("rules_unavailable");
+                var reviewAppendix = review?.Appendix() ?? "";
                 _requestStamp = coordinator?.Capture();
-                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix, ContentBoundary.ModelInput))
+                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix + reviewAppendix, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + rules + memory + appendix, _messages, registry.Definitions);
+                return new(instruction + rules + memory + appendix + reviewAppendix, _messages, registry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -41,6 +42,7 @@ internal sealed partial class AgentRunner
         {
             if (Cancelled) throw new OperationCanceledException(token);
             await RequireRulesAsync();
+            await RequireReviewAsync();
             var stamp = expectedStamp ?? _requestStamp;
             Measure(request, purpose, stamp);
             using var report = stamp is not null && inspector is ILlmContextTelemetry telemetry
@@ -50,6 +52,7 @@ internal sealed partial class AgentRunner
             if (budget.TakeNearLimitWarning()) notice = (notice is null ? "" : notice + "\n") + "程序生成額度已接近上限；請檢視 /budget。";
             Emit(new(AgentEventKind.Generating, _generations + 1, purpose: purpose, notice: notice));
             await RequireRulesAsync();
+            await RequireReviewAsync();
             if (!budget.TryBeginGeneration(purpose, maintenance, token, () => !Cancelled && (stamp is null || coordinator!.IsCurrent(stamp))))
             {
                 if (Cancelled) throw new OperationCanceledException(token);
@@ -59,6 +62,7 @@ internal sealed partial class AgentRunner
             _generations++;
             var result = await client.GenerateAsync(request, token);
             if (result is not null) { programUsage.Record(result); _usage.Record(result); }
+            if (purpose == GenerationPurpose.Conversation && result?.RequestDispatched == true) review?.Snapshots.MarkDispatched();
             return result!;
         }
         private AgentStopReason? LimitReason()

@@ -10,6 +10,7 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (OperatingSystem.IsMacOS() && args is ["--git-read" or "--git-probe"]) return await GitProcessHost.Run(args[0] == "--git-probe");
         if (!OperatingSystem.IsMacOS() || args.Length != 2 || !int.TryParse(args[0], out var inputFd) ||
             !int.TryParse(args[1], out var outputFd) || inputFd < 3 || outputFd < 3 || inputFd == outputFd) return 64;
         using var input = new AnonymousPipeClientStream(PipeDirection.In, args[0]);

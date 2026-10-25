@@ -27,7 +27,7 @@
 | FUT-03 | Plan 模式與任務清單 | 已實作；人工／服務待驗 | 讓修改前的方案、執行進度與未完成工作可確認。 |
 | FUT-04 | Context 與預算管理 | 已實作；分層驗收見README | 支援較長任務並控制容量與執行資源。 |
 | FUT-05 | [專案規則載入](specs/12-project-rules-loading.md) | 已實作；離線／PTY通過，真人／服務待驗 | 減少每次重述專案慣例與限制。 |
-| FUT-06 | [Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) | 規格完成；待實作 | 檢視整項工作的變更與潛在問題。 |
+| FUT-06 | [Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) | 產品實作已加入；分層驗收見 README | 提交前分層差異與有來源位置的唯讀審查。 |
 | FUT-07 | 終端機操作改善 | 接續，可獨立安排 | 改善日常輸入、編輯與進度辨識。 |
 | FUT-08 | 工作保存與續接 | 接續 | 讓跨次工作能保留目標、決策與待辦。 |
 | FUT-09 | 修改檢查點與復原 | 接續 | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
@@ -123,7 +123,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-06：Git 差異與程式碼審查
 
-狀態：已獨立定義 [第 13 份開發規格](specs/13-git-diff-and-code-review.md)，產品待實作；提交前分層差異、目前 Scope、專用唯讀 `/review` 及受控 Git 邊界以該份為準。[FUT-09 固定交接](specs/13-git-diff-and-code-review.md#fut-09-handoff)及[其他 FUT 交接](specs/13-git-diff-and-code-review.md#future-handoffs)供後續規格承接，不代表復原或其他能力已提供。
+狀態：已獨立定義 [第 13 份開發規格](specs/13-git-diff-and-code-review.md)，產品實作與當次分層證據見 [README](README.md#git-review-validation)；提交前分層差異、目前 Scope、專用唯讀 `/review` 及受控 Git 邊界以該份為準。[FUT-09 固定交接](specs/13-git-diff-and-code-review.md#fut-09-handoff)及[其他 FUT 交接](specs/13-git-diff-and-code-review.md#future-handoffs)供後續規格承接，不代表復原或其他能力已提供。
 
 - **目的與使用情境**：使用者能掌握整項任務改了哪些內容，並在自行提交前取得針對實際差異的問題檢查。
 - **初步開發範圍**：先提供 Git 狀態、差異、變更摘要及帶位置的審查結果；提交、推送、合併與遠端 PR 操作另行評估。

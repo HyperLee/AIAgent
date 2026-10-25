@@ -61,7 +61,7 @@ public sealed class BuildChatTests
         Assert.AreEqual(0, await new ChatApplication(interaction, new SdkChatFactory(handler), new(), usage,
             "instruction", new TestWorkspaceFilesFactory(), new TestProcessFactory()).RunAsync(WorkspaceFixtures.Session(), default));
         using var json = System.Text.Json.JsonDocument.Parse(handler.Bodies[1]);
-        Assert.AreEqual(9, json.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations").GetArrayLength());
+        Assert.AreEqual(12, json.RootElement.GetProperty("tools")[0].GetProperty("functionDeclarations").GetArrayLength());
         var contents = json.RootElement.GetProperty("contents");
         Assert.AreEqual("c2ln", contents[1].GetProperty("parts")[0].GetProperty("thoughtSignature").GetString());
         var response = contents[2].GetProperty("parts")[0].GetProperty("functionResponse");

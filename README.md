@@ -1,6 +1,6 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
@@ -22,10 +22,60 @@
 | 10：受控建置與測試 | 固定 Debug 任務、逐次程序核准、原生限制與 Validation v2。 | 建置已接入；測試不支援。 | 離線回歸、真實建置 fixtures 與 PTY 通過，範圍見下方紀錄。 | MTP 與部分原生邊界待驗，第 10 階段未完整驗收；BUILD-AC-036 真人、037 真實 Gemini 及第 07 份門檻另計。 |
 | 11：Context 與預算管理 | 摘要、原文備註、容量與可調生成額度。 | 已實作並接入正式聊天。 | 當次離線／PTY證據見下方紀錄。 | CTX-AC-034真人、035真實Gemini；其他階段未結門檻保留。 |
 | 12：專案規則載入 | 根目錄自動載入、明確 Scope、來源顯示、重驗與失效收尾。 | 已實作並接入正式聊天／工具／程序。 | 當次證據見第 12 份驗證紀錄。 | RULE-AC-033 真人、034 真實 Gemini；既有原生與發布門檻保留。 |
+| 13：Git 差異與程式碼審查 | 原始 bytes 三層快照、專用 GitRead、唯讀審查回合及本機報告驗證。 | 已實作並接入正式聊天。 | 分層證據見第 13 份驗證紀錄。 | GIT-AC-021 真人、022 真實 Gemini；既有原生／發布門檻保留。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，依目前模式提供其中六／九項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="git-review-validation"></a>
+
+## 第 13 份 Git 差異與程式碼審查
+
+依 [第 13 份規格](specs/13-git-diff-and-code-review.md) 提供提交前唯讀審查；工作區根本身須為普通 `.git` 目錄的非 bare repository，僅限已准入的 macOS／Git／runtime 布局。一般工作區工具仍禁止 `.git`。不提供 Git 寫入、任意分支比較、shell、復原或遠端 PR 操作。
+
+| 指令／工具 | 行為 |
+|---|---|
+| `/review`、`/review all` | 捕捉目前 Scope，分別審查 staged、unstaged、untracked 的安全文字差異。 |
+| `/review staged`、`/review unstaged`、`/review untracked` | 僅向模型提供指定層；同一路徑可同時存在 staged／unstaged 變更。 |
+| `/review show` | 顯示最近成功報告，作有界來源重驗並標示過時；零新增生成。 |
+| `git_status` | 一般回合捕捉新快照；審查回合只提供綁定快照的所選 manifest。 |
+| `git_diff` | 取得指定 path／layer 的完整本機單一 hunk 與原始來源 metadata。 |
+| `read_git_file_range` | 讀取該快照 old／new 的至多 200 行，包含 staged index／HEAD 來源，並非一律目前工作檔。 |
+
+差異採**原始 bytes 視角**，不執行 Git filters、textconv、EOL 轉換或 rename 猜測；線性完整 hunk 可能包含中間相同行，不是可套用 patch。BOM、mode、空檔、衝突、intent-to-add、非文字／不支援來源分別呈現，不假造行號或乾淨工作區。忽略規則僅適用 untracked，來源限根至候選祖先 `.gitignore` 與 `.git/info/exclude`，不讀全域 excludes；新巢狀規則與 Scope 外正文不讀取，隱藏路徑及數量不顯示。
+
+Review 共用原 Runner、client、生成額度及 Context 整理；只允許三項 GitRead 工具，混入寫入、建置、檔案或計畫工具時整批拒絕。來源只有確實隨安全請求派送後才列為提供；局部原文不抵完整差異。模型最終 JSON 經欄位、位置、敏感、容量與來源重驗，再共同發布報告及成功歷史；失敗不自動修 JSON 或重捕捉。零 finding 不表示無 bug／安全／測試通過，報告固定明示本回合未執行建置或測試。
+
+最多保存一份 raw 快照及最近成功報告，均只在記憶體；Git 觀察不建立修改基準或 Plan 完成證據。新候選、HEAD／index／工作檔 bytes／mode、忽略來源、規則或世代改變即停止；show 的歷史報告另持無 raw bytes 的驗證 manifest。clear、換 Key、切 Scope、安全重設及釋放依各自契約丟棄或標過時；id 不重用，生成不退款。
+
+原生執行使用固定 recipe、最小環境及每次探針，拒絕持久檔案寫入、網路、helper 與工作區外使用者資料。使用者明確批准 **僅 `/dev/null` 的 `file-write-data` 例外**，供 Git 啟動所需 O_RDWR null-sink；不開放建立、刪除、重新命名或 .NET 產物權限。`check-ignore` 的 NUL stdin 加固定 `./` 前綴以保留冒號／glob 字面檔名語意，該 recipe 不帶不相容的 literal-pathspecs 旗標，其餘 recipe 保持。能力不足拒絕啟動，無裸跑 fallback。
+
+上限為單側 131072 raw bytes、保留來源含忽略資料 8388608 bytes、8192 觀察、200 不同變更路徑、根起深度32；工具／報告／顯示65536、審查附錄32768 bytes。生成預算與完整 SDK body 限制不提高。單命令30秒、捕捉／重驗60秒均含收尾，預留停止時間；未確認程序或收尾失敗仍嚴格停止並退出1。
+
+### 第 13 份驗證紀錄（2026-10-26）
+
+開發基線為乾淨 `main@9f1c9d9`；目前產品、測試與文件增量未提交。環境 macOS 26.7.1 arm64、.NET SDK 10.0.100；全部自動測試使用合成 Key、替身或真實 SDK 配假 HTTP，沒有真實 Gemini 呼叫。真實 Git fixtures 的準備提交與修改不計為產品執行；產品呼叫前後的工作檔及 Git metadata bytes 另行比較，fixtures 保留。
+
+| 命令／檢查 | 本次實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原完成，沒有新增套件。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI、ProcessHost、TerminalHost 及測試成功，0警告／0錯誤；格式修正後另行重建通過。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；714通過、0失敗、0略過，包含既有627及新增87個執行案例；最終完整回歸耗時1分19.863秒。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33通過。 |
+| `python3 -B tests/terminal_smoke.py` | 0；86組通過，包含新增8組 GIT-AC-020：有效／無文字審查，以及捕捉、模型等待、工具執行各自的Ctrl+C／EOF、預輸入丟棄與終端機恢復。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；包含 `/review` 說明，help 零 Key／client／來源 I/O 回歸保持。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`、變更測試／ProcessHost whitespace verify | 0；產品與變更檔格式通過。完整測試專案格式檢查另發現既有未修改的LF檔案，未擴大改寫。 |
+| CRLF／C#無檔尾換行、文件／JSON／連結與差異查核 | 0；54份變更C#、14份Markdown、234個本機連結、45個JSON區塊、程式碼圍欄、`git diff --check` 及新檔 no-index 空白查核通過。 |
+| `python3 -B scripts/check_sensitive_content.py staged` | 0；目前原工作區index為227檔／0 findings；另將本次所有254份來源檔複製至獨立保留fixture，僅在fixture建立index，掃描254檔／0 findings。前者不代表未暫存增量已受掃描，後者涵蓋本次增量；兩者均非Release產物掃描。 |
+
+離線需求回歸涵蓋三層互抵、unborn／detached HEAD、ITA、SHA-256、Scope／新規則邊界、忽略否定與協定錯誤、完整候選集合／raw指紋變動、非文字來源、精確工具輸入及禁止工具整批零執行。容量案例包含單側128KiB、保留來源8MiB、8192觀察、200路徑、深度32、200行、32KiB附錄、64KiB結果／顯示及實際SDK body；各自測試上限及超限。真實SDK配假HTTP另核對三工具往返、原生訊息／thought signature配對、實際派送帳本與finding發布，沒有真實服務請求。
+
+真實Git／原生部分在本機arm64執行，GitAdapterTests／GitNativeTests的19個案例已納入上述714個完整回歸；其中8個真實原生案例覆蓋能力探針、repository前後bytes不變、binary／輸出超限、外部config include拒絕、三層、ITA／忽略否定、SHA-256及活躍Git取消／逾時。後兩項使用保留的loose-object FIFO使真實Git阻塞，核對自有程序身分及退出；逾時包含收尾少於30秒，取消收尾少於5秒。外層測試程序須允許初始化macOS sandbox，產品Git子程序仍使用專用限制；假程序／時鐘不抵上述原生證據。
+
+獨立程式碼審查提出三項P2：直接Runner入口限制、最終敏感來源重設、未變blob的記憶體保留；均先重現失敗再修正並納入完整回歸，沒有宣稱修正後已作第二次獨立審查。後續亦補上raw blob／非文字指紋、捕捉總期限分類、忽略回覆解析，以及原生啟動前工作區／固定參數／環境值的當前Key碰撞檢查。
+
+尚未強制重現真實子程序的描述管線故障或OS無法確認收尾；其時間預算由阻塞stream及可控時鐘回歸驗證。其他OS／x64布局、真人 GIT-AC-021、真實 Gemini GIT-AC-022未驗證；第10份MTP／原生待辦、第07份BUD-S003 Release與人工分發門檻保持。沒有提交、推送或發布，沒有實作FUT-09。
+
 <a id="project-rules-validation"></a>
 
 ## 第 12 份專案規則載入

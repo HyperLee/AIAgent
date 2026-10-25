@@ -82,7 +82,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         {
             if (_policy is null || !Current) return new("unavailable");
             if (token.IsCancellationRequested) return new("turn_cancelled");
-            if (_mode != AgentMode.Plan) return new("mode_restricted");
+            if (ReviewTurnActive || _mode != AgentMode.Plan) return new("mode_restricted");
             if (!PlanArguments.Submit(arguments, _policy, out var expected, out var objective, out var tasks, out var error)) return new(error);
             if (expected != (_plan?.Revision ?? 0)) return new("plan_revision_conflict");
             var newPlan = _plan is null || _plan.Objective != objective;
@@ -127,7 +127,7 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         {
             if (_policy is null || !Current) return new("unavailable");
             if (token.IsCancellationRequested) return new("turn_cancelled");
-            if (_mode != AgentMode.Execute) return new("mode_restricted");
+            if (ReviewTurnActive || _mode != AgentMode.Execute) return new("mode_restricted");
             if (!PlanArguments.Update(arguments, _policy, out var planId, out var revision, out var taskId, out var state, out var summary, out var error)) return new(error);
             if (_plan is null) return new("plan_required");
             if (_plan.PlanId != planId || _plan.Revision != revision) return new("plan_revision_conflict");
@@ -389,7 +389,8 @@ internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGat
         }
     }
 
-    internal void BlockInProgress(string reason) { lock (_gate) { if (Current && _policy is not null) BlockCore(reason); } }
+    internal bool ReviewTurnActive { get; set; }
+    internal void BlockInProgress(string reason) { lock (_gate) { if (Current && _policy is not null && (!ReviewTurnActive || reason is "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit")) BlockCore(reason); } }
     private void BlockCore(string reason)
     {
         if (_plan is null) return;
@@ -433,12 +434,20 @@ internal sealed class AgentExecutionPolicy(PlanStore plans)
         get => Plans.ProcessCapabilityAvailable;
         set => Plans.ProcessCapabilityAvailable = value;
     }
-    internal bool Allows(ToolCapability capability) => !ProcessSessionStopped && Plans.IsExecutionCurrent && capability switch
+    internal IDisposable EnterReview()
     {
-        ToolCapability.WorkspaceRead => true,
-        ToolCapability.WorkspaceWrite or ToolCapability.UpdateTask or ToolCapability.DotnetTask => Mode == AgentMode.Execute,
-        ToolCapability.SubmitPlan => Mode == AgentMode.Plan,
-        _ => false
-    };
+        if (Plans.ReviewTurnActive) throw new InvalidOperationException("審查已在進行");
+        Plans.ReviewTurnActive = true; return new ReviewLease(Plans);
+    }
+    private sealed class ReviewLease(PlanStore plans) : IDisposable
+    { public void Dispose() => plans.ReviewTurnActive = false; }
+    internal bool Allows(ToolCapability capability) => !ProcessSessionStopped && Plans.IsExecutionCurrent &&
+        (!Plans.ReviewTurnActive || capability == ToolCapability.GitRead) && capability switch
+        {
+            ToolCapability.WorkspaceRead or ToolCapability.GitRead => true,
+            ToolCapability.WorkspaceWrite or ToolCapability.UpdateTask or ToolCapability.DotnetTask => Mode == AgentMode.Execute,
+            ToolCapability.SubmitPlan => Mode == AgentMode.Plan,
+            _ => false
+        };
     public override string ToString() => "[AgentExecutionPolicy]";
 }

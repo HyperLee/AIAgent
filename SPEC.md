@@ -1,5 +1,12 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 13 份適用範圍補充（2026-10-26）
+
+[第 13 份 Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) 接續第 5、8～15 章：專用 GitRead 安全讀取 HEAD／index／工作檔原始來源，保留 staged、unstaged、untracked 分層；`/review` 由既有 Runner 進行唯讀模型審查，來源提供、位置與覆蓋由本機驗證。三項 Git 工具追加至原工具之後；一般 Plan／Execute 為九／十二項，Review 僅三項。
+
+不開放一般 `.git`、shell 或 Git 寫入；忽略祖先 metadata 僅供專用判斷。Git 觀察與模型報告不抵修改基準、核准或本機任務驗證，不執行建置／測試。原生 Git 只允許使用者明確批准的 `/dev/null` 資料寫入例外；所有持久寫入及網路仍禁止。實作與分層證據見 [README](README.md#git-review-validation)，既有 Release、test 不支援與真人／服務門檻保留。
+
+
 > 文件版本：0.2｜建立日期：2026-10-19｜修訂日期：2026-10-19｜文件狀態：開發基線
 >
 > 本文件描述預計開發的功能與驗收方式。目前交付物為本規格書與 `.gitignore` 排除設定，產品程式、工具與測試均尚未建立。執行期遮蔽、敏感資訊檢查與提交阻擋是後續開發要求，本次未加入程式或 Git hooks。後續依第 16 章逐份展開子規格，再進行開發。
@@ -787,6 +794,8 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/09-plan-mode-and-task-list.md` | 5、8～15 的後續擴充 | Plan／Execute、本機版本確認、四種任務狀態、必要操作與完成證據、容量及安全收尾；FUT-02／04 分別交付。 |
 | `specs/10-controlled-build-and-test.md` | 5、8～15 的後續擴充 | 固定 Debug 建置／MTP 測試、逐次核准、原生隔離與監督、Validation v2、輸出與執行限制；驗收分層。 |
 | `specs/11-context-and-budget-management.md` | 5、8～10、14～15 的後續擴充 | 有界摘要、原文備註、容量資訊、共用回合／程序生成額度、原子發布與安全停止；分層驗收見README。 |
+| `specs/12-project-rules-loading.md` | 5、6、8～15 的後續擴充 | 根 AGENTS.md、自訂 Scope、來源／規則世代、共用租約與失效收尾；證據見 README。 |
+| `specs/13-git-diff-and-code-review.md` | 5、8～15 的後續擴充 | 專用唯讀 Git、三層原始來源快照、受限審查回合、位置／覆蓋驗證與固定交接；證據見 README。 |
 
 ### 16.3 主要流程
 

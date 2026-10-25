@@ -37,7 +37,7 @@ public sealed class PlanAcceptanceTests
         var factory = new ScriptFactory(client); factory.Sessions.Add(session);
         await new ChatApplication(interaction, factory, new(), new(),
             "test instruction", new TestWorkspaceFilesFactory()).RunAsync(session, default);
-        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "search_files", "search_text", "read_file_range", "submit_plan" },
+        CollectionAssert.AreEqual(new[] { "list_files", "read_file", "search_files", "search_text", "read_file_range", "submit_plan", "git_status", "git_diff", "read_git_file_range" },
             client.Requests.Single().Tools.Select(t => t.Name).ToArray());
         Assert.IsTrue(client.Requests.Single().SystemInstruction.Contains("\"mode\":\"plan\"", StringComparison.Ordinal));
     }

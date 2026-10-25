@@ -10,7 +10,7 @@ internal enum PlanTaskKind { Analysis, Read, Write, Validation }
 internal enum PlanTaskState { Pending, InProgress, Completed, Blocked }
 internal enum TaskCompletionBasis { None, LocalOperation, ModelAssessment }
 internal enum PlanApprovalDecision { Approved, Declined, Cancelled, EndOfInput, Unavailable }
-internal enum ToolCapability { Unspecified, WorkspaceRead, WorkspaceWrite, SubmitPlan, UpdateTask, DotnetTask }
+internal enum ToolCapability { Unspecified, WorkspaceRead, WorkspaceWrite, SubmitPlan, UpdateTask, DotnetTask, GitRead }
 
 internal static class PlanLimits
 {

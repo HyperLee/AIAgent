@@ -71,7 +71,7 @@ public sealed partial class GeminiClient
 internal static class GeminiContextTools
 {
     private static readonly HashSet<string> Registered = new(StringComparer.Ordinal)
-    { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task" };
+    { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range" };
     internal static JsonElement? Project(LlmToolResult result)
     {
         if (!Registered.Contains(result.Name)) return null;
@@ -90,6 +90,8 @@ internal static class GeminiContextTools
             if (result.Name is not ("submit_plan" or "update_task") && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
             {
                 Copy(data, "path"); Copy(data, "byte_count"); Copy(data, "truncated");
+                if (result.Name is "git_status" or "git_diff" or "read_git_file_range")
+                    foreach (var field in new[] { "snapshot_id", "selection", "layer", "side", "content_byte_count", "total_lines", "has_more" }) Copy(data, field);
                 if (data.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array) w.WriteNumber("returned_entries", entries.GetArrayLength());
                 if (result.Name == "run_dotnet_task")
                 {
