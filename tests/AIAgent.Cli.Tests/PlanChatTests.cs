@@ -124,6 +124,8 @@ internal sealed class PlanChatInteraction : IChatInteraction
     public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken token) => Inner.ReadKeyAsync(token);
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> onSignal) => Inner.ObserveBusyInput(onSignal);
     public void SetPolicy(ISensitiveDataPolicy policy) => Inner.SetPolicy(policy);
+    public void RememberAcceptedInput(string text) => Inner.RememberAcceptedInput(text);
+    public void ClearInputState() => Inner.ClearInputState();
     public void Show(ChatEvent message) => Inner.Show(message);
     public ValueTask<PlanApprovalDecision> ConfirmPlanAsync(PlanApprovalPreview preview, CancellationToken token)
     { PlanApprovals++; return OnPlan(preview, token); }

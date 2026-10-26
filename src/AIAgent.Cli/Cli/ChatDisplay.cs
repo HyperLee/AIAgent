@@ -28,7 +28,7 @@ internal static class ChatDisplay
     {
         ChatEventKind.UserMessage => "使用者：" + message.Text + "\n",
         ChatEventKind.Answer => (message.Status == LlmStatus.Truncated ? "回答未完整產生\n" : "") + "AI：" + message.Text + "\n",
-        ChatEventKind.Generating => (message.Text ?? "處理中；Ctrl+C 取消本回合，Ctrl+D 結束。") + "\n",
+        ChatEventKind.Generating => (message.Text ?? (message.Purpose == GenerationPurpose.Compaction ? "[摘要維護] 正在整理對話；Ctrl+C 取消本回合，Ctrl+D 結束。" : "[模型生成] 處理中；Ctrl+C 取消本回合，Ctrl+D 結束。")) + "\n",
         ChatEventKind.AgentProgress => Operation(message.Agent!) + "\n",
         ChatEventKind.Usage => Usage(message),
         ChatEventKind.TurnEnded => TurnText(message) + "\n",
@@ -55,8 +55,10 @@ internal static class ChatDisplay
 
     private static string Operation(AgentEvent message)
     {
-        var name = message.ToolName ?? "未知工具";
-        if (message.Kind == AgentEventKind.ExecutingTool) return "[工具] " + name + "：開始處理";
+        var name = message.ToolName is "list_files" or "read_file" or "create_file" or "replace_text" or
+            "search_files" or "search_text" or "read_file_range" or "submit_plan" or "update_task" or
+            "run_dotnet_task" or "git_status" or "git_diff" or "read_git_file_range" ? message.ToolName : "未知工具";
+        if (message.Kind == AgentEventKind.ExecutingTool) return "[工具開始] " + name + "：開始處理";
         var result = message.Operation!;
         if (result.ProcessSummary is { } process)
             return "[本機程序] " + PlanProjection.Name(process.Task) + " " + FileChangePreviewBuilder.EscapePath(process.ProjectPath) +
@@ -66,6 +68,9 @@ internal static class ChatDisplay
                 (process.Tests is { } tests ? "；執行 " + Number(tests.Executed) + "，通過 " + Number(tests.Passed) + "，失敗 " + Number(tests.Failed) + "，略過 " + Number(tests.Skipped) : "") +
                 (process.StdoutTruncated || process.StderrTruncated ? "；輸出節錄已截斷" : "") +
                 (process.CleanupConfirmed ? "；支援群組、已知後代與管線收尾已確認（不保證所有刻意逃離程序）" : "；收尾未確認；需人工處理，不能確認沒有殘留程序");
+        if (result.GitSummary is { } git)
+            return "[Git 觀察] " + name + "；選取 " + Git.GitLimits.Name(git.Selection) + "；" + result.Status + "／" + result.ErrorCode +
+                "；" + git.Observation + "；安全變更 " + Number(git.EligibleChangeCount) + "；此觀察不建立完成證據";
         if (result.WriteState == FileWriteState.Verified)
             return "[本機結果] 已寫入並核對：" + FileChangePreviewBuilder.EscapePath(result.VerifiedPath!) + "，" + Number(result.VerifiedByteCount!.Value) + " bytes" +
                 (result.CleanupFailed ? "；內部暫存清理未完成；需人工處理" : "");

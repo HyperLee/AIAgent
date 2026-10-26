@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 14 份適用範圍補充（2026-10-26）
+
+[14：終端機操作改善](specs/14-terminal-interaction.md)擴充一般輸入的隱藏多行編輯、文字元素游標、F2安全預覽、F3明確貼上、F4換行與有界程序內歷史。Key、認證選單與三種核准保持原隱藏單行；共同清除、認證及退出納入CLI輸入狀態，不增加模型Context、工具、設定或額度。多行本機指令在所有解析器之前整筆拒絕，單行字面餘文與敏感例外保持。
+
+進度只投影現有事件與本機事實；歷史不是核准、檔案基準或完成證據。實作、當次分層驗證與未驗項目見[README](README.md#terminal-interaction-validation)。下列初版歷史敘述保留；真人／真實Gemini、受控test與原生／發布門檻分列，沒有宣稱整體發布完成。後續FUT承接第14份TERM-HO表。
+
 ## 第 13 份適用範圍補充（2026-10-26）
 
 [第 13 份 Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) 接續第 5、8～15 章：專用 GitRead 安全讀取 HEAD／index／工作檔原始來源，保留 staged、unstaged、untracked 分層；`/review` 由既有 Runner 進行唯讀模型審查，來源提供、位置與覆蓋由本機驗證。三項 Git 工具追加至原工具之後；一般 Plan／Execute 為九／十二項，Review 僅三項。
@@ -796,6 +802,7 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/11-context-and-budget-management.md` | 5、8～10、14～15 的後續擴充 | 有界摘要、原文備註、容量資訊、共用回合／程序生成額度、原子發布與安全停止；分層驗收見README。 |
 | `specs/12-project-rules-loading.md` | 5、6、8～15 的後續擴充 | 根 AGENTS.md、自訂 Scope、來源／規則世代、共用租約與失效收尾；證據見 README。 |
 | `specs/13-git-diff-and-code-review.md` | 5、8～15 的後續擴充 | 專用唯讀 Git、三層原始來源快照、受限審查回合、位置／覆蓋驗證與固定交接；證據見 README。 |
+| `specs/14-terminal-interaction.md` | 5、6、8～15 的後續擴充 | 隱藏多行／文字元素編輯、完整安全預覽、明確貼上、程序內歷史、唯一讀取者交接與事實進度；分層證據見README。 |
 
 ### 16.3 主要流程
 

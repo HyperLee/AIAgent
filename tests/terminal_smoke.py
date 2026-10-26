@@ -21,6 +21,7 @@ KEY_PROMPT = "請輸入 API Key（不回顯）：".encode()
 CONFIRM = "使用此工作區？[y/N]".encode()
 READY = "聊天已就緒".encode()
 CHAT_PROMPT = "你> ".encode()
+HOST_PROMPT = b"OFFLINE_INPUT_READY"
 
 
 class CaseFailure(Exception):
@@ -92,11 +93,9 @@ def run_case(command, case, actions, expected_exit=0, ready=False):
             terminal.send(data)
         if ready:
             terminal.wait_for(CHAT_PROMPT)
-            terminal.send(b"/help\r")
-            terminal.wait_for(CHAT_PROMPT, 2)
-            terminal.send(b"/clear\r")
-            terminal.wait_for(CHAT_PROMPT, 3)
-            terminal.send(b"/exit\r")
+            # Startup cases exercise bootstrap; EOF is preserved across input activation.
+            # Local commands are checked below against explicit offline-host activation gates.
+            terminal.send(b"\x04")
         terminal.finish(expected_exit)
         check((READY in terminal.output) == ready, case)
         check(os.listdir(workspace) == [], "PTY-no-workspace-writes")
@@ -170,6 +169,7 @@ def main():
     context_cases(["dotnet", str(args.host.resolve())])
     rules_cases(["dotnet", str(args.host.resolve())])
     review_cases(["dotnet", str(args.host.resolve())])
+    terminal_editor_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -182,7 +182,7 @@ def chat_cases(host):
         terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT)
         terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT)
+        terminal.wait_for(HOST_PROMPT)
         return terminal
 
     terminal = start("text")
@@ -193,16 +193,16 @@ def chat_cases(host):
             terminal.pump()
         check("安全中文".encode() not in terminal.output[before:], "CLI-AC-029-hidden-before-enter")
         terminal.send(b"\x7f\x7f" + "字\r\n".encode())
-        terminal.wait_for(CHAT_PROMPT, 2)
+        terminal.wait_for(HOST_PROMPT, 2)
         check("使用者： 安全中文字".encode() in terminal.output, "CLI-AC-032-unicode-delete")
         terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT, 3)
+        terminal.wait_for(HOST_PROMPT, 3)
         check("已阻擋本次傳送".encode() in terminal.output, "CLI-AC-029-sensitive-input")
         terminal.send(b"x" * 16385 + b"\x7f\r")
-        terminal.wait_for(CHAT_PROMPT, 4)
+        terminal.wait_for(HOST_PROMPT, 4)
         check("輸入無效或超過 16384".encode() in terminal.output, "CLI-AC-032-overflow")
         terminal.send(b"control\r")
-        terminal.wait_for(CHAT_PROMPT, 5)
+        terminal.wait_for(HOST_PROMPT, 5)
         check(b"\\u001B]0;blocked\\u0007" in terminal.output, "CLI-AC-032-control-output")
         check(b"\x1b]0;blocked\x07" not in terminal.output, "CLI-AC-032-no-raw-control-output")
         terminal.send(b"/exit\r")
@@ -214,13 +214,13 @@ def chat_cases(host):
     terminal = start("tools")
     try:
         terminal.send(b"read\r")
-        terminal.wait_for(CHAT_PROMPT, 2)
+        terminal.wait_for(HOST_PROMPT, 2)
         check("[本機結果] 已讀取：notes.md，6 bytes".encode() in terminal.output, "LOOP-AC-037-real-read")
         check("生成 2 次；傳輸嘗試 2 次".encode() in terminal.output, "LOOP-AC-037-two-generations")
         terminal.send(b"/clear\r")
-        terminal.wait_for(CHAT_PROMPT, 3)
+        terminal.wait_for(HOST_PROMPT, 3)
         terminal.send(b"read\r")
-        terminal.wait_for(CHAT_PROMPT, 4)
+        terminal.wait_for(HOST_PROMPT, 4)
         check(terminal.output.count("[本機結果] 已讀取".encode()) == 2, "LOOP-AC-037-clear-reread")
         terminal.send(b"/exit\r")
         terminal.finish(0)
@@ -234,7 +234,7 @@ def chat_cases(host):
         os.close(read_fd)
         try:
             terminal.send(b"read\r")
-            terminal.wait_for("[工具] read_file".encode())
+            terminal.wait_for("[工具開始] read_file".encode())
             terminal.wait_for(b"OFFLINE_TOOL_WAITING")
             terminal.send(b"DISCARDED_TOOL_TEXT/exit")
             if external:
@@ -246,10 +246,10 @@ def chat_cases(host):
             if control == b"\x04":
                 terminal.finish(expected)
             else:
-                terminal.wait_for(CHAT_PROMPT, 2)
+                terminal.wait_for(HOST_PROMPT, 2)
                 check(b"DISCARDED_TOOL_TEXT" not in terminal.output, "LOOP-AC-037-tool-no-queue")
                 terminal.send(b"next\r")
-                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.wait_for(HOST_PROMPT, 3)
                 terminal.send(b"/exit\r")
                 terminal.finish(expected)
             print("LOOP-AC-037-tool-cancel-" + ("SIGINT" if external else "EOF" if control == b"\x04" else "CtrlC") + ": PASS", flush=True)
@@ -267,10 +267,10 @@ def chat_cases(host):
                 os.kill(terminal.process.pid, signal.SIGINT)
             else:
                 terminal.send(b"\x03\x03")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT, 2)
             check(b"DISCARDED_BUSY_TEXT" not in terminal.output, "CLI-AC-030-no-queue")
             terminal.send(b"next\r")
-            terminal.wait_for(CHAT_PROMPT, 3)
+            terminal.wait_for(HOST_PROMPT, 3)
             if external:
                 os.kill(terminal.process.pid, signal.SIGINT)
             else:
@@ -301,11 +301,13 @@ def chat_cases(host):
             terminal.wait_for("處理中".encode())
             terminal.send(b"yes\rFAKE_BUSY_KEY_ONLY\r")
             os.write(write_fd, b"1")
-            terminal.wait_for("重新輸入 Key？[y/N]".encode())
-            terminal.send(b"invalid\ryes\r")
-            terminal.wait_for(KEY_PROMPT, 2)
+            terminal.wait_for(b"OFFLINE_KEY_CHOICE_READY")
+            terminal.send(b"invalid\r")
+            terminal.wait_for(b"OFFLINE_KEY_CHOICE_READY", 2)
+            terminal.send(b"yes\r")
+            terminal.wait_for(b"OFFLINE_KEY_READY")
             terminal.send(b"FAKE_NEW_KEY_ONLY\r")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT, 2)
             check(b"FAKE_NEW_KEY_ONLY" not in terminal.output and b"FAKE_BUSY_KEY_ONLY" not in terminal.output, "CLI-AC-031-no-key-echo")
             check(terminal.output.count("處理中".encode()) == (2 if scenario == "tool-auth" else 1), "CLI-AC-031-no-validation-generation")
             if scenario == "tool-auth":
@@ -325,10 +327,10 @@ def chat_cases(host):
             terminal.send(b"question\r")
             terminal.wait_for("處理中".encode())
             os.write(write_fd, b"1")
-            terminal.wait_for("重新輸入 Key？[y/N]".encode())
+            terminal.wait_for(b"OFFLINE_KEY_CHOICE_READY")
             if key_entry:
                 terminal.send(b"yes\r\n")
-                terminal.wait_for(KEY_PROMPT, 2)
+                terminal.wait_for(b"OFFLINE_KEY_READY")
                 terminal.send(b"FAKE_PARTIAL_ONLY")
             terminal.send(control)
             terminal.finish(expected)
@@ -350,7 +352,7 @@ def edit_cases(host):
         terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT)
         terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT)
+        terminal.wait_for(HOST_PROMPT)
         return terminal, Path(workspace)
 
     for choice, applied in ((b"y\r\n", True), (b" YeS \r", True), (b"n\r", False), (b"\r", False)):
@@ -359,14 +361,14 @@ def edit_cases(host):
             terminal.send(b"create\r")
             terminal.wait_for(ready)
             terminal.send(choice)
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT, 2)
             target = workspace / "new.md"
             check(target.exists() == applied, "EDIT-AC-042-approval-state")
             if applied:
                 check(target.read_bytes() == b"Hello\n", "EDIT-AC-042-exact-bytes")
                 check("已寫入並核對".encode() in terminal.output, "EDIT-AC-042-verified")
             terminal.send(b"/clear\r")
-            terminal.wait_for(CHAT_PROMPT, 3)
+            terminal.wait_for(HOST_PROMPT, 3)
             check(target.exists() == applied, "EDIT-AC-042-clear-no-rollback")
             terminal.send(b"/exit\r")
             terminal.finish(0)
@@ -381,7 +383,7 @@ def edit_cases(host):
         terminal.send(b"/clear\r")
         terminal.wait_for(ready, 2)
         terminal.send(b"yes\r")
-        terminal.wait_for(CHAT_PROMPT, 2)
+        terminal.wait_for(HOST_PROMPT, 2)
         check((workspace / "new.md").read_bytes() == b"Hello\n", "EDIT-AC-042-invalid-retry")
         terminal.send(b"/exit\r")
         terminal.finish(0)
@@ -399,9 +401,9 @@ def edit_cases(host):
             else:
                 terminal.send(b"\x04\x03" if control == "EOF-CtrlC" else b"\x04" if control == "EOF" else b"\x03")
             if control not in ("EOF", "EOF-CtrlC"):
-                terminal.wait_for(CHAT_PROMPT, 2)
+                terminal.wait_for(HOST_PROMPT, 2)
                 terminal.send(b"next\r")
-                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.wait_for(HOST_PROMPT, 3)
                 terminal.send(b"/exit\r")
             terminal.finish(0)
             check(list(workspace.iterdir()) == [], "EDIT-AC-042-cancel-no-write")
@@ -420,7 +422,7 @@ def edit_cases(host):
             os.write(write_fd, b"1")
             terminal.wait_for(ready)
             terminal.send(b"n\r")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT, 2)
             check(list(workspace.iterdir()) == [], "EDIT-AC-042-discard-early-yes")
             terminal.send(b"/exit\r")
             terminal.finish(0)
@@ -441,7 +443,7 @@ def edit_cases(host):
             terminal.send(b"\x03")
             terminal.wait_for(b"OFFLINE_EDIT_CANCEL_OBSERVED")
             os.write(write_fd, b"1")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT, 2)
             check((workspace / "new.md").exists() == published, "EDIT-AC-042-publication-boundary")
             if published:
                 check("已寫入並核對".encode() in terminal.output, "EDIT-AC-042-cancel-keeps-verified")
@@ -465,7 +467,7 @@ def budget_cases(host):
             terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT)
             terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT)
+            terminal.wait_for(HOST_PROMPT)
             terminal.send("建立中文😀\r\n".encode())
             terminal.wait_for(ready)
             check("中文.md".encode() in terminal.output and all(marker in terminal.output for marker in
@@ -478,11 +480,11 @@ def budget_cases(host):
             check((workspace / "中文.md").read_bytes() == expected, "BUD-AC-045-first-verified")
             terminal.send({"no": b"no\r\n", "blank": b"\r\n", "CtrlC": b"\x03", "EOF": b"\x04"}[decision])
             if decision != "EOF":
-                terminal.wait_for(CHAT_PROMPT, 2)
+                terminal.wait_for(HOST_PROMPT, 2)
                 terminal.send(b"/clear\r")
-                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.wait_for(HOST_PROMPT, 3)
                 terminal.send("下一回合\r".encode())
-                terminal.wait_for(CHAT_PROMPT, 4)
+                terminal.wait_for(HOST_PROMPT, 4)
                 terminal.send(b"/exit\r")
             terminal.finish(0)
             check((workspace / "中文.md").read_bytes() == expected and not (workspace / "second.md").exists(),
@@ -507,12 +509,12 @@ def discovery_cases(host):
         try:
             terminal.wait_for(CONFIRM); terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/help\r")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT); terminal.send(b"/help\r")
+            terminal.wait_for(HOST_PROMPT, 2)
             check(all(name in terminal.output for name in (b"search_files", b"search_text", b"read_file_range")), "SEARCH-AC-033-help")
             terminal.send("搜尋中文😀\r".encode())
             if decision == "complete":
-                terminal.wait_for(CHAT_PROMPT, 3)
+                terminal.wait_for(HOST_PROMPT, 3)
                 check(all(text.encode() in terminal.output for text in ("找到安全檔案：1 筆", "找到文字命中：1 行", "第 2～3 行；回傳 8 bytes")), "SEARCH-AC-033-summaries")
                 terminal.send(b"/exit\r")
             else:
@@ -523,9 +525,9 @@ def discovery_cases(host):
                 check(terminal.process.poll() is None, "SEARCH-AC-033-waits-for-cleanup")
                 os.write(write_fd, b"x")
                 if decision == "CtrlC":
-                    terminal.wait_for(CHAT_PROMPT, 3)
+                    terminal.wait_for(HOST_PROMPT, 3)
                     terminal.send("繼續聊天\r".encode())
-                    terminal.wait_for(CHAT_PROMPT, 4)
+                    terminal.wait_for(HOST_PROMPT, 4)
                     terminal.send(b"/exit\r")
                 check("找到文字命中".encode() not in terminal.output and "已取得行範圍".encode() not in terminal.output,
                       "SEARCH-AC-033-no-late-result")
@@ -551,12 +553,12 @@ def plan_cases(host):
         try:
             terminal.wait_for(CONFIRM); terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/plan\r")
-            terminal.wait_for(CHAT_PROMPT, 2)
+            terminal.wait_for(HOST_PROMPT); terminal.send(b"/plan\r")
+            terminal.wait_for(HOST_PROMPT, 2)
             check(b"[Plan]" in terminal.output and list(workspace.iterdir()) == [], "PLAN-AC-033-plan-local")
             terminal.send("規劃中文😀\r".encode())
-            terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/tasks\r")
-            terminal.wait_for(CHAT_PROMPT, 4)
+            terminal.wait_for(HOST_PROMPT, 3); terminal.send(b"/tasks\r")
+            terminal.wait_for(HOST_PROMPT, 4)
             check(all(text.encode() in terminal.output for text in ("中文計畫😀", "建立檔案", "本機寫入核對", "new.md")), "PLAN-AC-033-full-task-list")
             terminal.send(b"/execute\r")
             if choice == "prepaste":
@@ -574,7 +576,7 @@ def plan_cases(host):
             else:
                 terminal.send({"no": b"no\r", "blank": b"\r", "CtrlC": b"\x03", "EOF": b"\x04"}[choice])
             if choice != "EOF":
-                terminal.wait_for(CHAT_PROMPT, 5)
+                terminal.wait_for(HOST_PROMPT, 5)
                 check(list(workspace.iterdir()) == [], "PLAN-AC-033-confirm-does-not-execute")
                 if choice in ("yes", "busy"):
                     terminal.send("執行下一步\r".encode())
@@ -585,7 +587,7 @@ def plan_cases(host):
                     terminal.wait_for(file_ready)
                     check(list(workspace.iterdir()) == [], "PLAN-AC-033-separate-file-approval")
                     terminal.send(b"yes\r")
-                    terminal.wait_for(CHAT_PROMPT, 6)
+                    terminal.wait_for(HOST_PROMPT, 6)
                     check((workspace / "new.md").read_bytes() == b"Hello\n", "PLAN-AC-033-verified-bytes")
                     check(b"completed" in terminal.output and b"local_operation" in terminal.output, "PLAN-AC-033-completion-evidence")
                 terminal.send(b"/exit\r")
@@ -611,13 +613,13 @@ def controlled_build_cases(host):
         try:
             terminal.wait_for(CONFIRM); terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT)
+            terminal.wait_for(HOST_PROMPT)
             prompt_count = 1
             if choice == "plan":
-                terminal.send(b"/plan\r"); prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count)
+                terminal.send(b"/plan\r"); prompt_count += 1; terminal.wait_for(HOST_PROMPT, prompt_count)
             terminal.send("建置中文😀\r".encode())
             if choice == "plan":
-                prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count)
+                prompt_count += 1; terminal.wait_for(HOST_PROMPT, prompt_count)
                 check(ready not in terminal.output, "BUILD-AC-035-Plan-zero-approval")
                 terminal.send(b"/exit\r"); terminal.finish(0)
             else:
@@ -638,7 +640,7 @@ def controlled_build_cases(host):
                 if choice == "progress":
                     terminal.wait_for("已經過 5 秒".encode())
                 if choice not in ("EOF", "unconfirmed"):
-                    prompt_count += 1; terminal.wait_for(CHAT_PROMPT, prompt_count); terminal.send(b"/exit\r")
+                    prompt_count += 1; terminal.wait_for(HOST_PROMPT, prompt_count); terminal.send(b"/exit\r")
                 terminal.finish(1 if choice == "unconfirmed" else 0)
             check(list(workspace.iterdir()) == [], "BUILD-AC-035-simulator-no-source-writes")
             check(b" YeS " not in terminal.output and b"discarded-process-input" not in terminal.output, "BUILD-AC-035-hidden-busy")
@@ -657,14 +659,14 @@ def context_cases(host):
     try:
         terminal.wait_for(CONFIRM); terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT)
+        terminal.wait_for(HOST_PROMPT)
         prompt = 1
         for text in ["/context pin   中文😀  ", "/context show", "/budget set turn 1",
                      "/budget set program 1", "first", "second", "/budget",
                      "/context unpin n1", "/clear", "/budget reset"]:
             terminal.send((text + "\r").encode())
             prompt += 1
-            terminal.wait_for(CHAT_PROMPT, prompt)
+            terminal.wait_for(HOST_PROMPT, prompt)
         terminal.send(b"/exit\r")
         terminal.finish(0)
         check("n1：  中文😀  ".encode() in terminal.output, "CTX-AC-033-pin-exact-text")
@@ -682,12 +684,12 @@ def context_cases(host):
             try:
                 terminal.wait_for(CONFIRM); terminal.send(b"y\r")
                 terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-                terminal.wait_for(CHAT_PROMPT)
+                terminal.wait_for(HOST_PROMPT)
                 prompt = 1
                 for i in range(5 if automatic else 3):
                     terminal.send(("question " + str(i) + "\r").encode())
                     prompt += 1
-                    terminal.wait_for(CHAT_PROMPT, prompt)
+                    terminal.wait_for(HOST_PROMPT, prompt)
                 terminal.send(b"current\r" if automatic else b"/compact\r")
                 if control != "complete":
                     terminal.wait_for(b"OFFLINE_CONTEXT_COMPACTING")
@@ -697,10 +699,10 @@ def context_cases(host):
                     os.write(write_fd, b"x")
                 if control != "EOF":
                     prompt += 1
-                    terminal.wait_for(CHAT_PROMPT, prompt)
+                    terminal.wait_for(HOST_PROMPT, prompt)
                     terminal.send(b"/context show\r")
                     prompt += 1
-                    terminal.wait_for(CHAT_PROMPT, prompt)
+                    terminal.wait_for(HOST_PROMPT, prompt)
                     terminal.send(b"/exit\r")
                 terminal.finish(0)
                 check(b"discarded-context-input" not in terminal.output, "CTX-AC-033-busy-discard")
@@ -724,12 +726,12 @@ def rules_cases(host):
     try:
         terminal.wait_for(CONFIRM); terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT); prompt = 1
+        terminal.wait_for(HOST_PROMPT); prompt = 1
         for text in ["/rules", "/rules show", "/Rules", "/rules scope " + directory, "/rules show"]:
-            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(HOST_PROMPT, prompt)
         leaf.write_text("Leaf changed.", encoding="utf-8")
         for text in ["blocked", "/rules", "/rules reload", "/execute", "question", "/rules show", "/rules scope ."]:
-            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(HOST_PROMPT, prompt)
         terminal.send(b"/exit\r"); terminal.finish(0)
         check(b"Root rule." in terminal.output and b"Leaf original." in terminal.output and b"Leaf changed." in terminal.output, "RULE-AC-032-complete-sources")
         check(directory.encode() in terminal.output and b"Stale" in terminal.output, "RULE-AC-032-literal-scope-stale")
@@ -743,12 +745,12 @@ def rules_cases(host):
     try:
         terminal.wait_for(CONFIRM); terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-        terminal.wait_for(CHAT_PROMPT); prompt = 1
+        terminal.wait_for(HOST_PROMPT); prompt = 1
         for text in ["/rules", "/compact", "/execute", "/context", "/budget"]:
-            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(HOST_PROMPT, prompt)
         (bad / "AGENTS.md").write_text("Fixed.", encoding="utf-8")
         for text in ["/rules reload", "question"]:
-            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(CHAT_PROMPT, prompt)
+            terminal.send((text + "\r").encode()); prompt += 1; terminal.wait_for(HOST_PROMPT, prompt)
         terminal.send(b"/exit\r"); terminal.finish(0)
         check(b"Unavailable" in terminal.output and terminal.output.count("處理中".encode()) == 1, "RULE-AC-032-unavailable-allowed-local")
         print("RULE-AC-032-unavailable-recovery: PASS", flush=True)
@@ -761,15 +763,15 @@ def rules_cases(host):
         try:
             terminal.wait_for(CONFIRM); terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/rules reload\r")
+            terminal.wait_for(HOST_PROMPT); terminal.send(b"/rules reload\r")
             terminal.wait_for(b"OFFLINE_RULES_READING")
             terminal.send(b"discarded-rules-input\r" + (b"\x03" if control == "CtrlC" else b"\x04"))
             terminal.wait_for(b"OFFLINE_RULES_CANCEL_OBSERVED")
             check(terminal.process.poll() is None, "RULE-AC-032-wait-read-cleanup")
             os.write(write_fd, b"x")
             if control == "CtrlC":
-                terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/rules\r")
-                terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/exit\r")
+                terminal.wait_for(HOST_PROMPT, 2); terminal.send(b"/rules\r")
+                terminal.wait_for(HOST_PROMPT, 3); terminal.send(b"/exit\r")
             terminal.finish(0)
             check(b"discarded-rules-input" not in terminal.output and "處理中".encode() not in terminal.output, "RULE-AC-032-busy-no-replay")
             print("RULE-AC-032-busy-" + control + ": PASS", flush=True)
@@ -784,9 +786,9 @@ def review_cases(host):
         try:
             terminal.wait_for(CONFIRM); terminal.send(b"y\r")
             terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-            terminal.wait_for(CHAT_PROMPT); terminal.send(b"/review staged\r")
-            terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/review show\r")
-            terminal.wait_for(CHAT_PROMPT, 3); terminal.send(b"/exit\r"); terminal.finish(0)
+            terminal.wait_for(HOST_PROMPT); terminal.send(b"/review staged\r")
+            terminal.wait_for(HOST_PROMPT, 2); terminal.send(b"/review show\r")
+            terminal.wait_for(HOST_PROMPT, 3); terminal.send(b"/exit\r"); terminal.finish(0)
             check("本回合未執行建置或測試".encode() in terminal.output, "GIT-AC-020-local-verification-label")
             if scenario == "review":
                 check("中文 空白.cs".encode() in terminal.output and b"1/1" in terminal.output, "GIT-AC-020-layer-delivery")
@@ -803,20 +805,118 @@ def review_cases(host):
             try:
                 terminal.wait_for(CONFIRM); terminal.send(b"y\r")
                 terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
-                terminal.wait_for(CHAT_PROMPT); terminal.send(b"/review staged\r")
+                terminal.wait_for(HOST_PROMPT); terminal.send(b"/review staged\r")
                 terminal.wait_for(("OFFLINE_REVIEW_" + phase.upper() + "_PAUSED").encode())
                 terminal.send(b"discarded-review-input\r" + (b"\x03" if control == "CtrlC" else b"\x04"))
                 terminal.wait_for(b"OFFLINE_REVIEW_CANCEL_OBSERVED")
                 check(terminal.process.poll() is None, "GIT-AC-020-wait-cleanup")
                 os.write(write_fd, b"x")
                 if control == "CtrlC":
-                    terminal.wait_for(CHAT_PROMPT, 2); terminal.send(b"/exit\r")
+                    terminal.wait_for(HOST_PROMPT, 2); terminal.send(b"/exit\r")
                 terminal.finish(0)
                 check(b"discarded-review-input" not in terminal.output, "GIT-AC-020-discard-busy")
                 print("GIT-AC-020-" + phase + "-" + control + ": PASS", flush=True)
             finally:
                 os.close(write_fd); terminal.close()
 
+
+def terminal_editor_cases(host):
+    f2, f3, f4 = b"\x1bOQ", b"\x1bOR", b"\x1bOS"
+
+    def start(scenario="terminal", gate_fd=None):
+        workspace = tempfile.mkdtemp(prefix="aiagent-terminal-pty-")
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace, () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(HOST_PROMPT)
+        return terminal
+
+    terminal = start()
+    try:
+        terminal.send("甲é👩🏽‍💻".encode() + b"\x1b[D\x1b[C\x7f" + f4 + b"\t\\t\x1b[A\x1b[B\x1b[H\x1b[F" + f2)
+        terminal.wait_for(HOST_PROMPT, 2)
+        check("1: 甲é\n2: \\t\\\\t".encode() in terminal.output.replace(b"\r\n", b"\n"), "TERM-AC-029-unicode-preview")
+        check("使用者：".encode() not in terminal.output, "TERM-AC-029-preview-no-submit")
+        terminal.send(b"\r"); terminal.wait_for(HOST_PROMPT, 3)
+        terminal.send(b"\x10" + f2); terminal.wait_for(HOST_PROMPT, 4)
+        terminal.send(b"\r"); terminal.wait_for(HOST_PROMPT, 5)
+        check(terminal.output.count("使用者：".encode()) == 2, "TERM-AC-029-history-explicit-submit")
+        terminal.send(b"/clear\r"); terminal.wait_for(HOST_PROMPT, 6)
+        terminal.send(b"\x10" + f2); terminal.wait_for(HOST_PROMPT, 7)
+        check("1: \n游標：第 1 行，第 1".encode() in terminal.output.replace(b"\r\n", b"\n"), "TERM-AC-029-clear-history")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("TERM-AC-029-unicode-preview-history-clear: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal = start()
+    try:
+        terminal.send(b"pre" + f3); terminal.wait_for(b"OFFLINE_PASTE_READY")
+        terminal.send(b"one\r"); terminal.wait_for(b"OFFLINE_PASTE_CR")
+        terminal.send(b"\n\ttwo\r\n" + f3); terminal.wait_for(b"OFFLINE_PASTE_END_READY")
+        check("使用者：".encode() not in terminal.output, "TERM-AC-029-paste-not-submitted")
+        terminal.send(f2); terminal.wait_for(HOST_PROMPT, 2)
+        check(b"1: preone\r\n2: \\ttwo\r\n3: " in terminal.output or b"1: preone\n2: \\ttwo\n3: " in terminal.output, "TERM-AC-029-paste-crlf")
+        terminal.send(b"\r"); terminal.wait_for(HOST_PROMPT, 3)
+        check(terminal.output.count("使用者：".encode()) == 1, "TERM-AC-029-one-multiline-message")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("TERM-AC-029-paste-split-crlf-tabs: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal = start()
+    try:
+        terminal.send(b"/exit" + f4 + b"/rules reload\r"); terminal.wait_for(HOST_PROMPT, 2)
+        check("本機指令只接受單行".encode() in terminal.output, "TERM-AC-029-command-gate")
+        terminal.send(FAKE_KEY + f2); terminal.wait_for(HOST_PROMPT, 3)
+        terminal.send(b"ok\r"); terminal.wait_for(HOST_PROMPT, 4)
+        check("使用者：ok".encode() in terminal.output, "TERM-AC-029-sensitive-preview-restart")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("TERM-AC-029-command-gate-sensitive-preview: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal = start()
+    try:
+        terminal.send(f3); terminal.wait_for(b"OFFLINE_PASTE_READY")
+        terminal.send(b"x" * 16385 + b"\rremaining" + f2 + f3)
+        terminal.wait_for(b"OFFLINE_PASTE_END_READY")
+        terminal.send(b"\r"); terminal.wait_for(HOST_PROMPT, 2)
+        check("輸入無效或超過 16384".encode() in terminal.output and "使用者：".encode() not in terminal.output, "TERM-AC-029-invalid-paste-whole")
+        terminal.send(b"\x04"); terminal.finish(0)
+        print("TERM-AC-029-invalid-paste-drains-whole: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for stop, expected in ((b"yes\r", 0), (b"\x03", 130), (b"\x04", 0)):
+        read_fd, write_fd = os.pipe(); terminal = start("terminal-preview-gated", read_fd); os.close(read_fd)
+        try:
+            terminal.send(b"draft" + f2); terminal.wait_for(b"OFFLINE_DRAFT_PREVIEW_PAUSED")
+            terminal.send(stop); os.write(write_fd, b"g")
+            if stop == b"yes\r":
+                terminal.wait_for(HOST_PROMPT, 2); terminal.send(b"\r"); terminal.wait_for(HOST_PROMPT, 3)
+                check(terminal.output.count("使用者：draft".encode()) == 1, "TERM-AC-029-preview-drain")
+                terminal.send(b"/exit\r")
+            terminal.finish(expected)
+            print("TERM-AC-029-preview-drain-stop-" + str(expected) + "-" + str(len(stop)) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
+
+    for mode in (b"", f3):
+        for external, stop, expected in ((False, b"\x03", 130), (False, b"\x04", 0), (True, b"", 130)):
+            terminal = start()
+            try:
+                if mode:
+                    terminal.send(mode); terminal.wait_for(b"OFFLINE_PASTE_READY")
+                terminal.send(b"partial")
+                if external:
+                    os.kill(terminal.process.pid, signal.SIGINT)
+                else:
+                    terminal.send(stop)
+                terminal.finish(expected)
+                print("TERM-AC-029-editor-paste-stop-" + str(len(mode)) + "-" + str(external) + "-" + str(expected) + ": PASS", flush=True)
+            finally:
+                terminal.close()
 
 if __name__ == "__main__":
     try:

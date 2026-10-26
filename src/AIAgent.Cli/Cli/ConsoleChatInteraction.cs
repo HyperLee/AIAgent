@@ -10,15 +10,18 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
 {
     private readonly object _gate = new();
     private readonly ChatInputReader _reader = new(terminal);
+    private readonly ChatInputEditor _editor = new();
     private ISensitiveDataPolicy? _policy;
     private IDisposable? _inputScope;
     private CancellationTokenSource? _reading;
+    private TaskCompletionSource? _readingDone;
     private BusyScope? _busy;
     private bool _disposed;
 
     public void SetPolicy(ISensitiveDataPolicy policy)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _editor.SetPolicy(policy);
         if (!terminal.IsInteractive) throw new IOException("終端機無法使用");
         _inputScope ??= terminal.BeginInput();
         _policy = policy;
@@ -27,28 +30,32 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
     private T Read<T>(CancellationToken cancellationToken, Func<CancellationToken, T> action)
     {
         CancellationTokenSource read;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_busy is not null || _reading is not null) throw new InvalidOperationException("終端機已有讀取者");
             read = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _reading = read;
+            _reading = read; _readingDone = done;
         }
         try { return action(read.Token); }
-        finally { lock (_gate) { _reading = null; read.Dispose(); } }
+        finally
+        {
+            lock (_gate) { _reading = null; _readingDone = null; read.Dispose(); }
+            done.TrySetResult();
+        }
     }
 
     public ValueTask<ChatInputResult> ReadInputAsync(CancellationToken cancellationToken) => new(Read(cancellationToken, token =>
     {
         try
         {
-            Write("你> ");
-            var result = _reader.Read(token);
+            var result = _editor.Read(_reader, Write, token);
             Write("\n");
             return result;
         }
-        catch (OperationCanceledException) { return ChatInputResult.End(ChatInputStatus.Cancelled); }
-        catch (Exception) { return ChatInputResult.End(ChatInputStatus.Unavailable); }
+        catch (OperationCanceledException) { _editor.AbandonSubmission(); return ChatInputResult.End(ChatInputStatus.Cancelled); }
+        catch (Exception) { _editor.AbandonSubmission(); return ChatInputResult.End(ChatInputStatus.Unavailable); }
     }));
 
     public ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(Read(cancellationToken, token =>
@@ -70,6 +77,8 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
             if (_policy is null || !_policy.CanSendOrUse(preview.DisplayBlock, ContentBoundary.WriteCandidate) ||
                 new UTF8Encoding(false, true).GetByteCount(preview.DisplayBlock) > WorkspaceLimits.MaxPreviewBytes)
                 return FileApprovalDecision.Unavailable;
+            _reader.DiscardBufferedInput(Signal);
+            Write("[等待檔案核准] 完整預覽後請另行輸入決定。\n");
             Write(preview.DisplayBlock);
             _reader.DiscardBufferedInput(Signal);
             while (true)
@@ -127,8 +136,18 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
         {
             while (true)
             {
+                ChatInputStatus? pending = null;
+                void Signal(ChatControlSignal signal)
+                {
+                    if (signal == ChatControlSignal.Unavailable) pending = ChatInputStatus.Unavailable;
+                    else if (pending != ChatInputStatus.Unavailable && signal == ChatControlSignal.EndOfInput) pending = ChatInputStatus.EndOfInput;
+                    else pending ??= ChatInputStatus.Cancelled;
+                }
+                _reader.DiscardBufferedInput(Signal);
                 Write("重新輸入 Key？[y/N] ");
-                var result = _reader.Read(token);
+                _reader.DiscardBufferedInput(Signal);
+                token.ThrowIfCancellationRequested();
+                var result = pending is { } control ? ChatInputResult.End(control) : _reader.Read(token);
                 Write("\n");
                 if (result.Status == ChatInputStatus.Invalid) { Write("選擇無效；請重新選擇。\n"); continue; }
                 if (result.Status != ChatInputStatus.Submitted) return result.Status switch
@@ -147,8 +166,16 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
         catch (Exception) { return KeyReplacementChoice.Unavailable; }
     }));
 
-    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken) => new(Read(cancellationToken,
-        token => new HiddenKeyReader(new KeyTerminal(this, terminal)).Read(token)));
+    public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken) => new(Read(cancellationToken, token =>
+    {
+        try
+        {
+            var source = new KeyTerminal(this, terminal); source.Drain();
+            return source.Complete(new HiddenKeyReader(source).Read(token), token);
+        }
+        catch (OperationCanceledException) { return KeyInputResult.End(KeyInputStatus.Cancelled); }
+        catch (Exception) { return KeyInputResult.End(KeyInputStatus.Unavailable); }
+    }));
 
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> onSignal)
     {
@@ -161,30 +188,78 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
         }
     }
 
+    public void RememberAcceptedInput(string text)
+    { ObjectDisposedException.ThrowIf(_disposed, this); _editor.Remember(text); }
+    public void ClearInputState() => _editor.Clear();
+
     public void Show(ChatEvent message) => Write(ChatDisplay.Format(message));
     private void Write(string block) => ChatDisplay.Write(terminal, _policy ?? throw new InvalidOperationException("顯示政策尚未設定"), block);
 
     public void Dispose()
     {
-        if (_disposed) return;
-        try { _busy?.Dispose(); }
+        CancellationTokenSource? read;
+        Task? done;
+        BusyScope? busy;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true; read = _reading; done = _readingDone?.Task; busy = _busy;
+        }
+        _editor.Clear();
+        try
+        {
+            try { read?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            finally { done?.GetAwaiter().GetResult(); }
+        }
         finally
         {
-            _disposed = true;
-            try { _inputScope?.Dispose(); }
-            finally { _inputScope = null; _policy = null; }
+            try { busy?.Dispose(); }
+            finally
+            {
+                _editor.Release();
+                try { _inputScope?.Dispose(); }
+                finally { _inputScope = null; _policy = null; }
+            }
         }
     }
 
     // Key entry shares CRLF handling and the final display boundary with chat/choice entry.
     private sealed class KeyTerminal(ConsoleChatInteraction owner, ITerminal source) : ITerminal
     {
+        private ChatControlSignal? _pending;
         public bool IsInteractive => source.IsInteractive;
         public IDisposable BeginInput() => source.BeginInput();
-        public ConsoleKeyInfo? ReadKey(CancellationToken cancellationToken) => owner._reader.ReadKey(cancellationToken);
-        public void DiscardBufferedInput() => source.DiscardBufferedInput();
+        internal void Drain() => owner._reader.DiscardBufferedInput(signal =>
+        {
+            if (signal == ChatControlSignal.Unavailable) _pending = signal;
+            else if (_pending != ChatControlSignal.Unavailable && signal == ChatControlSignal.EndOfInput) _pending = signal;
+            else _pending ??= signal;
+        });
+        public ConsoleKeyInfo? ReadKey(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_pending == ChatControlSignal.Unavailable) throw new IOException("終端機無法使用");
+            if (_pending == ChatControlSignal.CancelTurn) throw new OperationCanceledException(cancellationToken);
+            return _pending == ChatControlSignal.EndOfInput ? null : owner._reader.ReadKey(cancellationToken);
+        }
+        internal KeyInputResult Complete(KeyInputResult result, CancellationToken token)
+        {
+            if (result.Status == KeyInputStatus.Unavailable) return result;
+            var status = token.IsCancellationRequested ? KeyInputStatus.Cancelled : _pending switch
+            {
+                ChatControlSignal.Unavailable => KeyInputStatus.Unavailable,
+                ChatControlSignal.EndOfInput => KeyInputStatus.EndOfInput,
+                ChatControlSignal.CancelTurn => KeyInputStatus.Cancelled,
+                _ => result.Status
+            };
+            if (status == result.Status) return result;
+            result.Dispose();
+            return KeyInputResult.End(status);
+        }
+        public void DiscardBufferedInput() => Drain();
         public ConsoleKeyInfo? TryReadBufferedKey() => source.TryReadBufferedKey();
-        public void Write(string text) => owner.Write(text);
+        public void Write(string text) { owner.Write(text); Drain(); }
     }
 
     private sealed class BusyScope : IDisposable

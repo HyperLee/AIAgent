@@ -17,7 +17,7 @@ public sealed class ChatTerminalTests
         interaction.SetPolicy(session.Policy);
         var input = await interaction.ReadInputAsync(default);
         Assert.AreEqual(" 安全中文😀 ", input.Text);
-        Assert.IsFalse(terminal.Output.Contains("安全", StringComparison.Ordinal) || terminal.Output.Contains('*'), "CLI-AC-003");
+        Assert.IsFalse(terminal.Output.Contains("安全中文", StringComparison.Ordinal) || terminal.Output.Contains('*'), "CLI-AC-003");
         Assert.IsTrue(terminal.Output.Contains("你> ", StringComparison.Ordinal));
     }
 
@@ -28,7 +28,7 @@ public sealed class ChatTerminalTests
             (new string('a', 16384), ChatInputStatus.Submitted),
             (new string('a', 16385), ChatInputStatus.Invalid),
             (string.Concat(Enumerable.Repeat("😀", 8192)), ChatInputStatus.Submitted),
-            ("a\t", ChatInputStatus.Invalid), ("a\u2028", ChatInputStatus.Invalid),
+            ("a\t", ChatInputStatus.Submitted), ("a\u2028", ChatInputStatus.Invalid),
             ("a\u2029", ChatInputStatus.Invalid), ("a\u001b", ChatInputStatus.Invalid),
             ("a\ud800x", ChatInputStatus.Invalid), ("a\udc00", ChatInputStatus.Invalid),
             ("a\ud800", ChatInputStatus.Invalid) })
@@ -48,7 +48,7 @@ public sealed class ChatTerminalTests
     }
 
     [TestMethod]
-    public async Task CLIAC005_UnicodeScalarDeletionNavigationAndCrLf()
+    public async Task CLIAC005_TextElementDeletionNavigationAndCrLf()
     {
         var terminal = new FakeTerminal();
         terminal.Add(KeyInputTests.Key(ConsoleKey.Delete)); terminal.Text(" 文😀");
@@ -56,7 +56,7 @@ public sealed class ChatTerminalTests
         terminal.Text("字"); terminal.Enter(); terminal.Text("\nnext"); terminal.Enter();
         using var session = GeminiFixtures.Session();
         using var interaction = new ConsoleChatInteraction(terminal); interaction.SetPolicy(session.Policy);
-        Assert.AreEqual(" 文字", (await interaction.ReadInputAsync(default)).Text);
+        Assert.AreEqual(" 字文", (await interaction.ReadInputAsync(default)).Text);
         Assert.AreEqual("next", (await interaction.ReadInputAsync(default)).Text);
     }
 
@@ -167,7 +167,7 @@ public sealed class ChatTerminalTests
             Assert.IsFalse(terminal.Output.Contains("discard", StringComparison.Ordinal));
             Assert.ThrowsExactly<InvalidOperationException>(() => interaction.ReadInputAsync(default).GetAwaiter().GetResult());
         }
-        terminal.Text("next\r");
+        terminal.OnNextRead = () => terminal.Text("next\r");
         Assert.AreEqual("next", (await interaction.ReadInputAsync(default)).Text);
         Assert.AreEqual(1, terminal.MaximumReaders);
     }
@@ -177,12 +177,14 @@ internal sealed class LiveTerminal : ITerminal
 {
     private readonly BlockingCollection<ConsoleKeyInfo> _keys = new();
     private int _readers;
+    internal Action? OnNextRead;
     internal int MaximumReaders { get; private set; }
     internal string Output { get; private set; } = "";
     public bool IsInteractive => true;
     public IDisposable BeginInput() => new EmptyScope();
     public ConsoleKeyInfo? ReadKey(CancellationToken cancellationToken)
     {
+        Interlocked.Exchange(ref OnNextRead, null)?.Invoke();
         var readers = Interlocked.Increment(ref _readers);
         MaximumReaders = Math.Max(MaximumReaders, readers);
         try { return _keys.Take(cancellationToken); }

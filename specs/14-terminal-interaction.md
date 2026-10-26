@@ -1,5 +1,10 @@
 # 14：終端機操作改善開發規格書
 
+## 第 14 份產品實作接續（2026-10-26）
+
+本份後續產品契約已接入一般聊天；第1／14節「本次只新增規格」與原文件狀態保留為規格撰寫當時的歷史界線。實際功能、當次離線／PTY證據及未驗收項目見[README](../README.md#terminal-interaction-validation)。TERM-AC-030真人、031真實Gemini與既有原生／發布門檻仍分列；TERM-HO表維持單一交接來源。
+
+
 > 文件版本：0.1｜建立日期：2026-10-26｜狀態：待實作
 >
 > 選題依據：[ROADMAP：FUT-07](../ROADMAP.md#fut-07終端機操作改善)。上位文件：[總規格](../SPEC.md)第 5、6、8～15 章。承接 [03：CLI 與 Context](03-cli-and-context.md)、[05：Agent 工具循環](05-agent-loop.md)、[06：檔案編輯與核准](06-file-edit-and-approval.md)、[07：預算與驗收](07-budget-and-acceptance.md)、[09：Plan 與任務](09-plan-mode-and-task-list.md)、[10：受控建置](10-controlled-build-and-test.md)、[11：Context 與預算](11-context-and-budget-management.md)、[12：專案規則](12-project-rules-loading.md)及 [13：Git 審查](13-git-diff-and-code-review.md)。尤其須承接第 12 份 [RULE-HO-006](12-project-rules-loading.md#future-handoffs)及第 13 份 [GIT-HO-006](13-git-diff-and-code-review.md#future-handoffs)。FUT-07 是大綱代號，與第 07 份驗收規格不同。

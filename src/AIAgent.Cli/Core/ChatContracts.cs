@@ -11,6 +11,8 @@ internal interface IChatInteraction
     ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken cancellationToken);
     IDisposable ObserveBusyInput(Action<ChatControlSignal> onSignal);
     void SetPolicy(ISensitiveDataPolicy policy);
+    void RememberAcceptedInput(string text);
+    void ClearInputState();
     void Show(ChatEvent message);
     ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(FileApprovalDecision.Unavailable);
     ValueTask<ProcessApprovalDecision> ConfirmProcessAsync(ProcessApprovalPreview preview, CancellationToken cancellationToken) => new(ProcessApprovalDecision.Unavailable);

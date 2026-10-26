@@ -31,7 +31,7 @@ internal sealed partial class ChatApplication
         lock (_gate)
         {
             if (_stopReason != StopReason.None) return;
-            _turnCancellation = cancellation; _cancelTurn = false; _state = ChatState.LoadingRules;
+            _turnCancellation = cancellation; _cancelTurn = false; _cancellationNotice = false; _state = ChatState.LoadingRules;
         }
         try
         {

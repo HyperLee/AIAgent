@@ -405,6 +405,11 @@ internal sealed class ChatFixture
 
 internal sealed class ScriptInteraction : IChatInteraction
 {
+    internal List<string> Remembered { get; } = [];
+    internal int InputClears { get; private set; }
+    internal Action<string>? OnRemember { get; set; }
+    public void RememberAcceptedInput(string text) { Remembered.Add(text); OnRemember?.Invoke(text); }
+    public void ClearInputState() { InputClears++; }
     internal Queue<Func<ChatInputResult>> Inputs { get; } = new();
     internal Queue<KeyReplacementChoice> Choices { get; } = new();
     internal Queue<Func<KeyInputResult>> Keys { get; } = new();

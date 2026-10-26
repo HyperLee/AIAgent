@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -23,10 +23,60 @@
 | 11：Context 與預算管理 | 摘要、原文備註、容量與可調生成額度。 | 已實作並接入正式聊天。 | 當次離線／PTY證據見下方紀錄。 | CTX-AC-034真人、035真實Gemini；其他階段未結門檻保留。 |
 | 12：專案規則載入 | 根目錄自動載入、明確 Scope、來源顯示、重驗與失效收尾。 | 已實作並接入正式聊天／工具／程序。 | 當次證據見第 12 份驗證紀錄。 | RULE-AC-033 真人、034 真實 Gemini；既有原生與發布門檻保留。 |
 | 13：Git 差異與程式碼審查 | 原始 bytes 三層快照、專用 GitRead、唯讀審查回合及本機報告驗證。 | 已實作並接入正式聊天。 | 分層證據見第 13 份驗證紀錄。 | GIT-AC-021 真人、022 真實 Gemini；既有原生／發布門檻保留。 |
+| 14：終端機操作改善 | 隱藏多行編輯、安全預覽、明確貼上、程序內歷史及階段進度。 | 已實作並接入正式聊天。 | 當次分層證據見第 14 份紀錄。 | TERM-AC-030 真人、031 真實 Gemini；原生／發布未結門檻保持。 |
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="terminal-interaction-validation"></a>
+
+## 第 14 份終端機操作改善
+
+依 [第 14 份規格](specs/14-terminal-interaction.md) 提供一般訊息的隱藏編輯與完整安全預覽。Key、換 Key 選單、計畫／檔案／程序核准仍使用原隱藏單行輸入；核准須在完整預覽後另行輸入，不採用草稿或歷史中的 yes。
+
+| 按鍵 | 一般輸入行為 |
+|---|---|
+| Enter | 提交整份草稿；CRLF只算一次。 |
+| F2 | 顯示完整安全草稿快照、行號及邏輯游標；不送出。 |
+| F3 | 進入／結束貼上收集；收集中換行只作內容。 |
+| F4、Tab | 插入 LF／字面 Tab，保留縮排及首尾空白。 |
+| Left／Right、Backspace／Delete | 依完整文字元素移動或前後刪除，含組合字與 emoji。 |
+| Home／End、Up／Down | 在邏輯行定位；上下移動按實際抵達欄夾界，不估算螢幕顯示寬度。 |
+| Ctrl+P／N | 回取上一／下一筆安全歷史；越過最新項恢復原草稿與游標。 |
+| Ctrl+U | 清空草稿並結束歷史瀏覽；不解除該次無效旗標。 |
+| Ctrl+C／SIGINT、Ctrl+D／EOF | 等待一般輸入時分別退出130／0，丟棄草稿；活動回合及核准沿原取消語意。 |
+
+多行貼上操作：**F3 → 等待收集提示 → 使用終端機貼上 → 等待貼完 → F3 → 等待結束提示 → 可選F2 → 另按Enter送出**。未先F3的換行仍可能提交；不自動辨識貼上、不讀剪貼簿，也不以按鍵速度猜測來源。提示／預覽輸出期間已緩衝的普通輸入會丟棄，取消與EOF仍處理。ConsoleKeyInfo不能驗證實體按鍵來源或延遲尾段。macOS可能需要Fn＋功能鍵；真人IME與鍵盤組合須另驗。
+
+草稿最大16384個UTF-16單位，包含Tab／LF；非法控制、代理配對或超限使該次輸入永久無效。預覽最大65536個嚴格UTF-8 bytes，含全部標籤、跳脫與提示；整段超限或顯示拼接敏感碰撞時拒絕預覽並保留隱藏稿。原稿含當前Key時清除草稿及歷史瀏覽還原副本，留在同一次輸入重新開始，不顯示原文。
+
+歷史只收錄通過敏感與目前規則准入的一般訊息，最多20筆／65536個UTF-16單位；相鄰精確去重、整筆逐舊淘汰。普通生成失敗後仍可回取；命令、拒絕輸入、Key及核准答案不收錄。clear、安全重設、認證選單前、政策切換及退出清除；模式／Scope切換或規則重載保留安全歷史，送出時重新准入。它不加入Context、摘要、pins、計畫或Git帳本，沒有磁碟保存、匯出或回放授權。
+
+本機指令只接受單行；含LF且去除開頭空白後以`/`起頭的整筆拒絕，包含結尾LF。一般文字後續行的`/exit`或yes保持普通內容。單行命令的精確匹配、字面Scope／pin餘文及短Key例外保持。
+
+進度使用現有狀態與事件，區分模型生成、摘要維護、工具開始、等待核准、同意後重驗、取消收尾及本機結果。Review保留原來源側別／行號／過時／未覆蓋資訊；工具開始或零finding都不建立Verified／TestsPassed。沒有新增工具、套件、設定、生成或權限。
+
+### 第 14 份驗證紀錄（2026-10-26）
+
+開發基線為乾淨`main@91bb6e6`，macOS26.7.1 arm64、.NET SDK10.0.100。全部自動驗證只用合成Key、假模型／終端機或真實SDK配假HTTP，沒有真實Gemini；變更未提交、推送或發布。
+
+| 命令／檢查 | 本次實際結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；既有依賴完成還原，無新增套件。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI、ProcessHost、TerminalHost與測試成功，0警告／0錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；767通過、0失敗、0略過，包含基線714與新增53個執行案例；最終耗時1分22.261秒。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；33通過。 |
+| `python3 -B tests/terminal_smoke.py` | 0；99組通過，包含原86組及新增13組TERM-AC-029；不連Gemini。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；包含F2／F3／F4、歷史與單行指令說明，無互動或Key讀取。 |
+| `dotnet format`產品、變更測試與TerminalHost的`--no-restore --verify-no-changes` | 皆為0；只針對變更測試檔檢查，不擴大改寫既有測試格式。 |
+| 敏感掃描、文件連結／圍欄、CRLF／檔尾及差異檢查 | 0；23份變更C#的CRLF／無檔尾換行、13份Markdown／258個本機連結／圍欄、Python語法、`git diff --check`及8份新檔no-index空白檢查通過。全263份來源複製至獨立保留fixture，僅於fixture建立index；`python3 -B scripts/check_sensitive_content.py staged`為263檔／0 findings，原工作區index不變；此項非Release產物掃描。 |
+
+基線在受限外層sandbox為702通過／12個既有原生能力失敗；允許外層測試程序初始化macOS原生sandbox後714／714通過，產品子程序仍保留原隔離。首次整合回歸760／761，唯一失敗是舊核准替身只辨認獨立`你> `提示；已改為完整提示後的啟用閘門，保留EOF／取消與零寫入斷言。新功能測試先觀察舊行為失敗再實作，另重現並修正清除途中按鍵／政策候選回填與認證提示控制訊號。
+
+TERM-AC-001～028以新增TerminalEditor／Boundary／Core／Lifecycle測試及原有01～13回歸對照；PTY TERM-AC-029使用既有host與明確pipe／讀取啟用標記，覆蓋F2／F3／F4、文字元素、拆段CRLF、歷史、敏感預覽、指令閘門、預輸入與取消／EOF／SIGINT恢復。啟動用產品PTY案例以EOF收尾；命令操作由具啟用閘門的離線host驗證，不以提示已印出當作讀取已啟用。
+
+TERM-AC-030真人macOS（中文IME、Fn功能鍵與實際終端機組合）、031真實Gemini均未執行；其他OS／x64未驗。第10份MTP／原生未結、第07份BUD-S003 Release掃描與人工分發門檻保持，不併入離線通過數。獨立只讀程式碼審查提出換Key提交結尾停止訊號及帶文字控制鍵NUL分類兩項；各以回歸測試重現失敗後修正，4個案例轉通過並納入767個完整回歸，未作第二輪獨立審查。規格第12節TERM-HO-001～011仍為單一交接來源，不表示其他FUT已交付。
+
 <a id="git-review-validation"></a>
 
 ## 第 13 份 Git 差異與程式碼審查
@@ -402,7 +452,7 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 ## 聊天操作
 
-一般輸入提示前顯示 `[Plan]`／`[Execute]`，提示仍為 `你> `。**輸入期間不回顯；Enter 後顯示安全訊息**。不顯示星號或輸入長度；已知指令只顯示操作結果。一般訊息含當前 Key 時整筆阻擋，原文不顯示或送出。
+一般輸入提示前顯示 `[Plan]`／`[Execute]`，提示仍為 `你> `。**輸入不回顯；Enter送出，F2安全預覽，F3貼上收集，F4換行**。不顯示星號或輸入長度；已知指令只顯示操作結果。一般訊息含當前 Key 時整筆阻擋，原文不顯示或送出。
 
 | 操作 | 行為 |
 |---|---|
@@ -419,7 +469,7 @@ Key 僅由隱藏輸入取得，不接受參數、環境變數、設定檔或工�
 
 指令在 Trim 後區分大小寫且完整匹配；`/CLEAR`、`/help extra`、`/tmp/a` 皆為未知指令，不送模型。生成、工具處理、取消及收尾期間的普通按鍵（包含 `/exit`）會丟棄，不能排隊；外部 SIGINT 依相同聊天狀態路由。
 
-每行最多 16384 個 UTF-16 單位，補充平面字元計 2。支援中文、Unicode scalar 刪除、Backspace／Delete；導覽鍵不移動游標。控制字元、非法代理字元及 Unicode 行／段分隔字元會使整行無效，超限後刪除也不恢復有效。CRLF 視為一次 Enter；沒有多行編輯或輸入歷史。
+一般草稿最多16384個UTF-16單位，支援多行、Tab、完整文字元素編輯及程序內安全歷史；詳見[第14份操作](#terminal-interaction-validation)。Key與核准仍保持原隱藏單行限制。
 
 只有合法完成的回合才保存：使用者訊息、零或多組完整模型呼叫／工具結果，以及最終模型回答；最多保留 5 個完整回合。第 6 次請求仍包含前 5 回合，成功提交後才淘汰最舊回合。拒答、取消、截斷與一般失敗不加入歷史；截斷明示「回答未完整產生」。敏感模型紀錄、非法協定／配對或無法安全回填結果時，清除全部 Context 與讀取快照並通知。`/clear` 只釋放記憶體參考，不清除終端機捲動紀錄。
 

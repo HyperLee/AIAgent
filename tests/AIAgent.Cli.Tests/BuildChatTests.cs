@@ -85,6 +85,8 @@ internal sealed class ProcessChatInteraction : IChatInteraction
     public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken token) => Inner.ReadKeyAsync(token);
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> signal) => Inner.ObserveBusyInput(signal);
     public void SetPolicy(ISensitiveDataPolicy policy) => Inner.SetPolicy(policy);
+    public void RememberAcceptedInput(string text) => Inner.RememberAcceptedInput(text);
+    public void ClearInputState() => Inner.ClearInputState();
     public void Show(ChatEvent message) => Inner.Show(message);
 }
 

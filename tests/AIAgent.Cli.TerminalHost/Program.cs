@@ -208,17 +208,35 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : I
 
 internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStream? gate) : ITerminal
 {
+    private int _keyPrompts;
+    private bool _keyPrinted;
+    private bool _choicePrinted;
+    private bool _inputPrinted;
+    private bool _pastePrinted;
+    private bool _pasteEnded;
+    private bool _collecting;
     private bool _approvalPrinted;
     private bool _planApprovalPrinted;
     private bool _processApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
-    public ConsoleKeyInfo? ReadKey(CancellationToken token) => source.ReadKey(token);
+    public ConsoleKeyInfo? ReadKey(CancellationToken token)
+    {
+        var key = source.ReadKey(token);
+        if (scenario.StartsWith("terminal", StringComparison.Ordinal) && _collecting && key?.KeyChar == '\r')
+            Console.WriteLine("OFFLINE_PASTE_CR");
+        return key;
+    }
     public void DiscardBufferedInput() => source.DiscardBufferedInput();
     public ConsoleKeyInfo? TryReadBufferedKey()
     {
         var key = source.TryReadBufferedKey();
+        if (key is null && _keyPrinted) { _keyPrinted = false; Console.WriteLine("OFFLINE_KEY_READY"); }
+        if (key is null && _choicePrinted) { _choicePrinted = false; Console.WriteLine("OFFLINE_KEY_CHOICE_READY"); }
+        if (key is null && _inputPrinted) { _inputPrinted = false; Console.WriteLine("OFFLINE_INPUT_READY"); }
+        if (key is null && _pastePrinted) { _pastePrinted = false; Console.WriteLine("OFFLINE_PASTE_READY"); }
+        if (key is null && _pasteEnded) { _pasteEnded = false; Console.WriteLine("OFFLINE_PASTE_END_READY"); }
         if (key is null && _approvalPrinted)
         {
             _approvalPrinted = false;
@@ -238,6 +256,15 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     public void Write(string text)
     {
         source.Write(text);
+        if (text.StartsWith("請輸入 API", StringComparison.Ordinal)) _keyPrinted = ++_keyPrompts > 1;
+        if (text.StartsWith("重新輸入 Key？", StringComparison.Ordinal)) _choicePrinted = true;
+        if (text.Contains("你> ", StringComparison.Ordinal)) _inputPrinted = true;
+        if (text.StartsWith("貼上收集中", StringComparison.Ordinal)) { _collecting = true; _pastePrinted = true; }
+        if (text.StartsWith("貼上收集已結束", StringComparison.Ordinal)) { _collecting = false; _pasteEnded = true; }
+        if (text.StartsWith("草稿預覽", StringComparison.Ordinal) && scenario == "terminal-preview-gated" && !_previewWaited)
+        {
+            _previewWaited = true; Console.WriteLine("OFFLINE_DRAFT_PREVIEW_PAUSED"); gate!.ReadExactly(new byte[1]);
+        }
         if (text.EndsWith(ProcessApprovalText.Prompt, StringComparison.Ordinal))
         {
             _processApprovalPrinted = true;

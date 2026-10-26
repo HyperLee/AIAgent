@@ -27,6 +27,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
     private ChatState _state = ChatState.AwaitingInput;
     private StopReason _stopReason;
     private bool _cancelTurn;
+    private bool _cancellationNotice;
     private bool _finalized;
     private int _started;
     internal ChatState State { get { lock (_gate) return _state; } }
@@ -54,7 +55,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 _contexts.BindRules(_rules);
                 if (_rules is not null) await RunRulesOperationAsync(token => _rules.EnsureInitializedAsync(token));
                 (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
-                interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
+                interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。一般輸入隱藏，F2 可安全預覽。\n" +
                     "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
             }
             while (!Stopping)
@@ -73,8 +74,14 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     continue;
                 }
                 var text = input.Text!;
+                if (!ChatInputValidation.IsValid(text)) { ShowInvalidInput(); continue; }
                 var command = text.Trim();
                 if (command.Length == 0) continue;
+                if (text.Contains('\n') && text.TrimStart().StartsWith('/'))
+                {
+                    interaction.Show(new(ChatEventKind.InputRejected, text: "本機指令只接受單行；本次未執行。"));
+                    continue;
+                }
                 if (await HandleRulesCommandAsync(text)) continue;
                 if (await HandleContextCommandAsync(text)) continue;
                 if (await HandleReviewCommandAsync(text)) continue;
@@ -93,7 +100,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                         "/clear：清除對話、快照、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
                         "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
                         "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
-                        "單行上限 16384 個 UTF-16 單位。輸入期間不回顯；Enter 後顯示安全訊息。\n" +
+                        "草稿上限 16384 個 UTF-16 單位；輸入不回顯，Enter 送出，F2 安全預覽，F3 貼上收集，F4 換行。\n" +
+                        "方向鍵移動文字元素／邏輯行，Home／End 移至行首尾；Backspace／Delete 刪前後文字元素，Tab 保留縮排。Ctrl+P／N 回取安全歷史，Ctrl+U 清空草稿。\n" +
+                        "多行貼上前先按 F3，等待提示後貼上，完成後再 F3；回到編輯後另按 Enter 送出。不自動辨識貼上或來源；macOS 可能需 Fn＋功能鍵。本機指令只接受單行。\n" +
+                        "輸入歷史只在記憶體保留20筆／65536 UTF-16單位；clear、換Key或安全重設會清除，不會恢復舊核准。\n" +
                         "替換保留普通權限位元，不保證 owner、ACL、xattr 或硬連結關係；取消不復原已寫內容。"));
                     continue;
                 }
@@ -118,6 +128,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     continue;
                 }
                 if (!await CheckRulesReadyAsync()) continue;
+                interaction.RememberAcceptedInput(text);
                 interaction.Show(new(ChatEventKind.UserMessage, text: text));
                 if (await RunTurnAsync(LlmMessage.FromUserText(text)) && !Stopping) await ReplaceKeyAsync();
             }
@@ -160,7 +171,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (_stopReason != StopReason.None) return false;
             _turnCancellation = cancellation;
             _turnSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _cancelTurn = false;
+            _cancelTurn = false; _cancellationNotice = false;
             _state = ChatState.Generating;
         }
         var keyHandoff = false;
@@ -354,13 +365,14 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         }
         if (message.Notice is not null) ShowContextBlock(message.Notice);
         interaction.Show(message.Kind == AgentEventKind.Generating ? new(ChatEventKind.Generating,
-            text: message.Purpose == GenerationPurpose.Compaction ? "正在整理對話；模型摘要可能遺失未釘選資訊。" : null) :
+            text: message.Purpose == GenerationPurpose.Compaction ? "[摘要維護] 正在整理對話；模型摘要可能遺失未釘選資訊。" : null, purpose: message.Purpose) :
             new(ChatEventKind.AgentProgress, agentEvent: message));
     }
 
     private async Task ReplaceKeyAsync()
     {
         if (_processFatalStop) { RequestStop(StopReason.Failure); return; }
+        interaction.ClearInputState();
         SetState(ChatState.AwaitingKeyChoice);
         var choice = await interaction.ChooseKeyReplacementAsync(_stop.Token);
         if (Stopping) return;
@@ -415,6 +427,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private void ClearConversationState()
     {
+        interaction.ClearInputState();
         lock (_gate)
         {
             _rules?.InvalidateCandidates();
@@ -448,6 +461,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private void HandleSignal(ChatControlSignal signal)
     {
+        var showCancellation = false;
         lock (_gate)
         {
             if (_finalized) return;
@@ -466,8 +480,12 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
             else RequestStop(StopReason.Cancelled);
+            if (!_cancellationNotice && signal != ChatControlSignal.Unavailable &&
+                _state is ChatState.Cancelling or ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval)
+            { _cancellationNotice = true; showCancellation = true; }
             _turnSignal?.TrySetResult();
         }
+        if (showCancellation) TryShow(new(ChatEventKind.Ready, text: "正在取消；等待目前操作與收尾完成。"));
     }
 
     private void RequestStop(StopReason reason)

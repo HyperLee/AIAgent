@@ -21,6 +21,8 @@ internal sealed partial class ConsoleChatInteraction
         try
         {
             if (_policy is null || !PlanProjection.SafeDisplay(preview.DisplayBlock, _policy)) return PlanApprovalDecision.Unavailable;
+            _reader.DiscardBufferedInput(Signal);
+            Write("[等待計畫核准] 完整預覽後請另行輸入決定。\n");
             Write(preview.DisplayBlock);
             _reader.DiscardBufferedInput(Signal);
             while (true)
@@ -54,6 +56,7 @@ internal sealed partial class ConsoleChatInteraction
             _reader.DiscardBufferedInput(Signal);
             if (pending is { } finalControl) decision = Merge(decision, finalControl);
             if (token.IsCancellationRequested) decision = Merge(decision, PlanApprovalDecision.Cancelled);
+            if (decision == PlanApprovalDecision.Approved) Write("已收到同意；正在重新檢查。\n");
             return decision;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

@@ -89,5 +89,7 @@ internal sealed class EditChatInteraction : IChatInteraction
     public ValueTask<KeyInputResult> ReadKeyAsync(CancellationToken token) => Inner.ReadKeyAsync(token);
     public IDisposable ObserveBusyInput(Action<ChatControlSignal> signal) => Inner.ObserveBusyInput(signal);
     public void SetPolicy(Security.ISensitiveDataPolicy policy) => Inner.SetPolicy(policy);
+    public void RememberAcceptedInput(string text) => Inner.RememberAcceptedInput(text);
+    public void ClearInputState() => Inner.ClearInputState();
     public void Show(ChatEvent message) => Inner.Show(message);
 }

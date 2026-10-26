@@ -127,7 +127,7 @@ internal sealed class ApprovalEofTerminal : ITerminal
     public void Write(string text)
     {
         _inner.Write(text);
-        if (text == "你> " && ++ChatPrompts == 1) _inner.Text("create\r");
+        if (text.EndsWith("你> ", StringComparison.Ordinal) && ++ChatPrompts == 1) _inner.OnNextRead = () => _inner.Text("create\r");
         if (text.EndsWith(FileChangePreviewBuilder.Prompt, StringComparison.Ordinal)) _previewPrinted = true;
     }
 }
