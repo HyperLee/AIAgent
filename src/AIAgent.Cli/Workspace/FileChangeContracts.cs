@@ -79,6 +79,8 @@ internal sealed class WorkspaceWriteResult
         WorkspaceErrorCode.WriteUnconfirmed, FileWriteState.Unconfirmed, null, false, true);
     internal WorkspaceWriteResult WithCleanupFailure() => new(WorkspaceStatus.Failed, WorkspaceErrorCode.CleanupFailure,
         WriteState, WriteState == FileWriteState.Verified ? new(VerifiedPath!, VerifiedByteCount!.Value, VerifiedHasUtf8Bom!.Value) : null, true, true);
+    internal WorkspaceWriteResult WithCheckpointFailure() => CleanupFailed || WriteState == FileWriteState.Unconfirmed ? this : new(WorkspaceStatus.Failed, WorkspaceErrorCode.CheckpointUnavailable,
+        WriteState, WriteState == FileWriteState.Verified ? new(VerifiedPath!, VerifiedByteCount!.Value, VerifiedHasUtf8Bom!.Value) : null, CleanupFailed, true);
     public override string ToString() => "[WorkspaceWriteResult]";
 }
 

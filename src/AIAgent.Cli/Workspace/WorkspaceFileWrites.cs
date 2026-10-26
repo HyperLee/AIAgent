@@ -1,6 +1,7 @@
 using System.Text;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Git;
 
 namespace AIAgent.Cli.Workspace;
 
@@ -26,6 +27,16 @@ internal sealed partial class WorkspaceFiles
         var candidateReady = false;
         var baselineChecked = false;
         var checkingBaseline = false;
+        CheckpointReservation? checkpoint = null;
+        CheckpointGitGuard? checkpointGuard = null;
+        string? checkpointManualReason = null;
+        byte[] checkpointBefore = [];
+        byte[] checkpointAfter = [];
+        UnixFileMode checkpointMode = 0;
+        WorkspaceNodeState? checkpointOriginal = null;
+        VerifiedWorkspaceFile? publishedFile = null;
+        Guid sourceOperationId = Guid.NewGuid();
+        long? predecessorId = null;
         WorkspaceWriteResult result;
         try
         {
@@ -86,9 +97,40 @@ internal sealed partial class WorkspaceFiles
             if (newBytes.Length > WorkspaceLimits.MaxFileBytes) throw Rejected(WorkspaceErrorCode.FileTooLarge);
             var candidateText = FileChangePreviewBuilder.Decode(newBytes, out _);
             CheckSensitive(candidateText, ContentBoundary.WriteCandidate);
+            checkpointBefore = original; checkpointAfter = newBytes; checkpointMode = finalMode;
+            if (kind == FileChangeKind.Replace) checkpointOriginal = _fileSystem.Inspect(Path.Combine(_root, path));
+            lock (_gate)
+            {
+                CheckActive(operation.Generation, token);
+                checkpoint = _checkpoints.Reserve(original, newBytes);
+            }
+            if (checkpoint is null) throw Rejected(_checkpoints.IdsExhausted ? WorkspaceErrorCode.CheckpointUnavailable : WorkspaceErrorCode.CheckpointLimit);
+            try { checkpointGuard = await CaptureCheckpointGitGuardAsync(path, operation, token); }
+            catch (GitFailure failure) when (failure.Code == "checkpoint_git_conflict") { throw Rejected(WorkspaceErrorCode.CheckpointGitConflict); }
+            catch (GitFailure failure) when (failure.Code is "sensitive_content" or "sensitive_path") { throw Rejected(WorkspaceErrorCode.SensitiveContent); }
+            catch (GitFailure failure) when (failure.Code is "process_cleanup_failed" or "process_unconfirmed" or "cleanup_failure") { throw new WorkspaceFailure(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable); }
+            catch (GitFailure) { checkpointManualReason = "git_unverified"; }
+            catch (OperationCanceledException) { throw new WorkspaceFailure(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None); }
+            RequireCheckpointReservation(checkpoint);
+            if (checkpointGuard is not null && checkpointOriginal is { } originalState)
+            {
+                var latest = _checkpoints.Latest(path);
+                if (latest is { State: CheckpointState.Available, Anchor: { } anchor } &&
+                    latest.Record.AfterEquals(original) && SameIdentity(anchor.Target, originalState) && anchor.Mode == finalMode &&
+                    anchor.Guard.SameAs(checkpointGuard) && SameCheckpointParents(anchor.Parents, CheckpointParents(parents))) predecessorId = latest.Record.Id;
+            }
             if (!FileChangePreviewBuilder.TryCreate(kind, path, original, newBytes, _policy!, token, out var preview, out var previewError))
                 throw Rejected(previewError);
+            if (checkpointManualReason is not null)
+            {
+                var block = preview!.DisplayBlock[..^FileChangePreviewBuilder.Prompt.Length] + "檢查點：git_unverified；此筆只保留程序內歷史，沒有自動復原資格。\n" + FileChangePreviewBuilder.Prompt;
+                var bytes = Encoding.UTF8.GetByteCount(block);
+                if (bytes > WorkspaceLimits.MaxPreviewBytes) throw Rejected(WorkspaceErrorCode.PreviewTooLarge);
+                CheckSensitive(block, ContentBoundary.WriteCandidate);
+                preview = new(kind, path, original.LongLength, newBytes.LongLength, preview.OriginalHasUtf8Bom, preview.CandidateHasUtf8Bom, block, bytes);
+            }
             var candidate = new WriteCandidate(this, operation.Generation, kind, path, original, newBytes, preview!);
+            sourceOperationId = candidate.OperationIdentity;
             candidateReady = true;
             CheckActive(operation.Generation, token);
             FileApprovalDecision decision;
@@ -101,7 +143,9 @@ internal sealed partial class WorkspaceFiles
             if (decision == FileApprovalDecision.Declined) throw Rejected(WorkspaceErrorCode.ApprovalDeclined);
             if (decision is FileApprovalDecision.Cancelled or FileApprovalDecision.EndOfInput) throw new WorkspaceFailure(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
             if (decision != FileApprovalDecision.Approved) throw new WorkspaceFailure(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable);
+            RequireCheckpointReservation(checkpoint);
             await CheckRulesResultAsync(operation, token);
+            if (checkpointGuard is not null) await ValidateWriteCheckpointGuardAsync(path, checkpointGuard, operation, token);
             RevalidateWriteParents(parents);
             if (snapshot is null) CheckMissingTarget(path, true);
             else
@@ -111,6 +155,7 @@ internal sealed partial class WorkspaceFiles
                 checkingBaseline = false;
             }
             candidate.CheckOwner(this, operation.Generation);
+            RequireCheckpointReservation(checkpoint);
             CheckSensitive(candidateText, ContentBoundary.WriteCandidate);
             CheckSensitive(candidate.Preview.DisplayBlock, ContentBoundary.WriteCandidate);
             CheckActive(operation.Generation, token);
@@ -139,6 +184,7 @@ internal sealed partial class WorkspaceFiles
             var stagedRead = await ReadVerifiedFileAsync(temporaryRelative, operation, token);
             RequireWrittenFile(stagedRead, ownedState.Value, newBytes, finalMode);
             await CheckRulesResultAsync(operation, token);
+            if (checkpointGuard is not null) await ValidateWriteCheckpointGuardAsync(path, checkpointGuard, operation, token);
             RevalidateWriteParents(parents);
             if (snapshot is null) CheckMissingTarget(path, true);
             else
@@ -157,6 +203,7 @@ internal sealed partial class WorkspaceFiles
             {
                 CheckActive(operation.Generation, token);
                 candidate.CheckOwner(this, operation.Generation);
+                RequireCheckpointReservation(checkpoint);
                 publishStarted = true;
             }
             try
@@ -171,8 +218,8 @@ internal sealed partial class WorkspaceFiles
             readbackStarted = true;
             var actual = await ReadVerifiedFileAsync(path, operation, CancellationToken.None, settling: true);
             RequireWrittenFile(actual, ownedState.Value, newBytes, finalMode);
+            publishedFile = actual;
             result = WorkspaceWriteResult.Success(new(path, newBytes.LongLength, actual.HasBom));
-            await CheckRulesAfterPublicationAsync(path, actual.State, operation);
         }
         catch (Exception exception)
         {
@@ -196,11 +243,11 @@ internal sealed partial class WorkspaceFiles
                 if (baselineChecked && code is WorkspaceErrorCode.NotFound or WorkspaceErrorCode.WrongEntryType or WorkspaceErrorCode.PathChanged)
                     code = WorkspaceErrorCode.Conflict;
                 result = WorkspaceWriteResult.End(failure.Status, code,
-                    candidateReady || checkingBaseline || code == WorkspaceErrorCode.Conflict || baselineChecked && code is WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitivePath);
+                    candidateReady || checkingBaseline || code is WorkspaceErrorCode.Conflict or WorkspaceErrorCode.CheckpointLimit or WorkspaceErrorCode.CheckpointGitConflict or WorkspaceErrorCode.CheckpointManualRequired || baselineChecked && code is WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitivePath);
             }
         }
         if (path is not null && (publishStarted || checkingBaseline || result.ErrorCode is WorkspaceErrorCode.Conflict or WorkspaceErrorCode.PathChanged or
-            WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitiveContent or WorkspaceErrorCode.SensitivePath)) _snapshots.Remove(path);
+            WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitiveContent or WorkspaceErrorCode.SensitivePath or WorkspaceErrorCode.CheckpointGitConflict or WorkspaceErrorCode.CheckpointManualRequired)) _snapshots.Remove(path);
         if (ownsStaged)
         {
             try
@@ -216,7 +263,72 @@ internal sealed partial class WorkspaceFiles
             }
             catch (Exception) { result = result.WithCleanupFailure(); }
         }
+        if (checkpoint is not null)
+        {
+            if (result.WriteState == FileWriteState.NotApplied) _checkpoints.Release(checkpoint);
+            else if (path is not null && parents is not null && _checkpoints.IsCurrent(checkpoint))
+            {
+                try
+                {
+                    if (result.WriteState == FileWriteState.Unconfirmed) checkpointManualReason = "source_unconfirmed";
+                    else if (kind == FileChangeKind.Create) checkpointManualReason = "created_file";
+                    if (result.WriteState == FileWriteState.Verified && checkpointGuard is not null)
+                    {
+                        operation.CheckpointSettling = true;
+                        try { await ValidateWriteCheckpointGuardAsync(path, checkpointGuard, operation, token); }
+                        catch (WorkspaceFailure failure) when (failure.Code is WorkspaceErrorCode.SensitiveContent or WorkspaceErrorCode.Unavailable)
+                        { checkpointManualReason ??= "git_unverified"; result = result.WithCheckpointFailure(); }
+                        catch (Exception) { checkpointManualReason ??= "git_unverified"; }
+                        finally { operation.CheckpointSettling = false; }
+                    }
+                    var capturedParents = CheckpointParents(parents);
+                    var rules = operation.RulesStamp!;
+                    var record = new CheckpointRecord(checkpoint.Id, kind, path, checkpointBefore, checkpointAfter, checkpointMode, checkpointMode,
+                        checkpointOriginal, publishedFile?.State, capturedParents, rules.RulesRevision, rules.Scope, sourceOperationId, predecessorId);
+                    var anchor = checkpointManualReason is null && publishedFile is not null && checkpointGuard is not null
+                        ? new CheckpointRecoveryAnchor(publishedFile.State, checkpointMode, capturedParents, checkpointGuard) : null;
+                    lock (_gate)
+                    {
+                        if (_checkpoints.IsCurrent(checkpoint))
+                        {
+                            if (predecessorId is null && _checkpoints.Latest(path) is not null) _checkpoints.MarkPathManual(path, "chain_broken");
+                            _ = _checkpoints.Complete(checkpoint, record, anchor, checkpointManualReason ?? (anchor is null ? "git_unverified" : null));
+                        }
+                    }
+                }
+                catch (Exception) { result = result.WithCheckpointFailure(); }
+            }
+        }
+        if (path is not null && result.ErrorCode is WorkspaceErrorCode.Conflict or WorkspaceErrorCode.CheckpointGitConflict or WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitivePath)
+            _checkpoints.MarkPathManual(path, "checkpoint_conflict");
+        if (publishedFile is not null && path is not null) await CheckRulesAfterPublicationAsync(path, publishedFile.State, operation);
         return result;
+    }
+
+    private async Task ValidateWriteCheckpointGuardAsync(string path, CheckpointGitGuard guard, WorkspaceOperation operation, CancellationToken token)
+    {
+        try { await ValidateCheckpointGuardAsync(path, guard, operation, token); }
+        catch (OperationCanceledException) { throw new WorkspaceFailure(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None); }
+        catch (GitFailure failure)
+        {
+            throw new WorkspaceFailure(failure.Code is "process_cleanup_failed" or "process_unconfirmed" or "cleanup_failure" ? WorkspaceStatus.Failed : WorkspaceStatus.Rejected,
+                failure.Code switch
+                {
+                    "checkpoint_git_conflict" => WorkspaceErrorCode.CheckpointGitConflict,
+                    "sensitive_content" or "sensitive_path" => WorkspaceErrorCode.SensitiveContent,
+                    "process_cleanup_failed" or "process_unconfirmed" or "cleanup_failure" => WorkspaceErrorCode.Unavailable,
+                    _ => WorkspaceErrorCode.CheckpointManualRequired
+                });
+        }
+    }
+
+    private static bool SameCheckpointParents(IReadOnlyList<CheckpointParent> a, IReadOnlyList<CheckpointParent> b) =>
+        a.Count == b.Count && a.Zip(b).All(x => x.First.Path == x.Second.Path && SameIdentity(x.First.State, x.Second.State));
+
+    private void RequireCheckpointReservation(CheckpointReservation reservation)
+    {
+        lock (_gate)
+            if (!_checkpoints.IsCurrent(reservation)) throw new WorkspaceFailure(WorkspaceStatus.Cancelled, WorkspaceErrorCode.None);
     }
 
     private byte[] EncodeEdit(string text, CancellationToken token)

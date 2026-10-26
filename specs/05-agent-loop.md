@@ -1,5 +1,9 @@
 # 05：Agent 工具循環子規格
 
+## 第 16 份產品實作接續（2026-10-27）
+
+受控寫入增加 checkpoint 預留與來源完成；checkpoint_limit 停止工具鏈並以 resource_limit 阻擋在途任務。復原完全由本機 ID 入口處理，不新增模型工具或改成功資料格式；一般、Review 及摘要請求加入目前復原警示，保留已發生操作事實及原生成／body 限制。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：保存摘要新增 internal WorkSaveSummary 用途，沿同一 Runner、client、生成閘門與唯一記帳，至多一次且 Tools=[]。它不建立一般回合、不派送工具、不修改 LastTurnOutcome 或任務事實；公開 LLM／工具契約保持。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

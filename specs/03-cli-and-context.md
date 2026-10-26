@@ -1,5 +1,9 @@
 # 03：CLI 與 Context 子規格
 
+## 第 16 份產品實作接續（2026-10-27）
+
+四個 `/checkpoint` 命令為 AwaitingInput 本機入口，零模型回合；命令與核准不入歷史。復原必須目前 Execute／Valid 規則、完整新預覽及單檔新確認；發布後先顯示事實，再處理取消、EOF、模式及規則收尾。共同清除與換 Key 丟棄檢查點及最近復原結果，ID／復原代次不重用。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：新增 `/work save TITLE`、`list`、`show ID`、`delete ID` 與啟動續接。只有 save 必要時生成一次摘要；命令及新確認不進草稿歷史。續接後進入 Plan 並等待新訊息，`/execute` 仍另取確認；clear 只清記憶體，不刪磁碟存檔。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

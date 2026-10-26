@@ -19,7 +19,8 @@ internal sealed partial class ChatApplication
     private async Task ExecuteModeAsync()
     {
         if (!await CheckRulesReadyAsync()) return;
-        if (_plans!.Snapshot is null && _work?.ResumeExecutionConfirmationRequired == true)
+        if (_plans!.Snapshot is null && (_work?.ResumeExecutionConfirmationRequired == true ||
+            _executionPolicy!.Recovery.Last is not null && WorkCoordinator().ResumeExecutionConfirmationRequired))
         { await RunWorkOperationAsync((work, token) => work.ConfirmExecuteAsync(ConfirmWorkAsync, token)); return; }
         if (_plans!.Snapshot is not { } plan || plan.ApprovalState == PlanApprovalState.Approved)
         { _plans.SetMode(AgentMode.Execute); ShowTasks(); return; }

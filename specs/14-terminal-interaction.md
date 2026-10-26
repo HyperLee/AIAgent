@@ -1,5 +1,9 @@
 # 14：終端機操作改善開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+新增四個單行本機 checkpoint 命令，沿全域多行／敏感閘門且不入輸入歷史。restore／forget 完整新預覽後停止舊 busy 讀取者、排空已緩衝輸入，再啟用隱藏單行確認；F2／F3／F4／歷史不授權。發布後安全事實先顯示，Ctrl+C／EOF／輸出故障與單一讀取者契約維持。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：新增工作保存、刪除、Scope 選擇與續接確認，沿隱藏單行、唯一讀取者、CRLF 去重與預覽後排空。工作命令／答案及存檔不進輸入歷史；不從文件復原按鍵或 yes。提示後輸入來源仍無法由 ConsoleKeyInfo 完全辨識；共同清除涵蓋載入背景及候選。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

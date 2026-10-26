@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接；第 16 份新增程序內修改檢查點與逐次確認的單檔復原。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -29,6 +29,52 @@
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="checkpoint-validation"></a>
+
+## 第 16 份修改檢查點與復原
+
+每次受控 `create_file`／`replace_text` 在預覽前預留容量，發布後保存完整 before／expected after bytes 及來源事實。資料只在目前程序記憶體；`/clear`、安全重設、換 Key、退出會丟失，重新啟動或 `--resume` 不會帶回。讀檔快照、Git HEAD／index、Review 與工作摘要均不能代替復原來源。
+
+| 本機入口 | 行為 |
+|---|---|
+| `/checkpoint list` | 依 ID 降冪列出程序內歷史、狀態與容量；不讀目標檔、不代表目前仍可復原。 |
+| `/checkpoint show c1` | 完整顯示 before→after 原始差異；不是目前檔案或復原核准。 |
+| `/checkpoint restore c1` | 僅 Execute／目前有效規則；重驗完整 bytes、inode、父目錄、mode 與目標 Git metadata，顯示目前→before 差異，再取得新隱藏確認。每次只恢復一檔。 |
+| `/checkpoint forget c1` | 新確認後只移除指定記憶體紀錄；不讀寫或刪除工作檔，可能使較早鏈節只能人工處理。 |
+
+命令大小寫敏感、參數間單一 ASCII 空格，ID 必須是 `c1` 至 `c9223372036854775807` 的正規十進位寫法；不接受 path、latest、多 ID 或多行。命令與確認不進輸入歷史，零模型生成。每次新預覽後重新輸入 `y`／`yes` 才同意，拒絕或取消不發布；預輸入會排空，不能辨識提示後所有延遲貼上的來源。
+
+容量固定 32 筆、before＋after 共 8388608 bytes、每側 131072 bytes（含 BOM）；在途預留、人工及已復原紀錄都占容量。滿額停止新寫入及當前工具鏈，等待使用者 forget，不自動淘汰或略過保護。單次完整顯示 65536 UTF-8 bytes，超限整次拒絕。
+
+只有已核對 Replace 可自動復原。新建空檔／非空檔都是 `created_file` 人工紀錄，請自行核對指定單檔是否刪除；產品沒有工作區刪除入口。來源未確認、Git 不可驗證、不支持布局／條目及已觀察衝突亦不強制覆寫。根無 `.git` 時只確認其仍缺席，不向父目錄查 Git；根 repository 僅用固定唯讀 recipes 比較 HEAD／目標 index／ITA，不取 blob、不改 index、HEAD 或 refs。
+
+同檔必須由新到舊逐筆復原；Verified 才將 predecessor 綁到新 inode，不建立 redo。忘記中間鏈節、外部改寫或 Unconfirmed 會斷鏈，不能靠相同 bytes 自動接回。復原只涵蓋完整 before bytes／BOM 與普通 mode，不保證 owner／group、ACL、xattr、resource fork、時間戳、硬連結、所有 metadata、程序產物或外部副作用；原非 CAS rename／TOCTOU／斷電持久性限制保留。
+
+復原一旦開始發布，先核對並保留 Verified／Unconfirmed／CleanupFailed 事實，再增加 RecoveryRevision／EvidenceEpoch、撤執行確認並進 Plan。較早 Read／Write／Validation 事實保留歷史，不能用於新完成判定；舊 Completed 明示未重新驗證。一般、Review、compaction 與保存摘要請求均必帶有界目前復原附錄（32768 bytes），量測／保存候選隨版本失效，SAVE v1 格式不變。復原 AGENTS.md 使用目前 Valid 規則，先記事實再 Stale，須明確 `/rules reload`、重新確認及新指示。
+
+### 第 16 份驗證紀錄（2026-10-27）
+
+實作起點乾淨 `main@7a9925f`。macOS arm64／.NET SDK 10.0.100；測試離線，使用合成憑證及隔離工作區。原受限環境基線 838 項中 13 項原生沙箱案例因 `sandbox_apply: Operation not permitted` 失敗；此環境限制與最終可用環境驗證分列。最終自動驗證使用相同產品程式；全套 944 項通過後另補 3 項來源／衝突回歸及 1 項真實 Git 復原整合，合計 948 個不同 MSTest 執行案例通過。沒有以受限環境失敗冒充產品通過。
+
+| 實際命令／查核 | 結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定相依套件，沒有新增套件。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI／ProcessHost／TerminalHost／測試建置完成，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；944／944，0 略過，3 分 03.119 秒；在允許 nested sandbox 的執行環境完成，產品原生政策未放寬。 |
+| 補充 `--filter`：Unconfirmed 原寫入、核准後根 `.git` 出現（原寫入／復原） | 0；3／3，核對人工紀錄容量、零非法發布及斷鏈。 |
+| 補充 `--filter FullyQualifiedName~CKPTAC013_NativeCheckpointRestoresDirtyBeforeBytesAndPreservesIndexAndHead` | 0；1／1，1 分 00.508 秒；隔離根 repository 經真實受控寫入及復原，恢復含 BOM／CRLF／中文的 dirty before，index／HEAD bytes 不變。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；新增 checkpoint 操作／保留／人工限制說明。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；36／36。 |
+| `python3 -B tests/terminal_smoke.py` | 0；122 組，含新增 10 組 checkpoint；原有 112 組回歸保留。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`；變更測試／TerminalHost 格式 | 0；產品完整 verify，6 份變更測試／Host 另做指定格式檢查。 |
+| 差異／來源敏感掃描 | `git diff --check` 通過；307 份來源複製到隔離 Git fixture 後以 `scripts/check_sensitive_content.py staged` 掃描，0 findings；原工作區索引未 stage。此項不是 Release 產物掃描。 |
+
+離線證據分工：`CheckpointWorkspaceTests` 驗來源／容量／單檔發布、反向鏈、衝突與故障／清除；`CheckpointGitTests` 驗有限目標 metadata、變更偵測、原生 SHA1／SHA256／ITA 及 index 不變；`CheckpointStateTests` 驗舊事實 epoch、Completed 歷史、必備附錄與候選失效；`CheckpointChatTests` 驗嚴格本機入口與新確認；`CheckpointSdkCapacityTests` 的 9 項案例驗實際 SDK body 262144 可接受、262145 在生成／HTTP 前拒絕，以及單一操作、取消、釋放與敏感邊界。容量預檢沿相同 SDK 序列化，但固定在傳輸處理常式內停止，不呼叫 HTTP handler、不記 API 用量或生成；保守估算仍與實際 body 分列。
+
+獨立程式碼審查的容量阻塞原因、根失效資格及非法／過大來源重新接鏈問題均已用失敗測試重現，再修正通過。C# CRLF／檔尾、Markdown 圍欄與本機連結另外查核；沒有把 PTY 視為真人或真實服務證據。
+
+真人 CKPT-AC-031、真實 Gemini CKPT-AC-032、其他 OS／架構未驗；沒有讀取真實 Key 或呼叫 Gemini。第 10 份產品 MTP `test` 不支持、第 07 份 BUD-S003 Release／人工分發及既有原生驗收缺口保留，不以此次結果解除。變更未提交、推送或發布。
+
 <a id="work-save-validation"></a>
 
 ## 第 15 份工作保存與續接

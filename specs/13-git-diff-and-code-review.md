@@ -1,5 +1,9 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+新增借用既有 workspace lease 的目標 metadata guard：兩次有限觀察、literal target 的 HEAD entry／index stage/tag/mode/oid／ITA，加根／gitdir／executable／HEAD／format。沒有 blob、全域 index digest、額外 mutation recipe、持久寫入或新原生例外；唯一 /dev/null 例外保持。Git guard 只拒絕衝突，原始 before bytes 仍由受控寫入持有。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：私人存檔加入安全投影與原生 Git 拒絕，不能藉 ignore／原生可讀來源洩露。保存摘要另排除 structured Git snapshot_id 與來源識別；不保存 finding、raw blob、ledger 或舊核准，續接不建立 Git 觀察，/review 仍取目前來源。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

@@ -36,9 +36,10 @@ internal sealed class TaskRequirement(string toolName, string path, int? startLi
 internal sealed class PlanTaskSnapshot(string taskId, PlanTaskKind kind, string title, string acceptance,
     IReadOnlyList<TaskRequirement> requirements, PlanTaskState state = PlanTaskState.Pending,
     string? summary = null, string? blockReason = null, TaskCompletionBasis completionBasis = TaskCompletionBasis.None,
-    IReadOnlyList<string>? completionFactIds = null, int requirementsVersion = 1, long? completionRulesRevision = null)
+    IReadOnlyList<string>? completionFactIds = null, int requirementsVersion = 1, long? completionRulesRevision = null, long? completionEvidenceEpoch = null)
 {
     internal long? CompletionRulesRevision { get; } = completionRulesRevision;
+    internal long? CompletionEvidenceEpoch { get; } = state == PlanTaskState.Completed ? completionEvidenceEpoch ?? 0 : null;
     internal int RequirementsVersion { get; } = requirementsVersion;
     internal string TaskId { get; } = taskId;
     internal PlanTaskKind Kind { get; } = kind;
@@ -51,8 +52,9 @@ internal sealed class PlanTaskSnapshot(string taskId, PlanTaskKind kind, string 
     internal TaskCompletionBasis CompletionBasis { get; } = completionBasis;
     internal IReadOnlyList<string> CompletionFactIds { get; } = Array.AsReadOnly(completionFactIds?.ToArray() ?? []);
     internal PlanTaskSnapshot WithState(PlanTaskState value, string? text, string? reason = null,
-        TaskCompletionBasis basis = TaskCompletionBasis.None, IReadOnlyList<string>? facts = null, long? rulesRevision = null) =>
-        new(TaskId, Kind, Title, Acceptance, Requirements, value, text, reason, basis, facts, RequirementsVersion, value == PlanTaskState.Completed ? rulesRevision ?? CompletionRulesRevision : null);
+        TaskCompletionBasis basis = TaskCompletionBasis.None, IReadOnlyList<string>? facts = null, long? rulesRevision = null, long? evidenceEpoch = null) =>
+        new(TaskId, Kind, Title, Acceptance, Requirements, value, text, reason, basis, facts, RequirementsVersion, value == PlanTaskState.Completed ? rulesRevision ?? CompletionRulesRevision : null,
+            value == PlanTaskState.Completed ? evidenceEpoch ?? CompletionEvidenceEpoch ?? 0 : null);
     internal bool SameDefinition(PlanTaskSnapshot other) => RequirementsVersion == other.RequirementsVersion && Kind == other.Kind && Title == other.Title && Acceptance == other.Acceptance &&
         Requirements.Count == other.Requirements.Count && Requirements.All(r => other.Requirements.Any(r.Matches));
     public override string ToString() => "[PlanTaskSnapshot]";
@@ -82,8 +84,9 @@ internal sealed class TaskExecutionContext(string planId, long planRevision, str
 internal sealed class TaskOperationFact(string operationId, TaskExecutionContext context, TaskCompletionBasis kind,
     TaskRequirement? request, ToolStatus status, string errorCode, bool truncated = false,
     FileWriteState? writeState = null, bool cleanupFailed = false, long? byteCount = null,
-    int? returnedCount = null, WorkspaceDiscoverySummary? discoverySummary = null, string? summary = null, ProcessExecutionSummary? processSummary = null)
+    int? returnedCount = null, WorkspaceDiscoverySummary? discoverySummary = null, string? summary = null, ProcessExecutionSummary? processSummary = null, long evidenceEpoch = 0)
 {
+    internal long EvidenceEpoch { get; } = evidenceEpoch;
     internal ProcessExecutionSummary? ProcessSummary { get; } = processSummary;
     internal string OperationId { get; } = operationId;
     internal TaskExecutionContext Context { get; } = context;
@@ -122,9 +125,10 @@ internal sealed class PlanMutationResult(string errorCode, PlanSnapshot? snapsho
     public override string ToString() => "[PlanMutationResult]";
 }
 
-internal sealed class TaskEvidenceReservation(long generation, TaskExecutionContext context, TaskRequirement request)
+internal sealed class TaskEvidenceReservation(long generation, TaskExecutionContext context, TaskRequirement request, long evidenceEpoch = 0)
 {
     internal long Generation { get; } = generation;
+    internal long EvidenceEpoch { get; } = evidenceEpoch;
     internal TaskExecutionContext Context { get; } = context;
     internal TaskRequirement Request { get; } = request;
     public override string ToString() => "[TaskEvidenceReservation]";

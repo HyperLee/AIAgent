@@ -1,5 +1,9 @@
 # 08：程式碼搜尋與局部讀檔開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+搜尋與局部讀取不能建立 checkpoint、復原來源或證據歸屬。checkpoint 獨立於 read snapshot LRU；復原後下一次一般 replace_text 仍要新的完整 read_file，不從搜尋片段、歷史或復原 anchor 補基準。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：私人存檔目錄與專用暫存納入搜尋、列檔及局部讀取的拒絕／忽略政策。續接只核對計畫 requirements 的安全參照，不全專案搜尋；Scope 外零目標 I/O，歷史 path／hash 不能建立修改基準。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

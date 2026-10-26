@@ -81,7 +81,7 @@ internal static class ToolErrorCodes
         "invalid_pattern" or "invalid_query" or "invalid_line_range" or
         "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
         "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or
-        "capability_unavailable" or "evidence_limit" or "plan_too_large" or
+        "capability_unavailable" or "evidence_limit" or "plan_too_large" or "checkpoint_limit" or "checkpoint_git_conflict" or "checkpoint_manual_required" or "checkpoint_unavailable" or
         "sensitive_arguments" or "generation_limit" or "program_generation_limit" or "turn_cancelled" or "turn_stopped" or
         "invalid_path" or "outside_workspace" or "sensitive_path" or "symbolic_link" or "not_found" or
         "wrong_entry_type" or "access_denied" or "file_too_large" or "invalid_utf8" or "binary_content" or

@@ -16,11 +16,11 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
     internal ContextBodyMeasurement? LastBodyMeasurement { get; private set; }
     internal ContextOperationStamp Capture()
     {
-        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0);
+        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0, plans.Recovery.Revision);
     }
     internal bool IsCurrent(ContextOperationStamp stamp)
     {
-        lock (context.DecisionGate) return stamp.SessionGeneration == _sessionGeneration &&
+        lock (context.DecisionGate) return stamp.SessionGeneration == _sessionGeneration && stamp.RecoveryRevision == plans.Recovery.Revision &&
             stamp.RulesRevision == (_rules?.Capture().RulesRevision ?? 0) && stamp.RulesGeneration == (_rules?.Capture().RulesGeneration ?? 0) &&
             stamp.ContextRevision == context.Revision && stamp.PinsRevision == context.PinsRevision &&
             stamp.PlanGeneration == plans.Generation && stamp.Mode == plans.Mode && ReferenceEquals(stamp.Plan, plans.Snapshot);
@@ -98,7 +98,7 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
     internal void RecordMeasure(ContextOperationStamp stamp, GenerationPurpose purpose, ContextRequestMeasure measure)
     { lock (context.DecisionGate) LastMeasurement = new(stamp, purpose, measure); }
     internal void RecordBody(ContextOperationStamp stamp, GenerationPurpose purpose, long bytes, bool dispatched)
-    { lock (context.DecisionGate) if (stamp.SessionGeneration == _sessionGeneration) LastBodyMeasurement = new(stamp, purpose, bytes, dispatched); }
+    { lock (context.DecisionGate) if (IsCurrent(stamp)) LastBodyMeasurement = new(stamp, purpose, bytes, dispatched); }
     internal void BindPolicy(ISensitiveDataPolicy value) { lock (context.DecisionGate) _policy = value; }
     internal void Clear()
     {

@@ -1,5 +1,9 @@
 # 04：工作區與唯讀工具子規格
 
+## 第 16 份產品實作接續（2026-10-27）
+
+完整 read_file 基準與 checkpoint 的 before／after 分開持有；list／show／forget 不讀目標。復原成功、Unconfirmed 或已觀察衝突清目標修改快照，不把復原 bytes 發布成新 read_file 基準；根換代使全部歷史只能人工查核。一般讀取路徑、敏感與範圍限制沒有擴張。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：`.aiagent`、實際私人根、交易鎖及工作暫存加入一般路徑拒絕；工作區選家目錄、祖先或私人根也不能經工具取得內容。檔案參照查核是共用租約下的用途限定唯讀入口，不呼叫公開 read_file、不建立快照或成功操作事實。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

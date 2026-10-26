@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+最近已開始發布的復原結果有獨立 RecoveryRevision；所有一般／Review／摘要／保存摘要及估算重建 mandatory 附錄，含安全 ID／相對 path／寫入事實與需重讀來源警示，含包裝最多32768 bytes。復原版本加入 ContextOperationStamp／MetricStamp／compaction／save 候選，過時者拒絕；不改 SDK 原生歷史、不送 raw bytes／anchor、不增加生成或262144-byte實際body上限。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：跨次保存由第 15 份明示擴充。載入摘要使用 saved_work_summary／WorkId／歷史標記，仍只有單一有效摘要；本程序回合從零計。首次 compaction 使用載入背景作 previous_summary 並保留來源，立即再保存無新回合時零生成。原文 pins、新身分、記憶／投影容量與唯一記帳保持；/compact 本身不寫存檔。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

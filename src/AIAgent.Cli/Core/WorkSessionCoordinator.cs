@@ -43,7 +43,9 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
 {
     private readonly WorkPersistencePolicy _policy = new(sensitivePolicy);
     private int _running;
-    internal bool ResumeExecutionConfirmationRequired { get; private set; }
+    private bool _resumeExecutionConfirmationRequired;
+    private long _confirmedRecoveryRevision;
+    internal bool ResumeExecutionConfirmationRequired => _resumeExecutionConfirmationRequired || plans.Recovery.Last is not null && plans.Recovery.Revision != _confirmedRecoveryRevision;
     internal void BindRunner(AgentRunner value, ILlmContextInspector? inspection) { runner = value; inspector = inspection; }
 
     internal Task<WorkOperationResult> SaveAsync(string title, Func<WorkApprovalPreview, CancellationToken, ValueTask<WorkApprovalDecision>> confirm, CancellationToken token) =>
@@ -186,23 +188,23 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
         if (!observed.Same(final)) return new("work_revision_conflict");
         await RequireCurrentAsync(stamp, token);
         if (!contexts.TryPublishWorkImport(candidate, token)) return new("work_revision_conflict");
-        ResumeExecutionConfirmationRequired = true;
+        _resumeExecutionConfirmationRequired = true;
         return new("none", "已載入未驗證歷史背景並進入 Plan；等待新指示，/execute 仍須獨立確認。", workId: id);
     });
 
-    internal void Clear() => ResumeExecutionConfirmationRequired = false;
-    internal void ConfirmedExecute() => ResumeExecutionConfirmationRequired = false;
+    internal void Clear() { _resumeExecutionConfirmationRequired = false; _confirmedRecoveryRevision = plans.Recovery.Revision; }
+    internal void ConfirmedExecute() { _resumeExecutionConfirmationRequired = false; _confirmedRecoveryRevision = plans.Recovery.Revision; }
     internal Task<WorkOperationResult> ConfirmExecuteAsync(Func<WorkApprovalPreview, CancellationToken, ValueTask<WorkApprovalDecision>> confirm, CancellationToken token) => RunAsync(async () =>
     {
         await RequireRulesAsync(token); var stamp = contexts.Capture();
-        var preview = new WorkApprovalPreview(WorkApprovalKind.Execute, SafeDisplay("[續接後的模式確認]\n目前沒有活動計畫；歷史完成狀態沒有本機證據。切換後仍須新訊息，每次寫入／程序另行核准。\n" + Prompt(WorkApprovalKind.Execute)));
+        var preview = new WorkApprovalPreview(WorkApprovalKind.Execute, SafeDisplay("[執行模式確認]\n目前沒有活動計畫；續接或復原前的完成狀態僅供歷史參考，須重讀目前來源並重新驗證。切換後仍須新訊息，每次寫入／程序另行核准。\n" + Prompt(WorkApprovalKind.Execute)));
         var decision = await confirm(preview, token);
         if (decision != WorkApprovalDecision.Approved) return DecisionResult(decision);
         await RequireCurrentAsync(stamp, token);
         lock (contexts.DecisionGate)
         {
             if (token.IsCancellationRequested || !contexts.IsCurrent(stamp)) return new("work_revision_conflict");
-            plans.SetMode(AgentMode.Execute); ResumeExecutionConfirmationRequired = false;
+            plans.SetMode(AgentMode.Execute); ConfirmedExecute();
         }
         return new("none", "已切換 Execute；等待下一則新訊息，尚未執行任何操作。");
     });

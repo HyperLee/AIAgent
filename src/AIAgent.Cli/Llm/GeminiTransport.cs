@@ -7,6 +7,7 @@ namespace AIAgent.Cli.Llm;
 
 internal sealed class GeminiOperation
 {
+    internal bool MeasureOnly { get; init; }
     internal bool RequestDispatched { get; set; }
     internal bool InvalidParts { get; set; }
     internal LlmUsage? Usage { get; set; }
@@ -19,6 +20,12 @@ internal sealed class GeminiBoundaryException(LlmErrorCode code, bool remote = f
 {
     internal LlmErrorCode Code { get; } = code;
     internal bool Remote { get; } = remote;
+}
+
+internal sealed class GeminiRequestMeasuredException : Exception
+{
+    internal GeminiRequestMeasuredException() : base("模型請求容量已在本機量測") { }
+    public override string ToString() => "[GeminiRequestMeasuredException]";
 }
 
 internal sealed class GeminiTransport(HttpMessageHandler inner, string model, ISensitiveDataPolicy policy) : DelegatingHandler(inner)
@@ -37,6 +44,7 @@ internal sealed class GeminiTransport(HttpMessageHandler inner, string model, IS
         using (var document = JsonDocument.Parse(body))
             if (GeminiJson.IsSensitive(document.RootElement, currentPolicy!, ContentBoundary.ModelInput)) throw new GeminiBoundaryException(LlmErrorCode.SensitiveInput);
         cancellationToken.ThrowIfCancellationRequested();
+        if (state.MeasureOnly) throw new GeminiRequestMeasuredException();
         state.RequestDispatched = true;
         var response = await base.SendAsync(request, cancellationToken);
         state.Response = response;

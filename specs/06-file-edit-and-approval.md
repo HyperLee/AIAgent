@@ -1,5 +1,9 @@
 # 06：檔案編輯與核准子規格
 
+## 第 16 份產品實作接續（2026-10-27）
+
+每次合法非 NoChange 候選先原子預留 checkpoint，再取得有限目標 Git guard、原始預覽與核准；發布後完成來源歷史。滿額停止、不淘汰。ID 限定復原另建目前→before 預覽與新核准，復用同目錄原生暫存、完整 mode／bytes 核對與精確清理；新建檔僅人工，沒有一般刪除入口。原 EDIT-044～063 安全閘門及 metadata／TOCTOU 限制保持。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：工作存檔另有私人目錄用途限定的排他發布與單檔刪除；不增加模型刪除能力，不改一般寫入核准或修改快照。保存／刪除均需完整預覽、新輸入及來源重驗；發布不明不能誤報未保存或自動重試。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

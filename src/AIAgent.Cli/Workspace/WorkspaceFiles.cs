@@ -1,6 +1,7 @@
 using System.Text;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Git;
 using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Workspace;
@@ -22,6 +23,8 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private readonly ReadSnapshotStore _snapshots;
     private readonly IFileChangeApproval _approval;
     private readonly AgentExecutionPolicy _executionPolicy;
+    private readonly CheckpointStore _checkpoints;
+    private readonly IGitReadAdapter? _checkpointGitAdapter;
     private readonly CancellationTokenSource _lifetime = new();
     private ISensitiveDataPolicy? _policy;
     private TaskCompletionSource? _inFlight;
@@ -29,15 +32,18 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private CancellationTokenSource? _activeCancellation;
     private long _activePlanGeneration;
     public IReadSnapshotStore Snapshots => _snapshots;
+    public ICheckpointWorkspace Checkpoints => this;
 
     internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem,
-        IFileChangeApproval? approval = null, AgentExecutionPolicy? executionPolicy = null)
+        IFileChangeApproval? approval = null, AgentExecutionPolicy? executionPolicy = null, IGitReadAdapter? checkpointGitAdapter = null)
     {
         _root = workspace.RootPath;
         _policy = policy;
         _fileSystem = fileSystem;
         _approval = approval ?? UnavailableFileChangeApproval.Instance;
         _executionPolicy = executionPolicy ?? new(new PlanStore(policy));
+        _checkpoints = new(_gate, _executionPolicy.Plans.CheckpointSequence);
+        _checkpointGitAdapter = checkpointGitAdapter;
         _snapshots = new(_gate, CancelActiveOperation);
         _executionPolicy.Rules ??= new(this, policy, _executionPolicy);
     }
@@ -258,6 +264,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         catch (Exception)
         {
             _snapshots.InvalidateAllForRootFailure();
+            _checkpoints.MarkAllManual("workspace_unavailable");
             throw new WorkspaceFailure(WorkspaceStatus.Failed, WorkspaceErrorCode.WorkspaceUnavailable);
         }
     }
@@ -326,7 +333,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         {
             try
             {
-                lock (_gate) { _snapshots.Clear(); _policy = null; }
+                lock (_gate) { _checkpoints.Clear(); _executionPolicy.Recovery.Clear(); _snapshots.Clear(); _policy = null; }
                 _lifetime.Dispose();
             }
             catch (Exception) { failed = true; }
@@ -344,6 +351,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         internal long Generation { get; } = generation;
         internal long PlanGeneration { get; } = planGeneration;
         internal bool RootChecked { get; set; }
+        internal bool CheckpointSettling { get; set; }
         internal DiscoveryScan? Discovery { get; set; }
         internal TaskEvidenceReservation? TaskReservation { get; set; }
     }

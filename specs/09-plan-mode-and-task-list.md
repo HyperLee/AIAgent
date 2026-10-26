@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+本機復原不冒充原 Write requirement，也不要求 Completed 任務可反向執行。開始發布後先收尾，增加獨立 EvidenceEpoch、撤確認、在途任務 Blocked/workspace_restored 並進 Plan；原 OperationId、TaskId、規則版本與 Completed 留歷史，但較早所有 Read／Write／Validation facts 不再可選。requirements_version 與 RulesRevision 不為此變更。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：新增不可信歷史計畫投影及受控一次性匯入。只有非 Completed 定義重建為新 PlanId／TaskId、Revision=1、Draft／Pending；basis、summary、block reason、核准及證據不匯入。全完成不建活動計畫但仍進 Plan，切 Execute 另確認；20／8／1／256 與投影上限保持。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

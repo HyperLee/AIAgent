@@ -209,7 +209,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 if (result.Response is null) _reset = true;
                 var reason = result.ProcessCleanupFailed || result.ProcessSummary?.EndState == ProcessEndState.Unconfirmed ||
                     result.ErrorCode is "process_unconfirmed" or "process_cleanup_failed" ? AgentStopReason.ProcessUnconfirmed
-                    : localFailure || registry.ExecutionPolicy.Rules?.FatalFailure == true || _eventFailed || result.CleanupFailed || result.ErrorCode == "unavailable" ? AgentStopReason.LocalFailure
+                    : localFailure || registry.ExecutionPolicy.Rules?.FatalFailure == true || _eventFailed || result.CleanupFailed || result.ErrorCode is "unavailable" or "checkpoint_unavailable" ? AgentStopReason.LocalFailure
                     : result.WriteState == FileWriteState.Unconfirmed ? AgentStopReason.WriteUnconfirmed
                     : result.Response is null || result.ErrorCode is "sensitive_arguments" or "sensitive_content" ? AgentStopReason.SensitiveData
                     : result.ErrorCode == "process_limit" ? AgentStopReason.ProcessResourceLimit
@@ -218,7 +218,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     : registry.ExecutionPolicy.Rules?.Capture().Status == ProjectRulesStatus.Stale ? AgentStopReason.RulesChanged
                     : result.Status == ToolStatus.Cancelled || Cancelled ? AgentStopReason.TurnCancelled
                     : result.ErrorCode == "approval_declined" ? AgentStopReason.ApprovalDeclined
-                    : result.ErrorCode == "conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
+                    : result.ErrorCode == "checkpoint_limit" ? AgentStopReason.TaskResourceLimit
+                    : result.ErrorCode is "conflict" or "checkpoint_git_conflict" || result.StopAfterOperation && result.ErrorCode is "path_changed" or "symbolic_link" or "sensitive_path" ? AgentStopReason.FileConflict
                     : result.WriteState is not null && (result.Status == ToolStatus.Failed || result.StopAfterOperation || result.ErrorCode == "publish_unsupported") ? AgentStopReason.FileWriteFailed
                     : result.ErrorCode == "mode_restricted" ? AgentStopReason.ModeRestricted
                     : result.GitSummary is not null && result.StopAfterOperation ? AgentStopReason.GitStopped

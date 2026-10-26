@@ -90,6 +90,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     interaction.Show(new(ChatEventKind.InputRejected, text: "本機指令只接受單行；本次未執行。"));
                     continue;
                 }
+                if (await HandleCheckpointCommandAsync(text)) continue;
                 if (await HandleWorkCommandAsync(text)) continue;
                 if (await HandleRulesCommandAsync(text)) continue;
                 if (await HandleContextCommandAsync(text)) continue;
@@ -97,7 +98,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/work save TITLE：完整預覽後確認保存安全摘要；/work list、/work show ID：歷史查詢；/work delete ID：新確認後只刪單一存檔。\n" +
+                    ShowContextBlock("/checkpoint list：程序內修改歷史；/checkpoint show cN：原始修改差異；/checkpoint restore cN：Execute 下逐筆新確認復原；/checkpoint forget cN：新確認後丟棄單筆記憶體。\n" +
+                        "檢查點只在本程序記憶體保留，clear／換 Key／退出會丟棄；容量滿停止新寫入，新建檔須人工核對及刪除。復原不復原 Git index、建置副作用、owner、ACL、xattr 或硬連結關係，仍須重新確認計畫並給新指示。\n" +
+                        "/work save TITLE：完整預覽後確認保存安全摘要；/work list、/work show ID：歷史查詢；/work delete ID：新確認後只刪單一存檔。\n" +
                         "存檔是私人目錄中的明文，摘要可能有損；只有保存可能消耗一次摘要生成及 API 用量。--resume ID 重啟時重新確認工作區、輸入 Key 並載入目前規則，續接後進入 Plan，不恢復操作核准或完成證據。clear 只清記憶體，delete 只刪指定存檔。\n" +
                         "/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
                         "/review [all|staged|unstaged|untracked]：目前 Scope 的唯讀模型審查；/review show：最近成功報告，零生成。差異可能送至 Gemini，消耗共用生成額度；使用原始 bytes 視角，排除範圍會明示，本回合不執行建置或測試。\n" +
@@ -108,7 +111,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/plan：唯讀探索與規劃；/execute：確認目前版本後切換執行；/tasks：本機任務與完成依據。\n" +
                         "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；SDK 10.0.100 的 test 因私人 IPC 限制不支援。\n" +
                         "計畫最多 20 任務、1 項在途及 256 筆事實；容量不足時請 /clear 後重新規劃。\n" +
-                        "/clear：清除對話、快照、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
+                        "/clear：清除對話、快照、檢查點、復原結果、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
                         "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
                         "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
                         "草稿上限 16384 個 UTF-16 單位；輸入不回顯，Enter 送出，F2 安全預覽，F3 貼上收集，F4 換行。\n" +
@@ -444,15 +447,18 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         interaction.ClearInputState();
         lock (_gate)
         {
-            _work?.Clear(); LastWork = null;
+            LastWork = null;
             _rules?.InvalidateCandidates();
             _reviews?.Clear();
             if (_contexts is not null) _contexts.Clear(); else context.Clear();
             LastMaintenance = null;
             LastOutcome = null;
             _plans?.Clear();
+            _executionPolicy?.Recovery.Clear();
+            _work?.Clear();
         }
         _workspace?.Snapshots.Clear();
+        _workspace?.Checkpoints?.Clear();
     }
 
     private async Task DisposeWorkspaceAsync()
@@ -487,7 +493,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.Working or ChatState.AwaitingWorkApproval or ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
+            else if (_state is ChatState.Working or ChatState.AwaitingWorkApproval or ChatState.CheckpointOperation or ChatState.AwaitingCheckpointApproval or ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

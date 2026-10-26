@@ -13,8 +13,11 @@ public sealed partial class GeminiClient
     IDisposable ILlmContextTelemetry.ObserveRequest(Action<long, bool> report) => ((ILlmContextTelemetry)CreateContextInspector()).ObserveRequest(report);
     ContextTurnProjection ILlmContextInspector.ProjectCompletedTurn(long turnId, IReadOnlyList<LlmMessage> messages) =>
         CreateContextInspector().ProjectCompletedTurn(turnId, messages);
-    private sealed class Inspector(GeminiClient client) : ILlmContextInspector, ILlmContextTelemetry
+    private sealed class Inspector(GeminiClient client) : ILlmContextInspector, ILlmContextTelemetry, ILlmRequestCapacityInspector
     {
+        public Task<ContextRequestMeasure> MeasureActualRequestAsync(LlmRequest request, CancellationToken cancellationToken) =>
+            client.MeasureActualRequestAsync(request, cancellationToken);
+
         public ContextRequestMeasure Measure(LlmRequest request)
         {
             lock (client.gate)

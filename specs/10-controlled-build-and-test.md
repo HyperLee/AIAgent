@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+checkpoint 不捕捉 build 產物或程序副作用；本機復原後全部舊 Validation 事實失去新完成資格，須新 epoch 的實際驗證。原受控 recipe、原生隔離、生成／時間預算與產品 MTP test 不支持邊界維持，復原不是 rollback build／test。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：私人存檔位置加入 .NET admission 與原生 read／write deny，即使它位於其他允許讀取／輸出根內仍不可達。保存及續接不建立程序證據，也不提升 Validation／test 能力；SDK 10.0.100 的私人 IPC 邊界、test 不支援及既有未結原生驗收保持。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

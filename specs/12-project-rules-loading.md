@@ -1,5 +1,9 @@
 # 12：專案規則載入開發規格書
 
+## 第 16 份產品實作接續（2026-10-27）
+
+復原依目前 Valid 規則與 Scope 新核准，歷史捕捉規則版本只供顯示。AGENTS.md 受控修改與復原先完成已發生檔案事實及復原代次，再 Stale／撤確認；舊 bytes 不復活舊 RulesRevision、read snapshot 或 yes。規則 reload／Scope 切換保留 checkpoint 歷史但使舊候選失效。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：續接仍重新確認工作區、輸入 Key 並讀目前規則；Scope hint 必須另取使用者新確認才切換。舊 rules_refs／hash 只是歷史比較，不建立 Valid、來源身分或操作授權。私人存檔只由限定服務存取，一般規則讀取排除該位置。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

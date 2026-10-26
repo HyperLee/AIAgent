@@ -3,6 +3,7 @@ namespace AIAgent.Cli.Core;
 internal static class ChatInputValidation
 {
     internal const int MaxCodeUnits = 16384;
+    internal static bool IsSingleLineCommand(string text) => IsValid(text) && !text.Any(c => c is '\r' or '\n');
     internal static bool IsValid(string text)
     {
         if (text.Length > MaxCodeUnits) return false;

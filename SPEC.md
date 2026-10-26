@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 16 份適用範圍補充（2026-10-27）
+
+[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)接續第5、8～15章：受控 create／replace 在原核准流程內預留容量與保存程序內獨立 bytes，使用者以四個本機 `/checkpoint` 命令查詢、逐筆新確認復原或忘記。僅恢復准入的普通工作檔，根Git metadata只作衝突檢查，不寫index；新建檔交人工，沒有模型復原工具、持久備份、redo、工作區刪除或整體rollback。
+
+復原開始發布後先保留檔案事實，再增加 RecoveryRevision／EvidenceEpoch、撤確認並進Plan；舊完成與操作保留歷史，不能證明目前工作已驗證。所有模型請求及估算帶必備有界復原附錄，SAVE v1格式及公開LLM／工具成功契約保持。clear／換Key／退出丟資料，容量滿停止新寫入；metadata、原生隔離與驗收限制見[README](README.md#checkpoint-validation)，既有真人／Gemini／MTP／Release門檻分列。
+
 ## 第 15 份適用範圍補充（2026-10-26）
 
 [15：工作保存與續接](specs/15-work-save-and-resume.md)擴充第 5、6、8～15 章：`/work save TITLE` 經安全摘要、完整預覽與新確認後，保存至 OS 家目錄 `.aiagent/work`；list／show 為歷史查詢，delete 只刪使用者指定的單一存檔。它們是本機用途限定入口，不增加模型工具或一般工作區外存取。

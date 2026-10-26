@@ -172,6 +172,7 @@ def main():
     review_cases(["dotnet", str(args.host.resolve())])
     terminal_editor_cases(["dotnet", str(args.host.resolve())])
     work_cases(["dotnet", str(args.host.resolve())])
+    checkpoint_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1043,6 +1044,105 @@ def work_cases(host):
             print("SAVE-AC-029-busy-cancel-" + str(control[0]) + ": PASS", flush=True)
         finally:
             os.close(write_fd); terminal.close()
+
+def checkpoint_cases(host):
+    approval = b"OFFLINE_CHECKPOINT_APPROVAL_READY"
+
+    def start(scenario="checkpoint-flow", gate_fd=None):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-checkpoint-pty-"))
+        (workspace / "notes.md").write_bytes(b"before\r\n")
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace,
+                                   () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM); terminal.send(b"yes\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(HOST_PROMPT)
+        terminal.send(b"modify\r"); terminal.wait_for(b"OFFLINE_APPROVAL_READY")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, 2)
+        check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-029-original-write")
+        return terminal, workspace
+
+    def command(terminal, text):
+        previous = terminal.output.count(HOST_PROMPT)
+        terminal.send(text.encode() + b"\r"); terminal.wait_for(HOST_PROMPT, previous + 1)
+
+    for answer, applied in ((b"yes\r", True), (b"n\r", False), (b" \r", False), (b"\x03", False), (b"\x04", False)):
+        terminal, workspace = start()
+        try:
+            command(terminal, "/checkpoint list"); command(terminal, "/checkpoint show c1")
+            terminal.send(b"/checkpoint restore c1\r"); terminal.wait_for(approval)
+            check("復原此單一檔案變更？[y/N] ".encode() in terminal.output, "CKPT-AC-029-exact-restore-prompt")
+            terminal.send(answer)
+            if answer != b"\x04":
+                terminal.wait_for(HOST_PROMPT, 5); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check((workspace / "notes.md").read_bytes() == (b"before\r\n" if applied else b"after\r\n"), "CKPT-AC-029-restore-publication")
+            check(("[單檔復原結果] Verified".encode() in terminal.output) == applied, "CKPT-AC-029-known-result")
+            print("CKPT-AC-029-restore-choice-" + str(answer[0]) + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    terminal, workspace = start()
+    try:
+        command(terminal, "/plan"); command(terminal, "/checkpoint restore c1")
+        check(b"mode_restricted" in terminal.output and approval not in terminal.output, "CKPT-AC-029-plan-gate")
+        terminal.send(b"/checkpoint forget c1\r"); terminal.wait_for(approval)
+        check("忘記此單一檢查點？[y/N] ".encode() in terminal.output, "CKPT-AC-029-exact-forget-prompt")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, 5)
+        command(terminal, "/checkpoint show c1")
+        check(b"checkpoint_not_found" in terminal.output, "CKPT-AC-029-forget-single-record")
+        check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-029-forget-no-file-write")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("CKPT-AC-029-plan-forget: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal, workspace = start()
+    try:
+        command(terminal, "/checkpoint list")
+        offset = len(terminal.output); prompts = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"\x10\x1bOQ"); terminal.wait_for(HOST_PROMPT, prompts + 1)
+        draft = terminal.output[offset:]
+        check(b"1: modify" in draft and b"/checkpoint list" not in draft, "CKPT-AC-030-command-excluded-from-history")
+        terminal.send(b"\x15/clear\r"); terminal.wait_for(HOST_PROMPT, prompts + 2)
+        command(terminal, "/checkpoint show c1")
+        check(b"checkpoint_not_found" in terminal.output, "CKPT-AC-030-clear-discards-record")
+        check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-030-clear-preserves-file")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("CKPT-AC-030-history-clear: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        read_fd, write_fd = os.pipe(); terminal, workspace = start("checkpoint-busy", read_fd); os.close(read_fd)
+        try:
+            terminal.send(b"/checkpoint restore c1\r"); terminal.wait_for(b"OFFLINE_CHECKPOINT_WAITING")
+            terminal.send(b"/checkpoint forget c1\ryes\r" + control); terminal.wait_for(b"OFFLINE_CHECKPOINT_CANCEL_OBSERVED")
+            os.write(write_fd, b"x")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, 3); command(terminal, "/checkpoint show c1"); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(approval not in terminal.output, "CKPT-AC-030-busy-input-no-approval")
+            check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-030-busy-no-publication")
+            print("CKPT-AC-030-busy-" + str(control[0]) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
+
+    read_fd, write_fd = os.pipe(); terminal, workspace = start("checkpoint-preview-gated", read_fd); os.close(read_fd)
+    try:
+        terminal.send(b"/checkpoint restore c1\r"); terminal.wait_for(b"OFFLINE_CHECKPOINT_PREVIEW_PAUSED")
+        terminal.send(b"yes\r"); os.write(write_fd, b"x"); terminal.wait_for(approval)
+        check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-030-preinput-no-approval")
+        # Function keys are data in this hidden single-line reader and cannot send a command.
+        terminal.send(b"\x1bOQ\x1bOR\x1bOSyes\r")
+        terminal.wait_for(approval, 2)
+        terminal.send(b"n\r"); terminal.wait_for(HOST_PROMPT, 3)
+        check((workspace / "notes.md").read_bytes() == b"after\r\n", "CKPT-AC-030-function-keys-no-approval")
+        command(terminal, "/checkpoint show c01")
+        check(b"invalid_checkpoint_id" in terminal.output, "CKPT-AC-030-malformed-id")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("CKPT-AC-030-preinput-function-keys: PASS", flush=True)
+    finally:
+        os.close(write_fd); terminal.close()
 
 if __name__ == "__main__":
     try:

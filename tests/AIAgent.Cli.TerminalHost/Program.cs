@@ -70,6 +70,12 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
                     "{\"version\":1,\"goals\":[\"離線保存摘要\"],\"decisions\":[],\"open_questions\":[],\"background\":[]}",
                     [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
             }
+            if (scenario.StartsWith("checkpoint", StringComparison.Ordinal))
+            {
+                if (_calls == 1) return PlanCalls(("read_file", new { path = "notes.md" }));
+                if (_calls == 2) return PlanCalls(("replace_text", new { path = "notes.md", old_text = "before", new_text = "after" }));
+                return new(LlmStatus.Completed, LlmErrorCode.None, "離線修改完成", [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("review", StringComparison.Ordinal))
             {
                 if (scenario == "review-model-busy")
@@ -180,13 +186,16 @@ internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate)
             return new ObservedWriteWorkspace(new WorkspaceFiles(session.Workspace, session.Policy,
                 new GatedEditFileSystem(scenario, gate!), ApprovalBridge.ForSession(session), executionPolicy));
         var workspace = _factory.Create(session, executionPolicy);
-        return scenario is "tool-busy" or "search-busy" ? new GatedWorkspace(workspace, gate!) : workspace;
+        return scenario is "tool-busy" or "search-busy" or "checkpoint-busy" ? new GatedWorkspace(workspace, gate!, scenario) : workspace;
     }
 }
 
-internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : IWorkspaceFiles
+internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate, string? scenario = null) : IWorkspaceFiles
 {
     private bool _waited;
+    private ICheckpointWorkspace? _checkpoint;
+    public ICheckpointWorkspace? Checkpoints => scenario == "checkpoint-busy" && inner.Checkpoints is { } checkpoints
+        ? _checkpoint ??= new GatedCheckpoint(checkpoints, gate) : inner.Checkpoints;
     public IProjectRulesWorkspace? ProjectRulesWorkspace => inner.ProjectRulesWorkspace;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
     public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
@@ -205,7 +214,7 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : I
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken token) => inner.ListFilesAsync(path, token);
     public async Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken token)
     {
-        if (!_waited)
+        if (!_waited && scenario != "checkpoint-busy")
         {
             _waited = true;
             // Deliberately finish late: the PTY driver observes cancellation, then releases
@@ -221,6 +230,21 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate) : I
     public ValueTask DisposeAsync() => inner.DisposeAsync();
 }
 
+internal sealed class GatedCheckpoint(ICheckpointWorkspace inner, FileStream gate) : ICheckpointWorkspace
+{
+    public Task<CheckpointOperationResult> ListAsync(CancellationToken token) => inner.ListAsync(token);
+    public Task<CheckpointOperationResult> ShowAsync(long id, CancellationToken token) => inner.ShowAsync(id, token);
+    public Task<CheckpointOperationResult> ForgetAsync(long id, ICheckpointApproval approval, CancellationToken token) => inner.ForgetAsync(id, approval, token);
+    public async Task<CheckpointOperationResult> RestoreAsync(long id, ICheckpointApproval approval, CancellationToken token)
+    {
+        using var observed = token.Register(() => Console.WriteLine("OFFLINE_CHECKPOINT_CANCEL_OBSERVED"));
+        Console.WriteLine("OFFLINE_CHECKPOINT_WAITING");
+        await gate.ReadExactlyAsync(new byte[1], CancellationToken.None);
+        return await inner.RestoreAsync(id, approval, token);
+    }
+    public void Clear() => inner.Clear();
+}
+
 internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStream? gate) : ITerminal
 {
     private int _keyPrompts;
@@ -234,6 +258,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     private bool _planApprovalPrinted;
     private bool _processApprovalPrinted;
     private bool _workApprovalPrinted;
+    private bool _checkpointApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -267,12 +292,19 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
         {
             _processApprovalPrinted = false; Console.WriteLine("OFFLINE_PROCESS_APPROVAL_READY");
         }
+        if (key is null && _checkpointApprovalPrinted) { _checkpointApprovalPrinted = false; Console.WriteLine("OFFLINE_CHECKPOINT_APPROVAL_READY"); }
         if (key is null && _workApprovalPrinted) { _workApprovalPrinted = false; Console.WriteLine("OFFLINE_WORK_APPROVAL_READY"); }
         return key;
     }
     public void Write(string text)
     {
         source.Write(text);
+        if (text.EndsWith(CheckpointLimits.RestorePrompt, StringComparison.Ordinal) || text.EndsWith(CheckpointLimits.ForgetPrompt, StringComparison.Ordinal))
+        {
+            _checkpointApprovalPrinted = true;
+            if (scenario == "checkpoint-preview-gated" && !_previewWaited)
+            { _previewWaited = true; Console.WriteLine("OFFLINE_CHECKPOINT_PREVIEW_PAUSED"); gate!.ReadExactly(new byte[1]); }
+        }
         if (Enum.GetValues<WorkApprovalKind>().Any(kind => text.EndsWith(WorkSessionCoordinator.Prompt(kind), StringComparison.Ordinal)))
         {
             _workApprovalPrinted = true;

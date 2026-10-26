@@ -20,10 +20,11 @@ internal sealed partial class AgentRunner
                 var memory = coordinator?.BuildMemoryAppendix() ?? "";
                 var rules = registry.ExecutionPolicy.Rules?.BuildAppendix() ?? throw new ProjectRulesFlowException("rules_unavailable");
                 var reviewAppendix = review?.Appendix() ?? "";
+                var recovery = registry.ExecutionPolicy.Recovery.BuildAppendix();
                 _requestStamp = coordinator?.Capture();
-                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix + reviewAppendix, ContentBoundary.ModelInput))
+                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + rules + memory + appendix + reviewAppendix, _messages, registry.Definitions);
+                return new(instruction + rules + memory + appendix + reviewAppendix + recovery, _messages, registry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -44,7 +45,20 @@ internal sealed partial class AgentRunner
             await RequireRulesAsync();
             await RequireReviewAsync();
             var stamp = expectedStamp ?? _requestStamp;
-            Measure(request, purpose, stamp);
+            var measure = Measure(request, purpose, stamp);
+            if (registry.ExecutionPolicy.Recovery.Last is not null)
+            {
+                var capacity = inspector is ILlmRequestCapacityInspector precise
+                    ? await precise.MeasureActualRequestAsync(request, token) : measure;
+                if (capacity.Status != ContextMeasureStatus.Measured || capacity.EstimatedJsonBytes is not >= 0)
+                {
+                    _reset |= capacity.RequiresContextReset;
+                    throw new ContextFlowException(capacity.RequiresContextReset ? AgentStopReason.InvalidProtocol : AgentStopReason.ContextCapacity,
+                        capacity.RequiresContextReset ? AgentTurnStatus.Failed : AgentTurnStatus.Stopped);
+                }
+                if (capacity.EstimatedJsonBytes > ContextRequestMeasure.MaxRequestBytes)
+                    throw new ContextFlowException(AgentStopReason.ContextCapacity);
+            }
             using var report = stamp is not null && inspector is ILlmContextTelemetry telemetry
                 ? telemetry.ObserveRequest((bytes, dispatched) => coordinator!.RecordBody(stamp, purpose, bytes, dispatched)) : null;
             var snapshot = budget.Snapshot();
@@ -92,7 +106,7 @@ internal sealed partial class AgentRunner
             if (coordinator is null || inspector is null) throw new ContextFlowException(AgentStopReason.ContextCapacity);
             var source = coordinator.PrepareCompaction(stamp, inspector);
             if (!coordinator.IsCurrent(stamp)) throw new ContextFlowException(AgentStopReason.ContextCompactionFailed);
-            var result = await GenerateAsync(new(CompactionInstruction, [LlmMessage.FromUserText(source)], []), GenerationPurpose.Compaction, stamp);
+            var result = await GenerateAsync(new(CompactionInstruction + registry.ExecutionPolicy.Recovery.BuildAppendix(), [LlmMessage.FromUserText(source)], []), GenerationPurpose.Compaction, stamp);
             if (result is null) { _reset = true; throw new ContextInspectionException(); }
             _reset |= result.RequiresContextReset || result.ErrorCode is LlmErrorCode.InvalidResponse or LlmErrorCode.UnexpectedToolCall or LlmErrorCode.SensitiveOutput;
             _modelStatus = result.Status; _modelError = result.ErrorCode;

@@ -15,16 +15,16 @@ internal static class PlanProjection
     private static readonly string[] BlockReasons = ["capability_unavailable", "turn_paused", "turn_cancelled", "generation_limit",
         "model_outcome", "operation_failed", "approval_declined", "file_conflict", "write_unconfirmed", "mode_changed", "model_reported",
         "resource_limit", "workspace_unavailable", "local_failure", "process_start_failed", "process_failed", "process_timed_out", "process_output_limit",
-        "validation_inconclusive", "process_unconfirmed", "rules_changed", "rules_unavailable", "rules_scope_mismatch", "rules_limit"];
+        "validation_inconclusive", "process_unconfirmed", "rules_changed", "rules_unavailable", "rules_scope_mismatch", "rules_limit", "workspace_restored"];
     private static readonly string UpperReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r)).First();
     private static readonly string UpperDisplayReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r + "；" + Reason(r))).First();
     internal static string Name<T>(T value) where T : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
-    internal static byte[] State(AgentMode mode, PlanSnapshot? plan, bool upper = false, long rulesRevision = 0)
+    internal static byte[] State(AgentMode mode, PlanSnapshot? plan, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0)
     {
         using var output = new MemoryStream();
         using (var writer = new Utf8JsonWriter(output))
         {
-            writer.WriteStartObject(); writer.WriteNumber("rules_revision", upper ? long.MaxValue : rulesRevision); writer.WriteString("mode", upper ? "execute" : Name(mode));
+            writer.WriteStartObject(); writer.WriteNumber("evidence_epoch", upper ? long.MaxValue : evidenceEpoch); writer.WriteNumber("rules_revision", upper ? long.MaxValue : rulesRevision); writer.WriteString("mode", upper ? "execute" : Name(mode));
             writer.WritePropertyName("plan");
             if (plan is null) writer.WriteNullValue();
             else
@@ -50,6 +50,9 @@ internal static class PlanProjection
                     writer.WriteString("summary", task.Summary); writer.WriteString("block_reason", upper ? UpperReason : task.BlockReason);
                     if (upper || task.CompletionRulesRevision is not null) writer.WriteNumber("completion_rules_revision", upper ? long.MaxValue : task.CompletionRulesRevision!.Value);
                     else writer.WriteNull("completion_rules_revision");
+                    if (upper || task.CompletionEvidenceEpoch is not null) writer.WriteNumber("completion_evidence_epoch", upper ? long.MaxValue : task.CompletionEvidenceEpoch!.Value);
+                    else writer.WriteNull("completion_evidence_epoch");
+                    writer.WriteBoolean("completion_evidence_current", !upper && task.State == PlanTaskState.Completed && task.CompletionEvidenceEpoch == evidenceEpoch);
                     writer.WriteString("completion_basis", upper ? "model_assessment" : Name(task.CompletionBasis));
                     writer.WriteStartArray("completion_fact_ids");
                     if (upper)
@@ -67,9 +70,10 @@ internal static class PlanProjection
         return output.ToArray();
     }
 
-    internal static string Display(AgentMode mode, PlanSnapshot? plan, int oldFacts, bool approval = false, bool upper = false, long rulesRevision = 0)
+    internal static string Display(AgentMode mode, PlanSnapshot? plan, int oldFacts, bool approval = false, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0)
     {
         var output = new StringBuilder(upper ? "[Execute]\n" : mode == AgentMode.Plan ? "[Plan]\n" : "[Execute]\n");
+        output.Append("證據代次：").Append((upper ? long.MaxValue : evidenceEpoch).ToString(CultureInfo.InvariantCulture)).Append('\n');
         output.Append("規則版本：").Append((upper ? long.MaxValue : rulesRevision).ToString(CultureInfo.InvariantCulture)).Append('\n');
         if (plan is null) output.Append("目前沒有活動計畫。\n");
         else
@@ -97,6 +101,9 @@ internal static class PlanProjection
                 if (upper || task.BlockReason is not null) output.Append("  受阻原因：")
                     .Append(upper ? UpperDisplayReason + "；" + Reason(UpperDisplayReason) : task.BlockReason + "；" + Reason(task.BlockReason!)).Append('\n');
                 output.Append("  完成規則版本：").Append(upper ? long.MaxValue.ToString(CultureInfo.InvariantCulture) : task.CompletionRulesRevision?.ToString(CultureInfo.InvariantCulture) ?? "無").Append('\n');
+                output.Append("  完成證據代次：").Append(upper ? long.MaxValue.ToString(CultureInfo.InvariantCulture) : task.CompletionEvidenceEpoch?.ToString(CultureInfo.InvariantCulture) ?? "無").Append('\n');
+                if (upper || task.State == PlanTaskState.Completed && task.CompletionEvidenceEpoch != evidenceEpoch)
+                    output.Append("  歷史完成狀態；復原後未重新驗證。\n");
                 output.Append("  完成事實：");
                 if (upper) output.AppendJoin(", ", Enumerable.Repeat(ReservedId, task.Kind == PlanTaskKind.Analysis ? 1 : task.Requirements.Count));
                 else output.AppendJoin(", ", task.CompletionFactIds);
@@ -112,6 +119,7 @@ internal static class PlanProjection
 
     internal static string Reason(string reason) => reason switch
     {
+        "workspace_restored" => "工作區已復原；舊證據僅供歷史參考，請重新確認並重讀目前來源",
         "rules_changed" => "規則來源已變動；請重載、重新確認並給予新指示",
         "rules_unavailable" => "目前沒有可用規則快照",
         "rules_scope_mismatch" => "目標超出目前規則範圍；請明確選擇 Scope",

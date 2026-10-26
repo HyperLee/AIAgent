@@ -61,7 +61,7 @@ internal sealed partial class AgentRunner
                 if (coordinator is null || inspector is null) return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity);
                 if (LimitReason() is { } limit) return Finish(AgentTurnStatus.Stopped, limit);
                 if (!new WorkPersistencePolicy(policy).IsSafe(source)) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
-                var request = new LlmRequest(CompactionInstruction, [LlmMessage.FromUserText(source)], []);
+                var request = new LlmRequest(CompactionInstruction + registry.ExecutionPolicy.Recovery.BuildAppendix(), [LlmMessage.FromUserText(source)], []);
                 if (Measure(request, GenerationPurpose.WorkSaveSummary, stamp).EstimatedJsonBytes >= ContextDocuments.AutomaticThreshold)
                     return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity);
                 var result = await GenerateAsync(request, GenerationPurpose.WorkSaveSummary, stamp);
