@@ -1,14 +1,19 @@
+using System.Text.RegularExpressions;
+
 namespace AIAgent.Cli.Workspace;
 
 internal static class WorkspacePathRules
 {
     private static readonly HashSet<string> SensitiveNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".git", ".agents", ".codex", ".aws", ".ssh", ".secrets", "secrets",
+        ".git", ".aiagent", ".store.lock", ".agents", ".codex", ".aws", ".ssh", ".secrets", "secrets",
         "gemini-api-key.txt", "api-key.txt", "appsettings.Local.json", "credentials", "credentials.json",
         "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "identity"
     };
     private static readonly string[] SensitiveSuffixes = [".secrets.json", ".pem", ".key", ".p12", ".pfx", ".ppk", ".keystore", ".jks"];
+
+    private static readonly Regex WorkTemporaryName = new(@"\A[.]aiagent-work-[0-9a-f]{32}[.]tmp\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     internal static bool TryNormalize(string? path, out string normalized, out bool directoryRequired)
     {
@@ -39,7 +44,7 @@ internal static class WorkspacePathRules
         string.Equals(root, candidate, StringComparison.Ordinal) || candidate.StartsWith(root.TrimEnd('/') + "/", StringComparison.Ordinal);
 
     internal static bool IsSensitive(string path) => path.Split('/').Any(segment =>
-        SensitiveNames.Contains(segment) || segment.Equals(".env", StringComparison.OrdinalIgnoreCase) ||
+        SensitiveNames.Contains(segment) || WorkTemporaryName.IsMatch(segment) || segment.Equals(".env", StringComparison.OrdinalIgnoreCase) ||
         segment.StartsWith(".env.", StringComparison.OrdinalIgnoreCase) ||
         SensitiveSuffixes.Any(suffix => segment.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)));
 

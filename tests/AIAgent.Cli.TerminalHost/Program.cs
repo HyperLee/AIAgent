@@ -21,13 +21,16 @@ try
     using var interrupts = new ConsoleInterruptRouter(cancellation.Cancel);
     ITerminal terminal = new OfflineTerminal(new SystemTerminal(), scenario, gate);
     var bootstrap = new ConsoleInteraction(terminal);
-    using var result = await new Bootstrapper(new FixedSettings(), new WorkspaceResolver(new WorkspaceFileSystem()), bootstrap, bootstrap).StartAsync([], cancellation.Token);
+    var startupArgs = scenario.StartsWith("work-resume", StringComparison.Ordinal) ? new[] { "--resume", OfflineWorkStore.ResumeId } : [];
+    using var result = await new Bootstrapper(new FixedSettings(), new WorkspaceResolver(new WorkspaceFileSystem()), bootstrap, bootstrap).StartAsync(startupArgs, cancellation.Token);
     if (result.Status != BootstrapStatus.Ready) { bootstrap.ShowStatus(StatusMessages.For(result)); return result.ExitCode; }
     using var interaction = new ConsoleChatInteraction(terminal);
+    var session = result.TakeSession();
     var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate), scenario.StartsWith("build", StringComparison.Ordinal) ? new OfflineProcessFactory(scenario, gate) : null,
-        scenario.StartsWith("review", StringComparison.Ordinal) ? new OfflineGitFactory(scenario, gate) : null);
+        scenario.StartsWith("review", StringComparison.Ordinal) ? new OfflineGitFactory(scenario, gate) : null,
+        scenario.StartsWith("work", StringComparison.Ordinal) ? () => new OfflineWorkStore(scenario, session) : null);
     interrupts.RouteTo(chat.Interrupt);
-    return await chat.RunAsync(result.TakeSession(), cancellation.Token);
+    return await chat.RunAsync(session, cancellation.Token);
 }
 catch (Exception) { return 1; }
 
@@ -55,6 +58,18 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("work", StringComparison.Ordinal) && request.Tools.Count == 0)
+            {
+                if (scenario == "work-model-busy")
+                {
+                    Console.WriteLine("OFFLINE_WORK_MODEL_PAUSED");
+                    using var observed = cancellationToken.Register(() => Console.WriteLine("OFFLINE_WORK_CANCEL_OBSERVED"));
+                    await gate!.ReadExactlyAsync(new byte[1], CancellationToken.None); cancellationToken.ThrowIfCancellationRequested();
+                }
+                return new(LlmStatus.Completed, LlmErrorCode.None,
+                    "{\"version\":1,\"goals\":[\"離線保存摘要\"],\"decisions\":[],\"open_questions\":[],\"background\":[]}",
+                    [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("review", StringComparison.Ordinal))
             {
                 if (scenario == "review-model-busy")
@@ -218,6 +233,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     private bool _approvalPrinted;
     private bool _planApprovalPrinted;
     private bool _processApprovalPrinted;
+    private bool _workApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -251,11 +267,18 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
         {
             _processApprovalPrinted = false; Console.WriteLine("OFFLINE_PROCESS_APPROVAL_READY");
         }
+        if (key is null && _workApprovalPrinted) { _workApprovalPrinted = false; Console.WriteLine("OFFLINE_WORK_APPROVAL_READY"); }
         return key;
     }
     public void Write(string text)
     {
         source.Write(text);
+        if (Enum.GetValues<WorkApprovalKind>().Any(kind => text.EndsWith(WorkSessionCoordinator.Prompt(kind), StringComparison.Ordinal)))
+        {
+            _workApprovalPrinted = true;
+            if (scenario == "work-preview-gated" && !_previewWaited)
+            { _previewWaited = true; Console.WriteLine("OFFLINE_WORK_PREVIEW_PAUSED"); gate!.ReadExactly(new byte[1]); }
+        }
         if (text.StartsWith("請輸入 API", StringComparison.Ordinal)) _keyPrinted = ++_keyPrompts > 1;
         if (text.StartsWith("重新輸入 Key？", StringComparison.Ordinal)) _choicePrinted = true;
         if (text.Contains("你> ", StringComparison.Ordinal)) _inputPrinted = true;

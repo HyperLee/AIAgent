@@ -68,13 +68,16 @@ internal static class MacSandboxPolicy
     { "/", "/private/etc/dotnet/install_location_arm64", "/dev/null", "/dev/random", "/dev/urandom", "/private/etc/localtime", "/usr/share/zoneinfo/UTC" });
     internal static IEnumerable<string> ReadRoots(ProcessAdmissionSnapshot snapshot) => new[]
     { snapshot.Root, snapshot.Installation.Root, snapshot.Installation.Packages, snapshot.Installation.HostDirectory, AppContext.BaseDirectory.TrimEnd('/') }.Concat(SystemReadRoots);
-    internal static string SensitivePattern
+    internal static string SensitivePattern => BaseSensitivePattern + "|" + WorkTemporaryPattern;
+    private static string WorkTemporaryPattern => "/[.][aA][iI][aA][gG][eE][nN][tT]-[wW][oO][rR][kK]-" +
+        string.Concat(Enumerable.Repeat("[0-9a-fA-F]", 32)) + "[.][tT][mM][pP](/|$)";
+    private static string BaseSensitivePattern
     {
         get
         {
             static string Ascii(string value) => string.Concat(value.Select(character => char.IsAsciiLetter(character)
                 ? "[" + char.ToLowerInvariant(character) + char.ToUpperInvariant(character) + "]" : character == '.' ? "[.]" : character.ToString()));
-            var names = new[] { ".git", ".agents", ".codex", ".aws", ".ssh", ".secrets", "secrets", "gemini-api-key.txt", "api-key.txt", "appsettings.Local.json", "credentials", "credentials.json", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "identity", "NuGet.Config" };
+            var names = new[] { ".git", ".aiagent", ".store.lock", ".agents", ".codex", ".aws", ".ssh", ".secrets", "secrets", "gemini-api-key.txt", "api-key.txt", "appsettings.Local.json", "credentials", "credentials.json", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "identity", "NuGet.Config" };
             var suffixes = new[] { ".secrets.json", ".pem", ".key", ".p12", ".pfx", ".ppk", ".keystore", ".jks" };
             return "/(" + string.Join('|', names.Select(Ascii)) + "|" + Ascii(".env") + "([.][^/]*)?|[^/]*(" + string.Join('|', suffixes.Select(Ascii)) + "))(/|$)";
         }
@@ -100,7 +103,10 @@ internal static class MacSandboxPolicy
                 if (ancestor == snapshot.Root) break; ancestor = Path.GetDirectoryName(ancestor)!;
             }
         }
-        text.Append("(deny file-read* file-write* (regex #\"").Append(SensitivePattern).Append("\"))\n");
+        text.Append("(deny file-read* file-write* (regex #\"").Append(BaseSensitivePattern).Append("\"))\n");
+        text.Append("(deny file-read* file-write* (regex #\"").Append(WorkTemporaryPattern).Append("\"))\n");
+        var workStoreRoot = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), ".aiagent", "work");
+        text.Append("(deny file-read* file-write* (subpath ").Append(Quoted(workStoreRoot)).Append("))\n");
         foreach (var denied in snapshot.Denied) text.Append("(deny file-read-data file-write* (subpath ").Append(Quoted(denied)).Append("))\n");
         text.Append("(deny file-link)\n(deny file-write-create (vnode-type SYMLINK))\n")
             .Append("(deny file-write* (subpath ").Append(Quoted(privateRoot + "/probe-source")).Append("))\n")

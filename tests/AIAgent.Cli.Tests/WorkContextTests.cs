@@ -32,6 +32,8 @@ public sealed class WorkContextTests
         var summary = memory.RootElement.GetProperty("summary"); Assert.AreEqual("saved_work_summary", summary.GetProperty("source").GetString());
         Assert.AreEqual(Id, summary.GetProperty("work_id").GetString()); Assert.IsFalse(summary.TryGetProperty("through_turn_id", out _));
         Assert.AreEqual(historical, coordinator.LoadedWorkPlan);
+        StringAssert.Contains(coordinator.BuildMemoryAppendix(), "saved_work_plan");
+        StringAssert.Contains(coordinator.BuildMemoryAppendix(), "reported_state");
     }
 
     [TestMethod]

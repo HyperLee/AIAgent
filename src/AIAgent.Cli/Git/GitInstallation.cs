@@ -131,6 +131,16 @@ internal sealed class GitInstallation
 
 internal static class GitSandboxPolicy
 {
+    private static string PrivateWorkPattern
+    {
+        get
+        {
+            static string Ascii(string value) => string.Concat(value.Select(character => char.IsAsciiLetter(character)
+                ? "[" + char.ToLowerInvariant(character) + char.ToUpperInvariant(character) + "]" : character == '.' ? "[.]" : character.ToString()));
+            return "/(" + Ascii(".aiagent") + "|" + Ascii(".store.lock") + "|" + Ascii(".aiagent-work-") + string.Concat(Enumerable.Repeat("[0-9a-fA-F]", 32)) + Ascii(".tmp") + ")(/|$)";
+        }
+    }
+
     internal static string Create(string root, GitInstallation installation, GitReadRequest request)
     {
         static string Quote(string path) => "\"" + path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
@@ -144,6 +154,10 @@ internal static class GitSandboxPolicy
             text.Append("(allow file-read* (literal ").Append(Quote(file)).Append("))\n");
         foreach (var directory in new[] { root + "/.git/refs", root + "/.git/objects" })
             text.Append("(allow file-read* (subpath ").Append(Quote(directory)).Append("))\n");
+        // Private work storage remains denied even if a broad ancestor or a future literal is readable.
+        text.Append("(deny file-read* file-write* (regex #\"").Append(PrivateWorkPattern).Append("\"))\n");
+        var workStoreRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aiagent", "work");
+        text.Append("(deny file-read* file-write* (subpath ").Append(Quote(workStoreRoot)).Append("))\n");
         // Explicitly authorized OS null-sink exception: no create, unlink, rename, or persistent-file writes.
         text.Append("(allow file-write-data (literal \"/dev/null\"))\n");
         text.Append("(allow process-exec (literal ").Append(Quote(installation.Executable)).Append("))\n");

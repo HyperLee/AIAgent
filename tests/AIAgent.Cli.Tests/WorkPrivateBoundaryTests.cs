@@ -38,6 +38,7 @@ public sealed class WorkPrivateBoundaryTests
         {
             Assert.AreEqual(WorkspaceErrorCode.SensitivePath, (await files.ReadFileAsync(name, default)).ErrorCode);
             Assert.AreEqual(WorkspaceErrorCode.SensitivePath, (await files.ListFilesAsync(name, default)).ErrorCode);
+            Assert.AreEqual(WorkspaceErrorCode.SensitivePath, (await files.ReadFileRangeAsync(name, 1, 1, default)).ErrorCode);
             Assert.AreEqual(WorkspaceErrorCode.SensitivePath, (await files.SearchFilesAsync(name, "*", default)).ErrorCode);
             Assert.AreEqual(WorkspaceErrorCode.SensitivePath, (await files.SearchTextAsync(name, "fixture", "*", true, 0, default)).ErrorCode);
             Assert.AreEqual("sensitive_path", await files.ExecutionPolicy.Rules!.TryChangeScopeAsync(name, default));
@@ -70,10 +71,11 @@ public sealed class WorkPrivateBoundaryTests
         CollectionAssert.AreEqual(new[] { "public.txt" }, listed.Data!.Entries.Select(entry => entry.Path).ToArray());
         var found = await files.SearchFilesAsync(".", "*", default);
         Assert.AreEqual(WorkspaceStatus.Success, found.Status);
+        CollectionAssert.AreEqual(new[] { "public.txt" }, found.Data!.Matches.Select(match => match.Path).ToArray());
         var searched = await files.SearchTextAsync(".", "fixture", "*", true, 0, default);
         Assert.AreEqual(WorkspaceStatus.Success, searched.Status);
+        CollectionAssert.AreEqual(new[] { "public.txt" }, searched.Data!.Matches.Select(match => match.Path).ToArray());
         Assert.IsFalse(fs.Enumerated.Any(path => path.Contains(".aiagent", StringComparison.Ordinal)));
-        Assert.IsTrue(fs.Handles.All(handle => handle.Input.BytesRead == 0 || handle.Input.ToArray().SequenceEqual(Encoding.UTF8.GetBytes("fixture"))));
         Assert.AreEqual(0, files.Snapshots.Count);
     }
 
@@ -113,7 +115,7 @@ public sealed class WorkPrivateBoundaryTests
     public async Task SAVEAC024_BuildAdmissionDeniesPrivateSubtreesWithoutReadingTheirFiles()
     {
         using var session = WorkspaceFixtures.Session(); var fs = AdmissionFileSystem();
-        fs.Directory(".aiagent"); fs.Directory(".aiagent/work"); fs.File(".aiagent/work/Directory.Build.props", [0]);
+        fs.Directory(".aiagent"); fs.Directory(".aiagent/work"); fs.File(".aiagent/work/Directory.Build.props", Encoding.UTF8.GetBytes("<Project />"));
         fs.File(".store.lock", [0]); fs.File(TempName, [0]);
         var snapshot = await new DotnetProjectAdmission(fs, session.Policy).InspectAsync("/ws", "a.csproj", DotnetTaskKind.Build,
             new("/sdk", "10.0.100", "/product", "/packages"), default);

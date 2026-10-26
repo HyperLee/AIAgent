@@ -7,7 +7,7 @@ namespace AIAgent.Cli.Core;
 
 internal sealed partial class ChatApplication(IChatInteraction interaction, IChatRuntimeFactory runtimeFactory,
     ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory,
-    IControlledDotnetTasksFactory? controlledTasksFactory = null, IGitReadWorkspaceFactory? gitReadWorkspaceFactory = null)
+    IControlledDotnetTasksFactory? controlledTasksFactory = null, IGitReadWorkspaceFactory? gitReadWorkspaceFactory = null, Func<IWorkSaveStore>? workSaveStoreFactory = null)
 {
     private readonly object _gate = context.DecisionGate;
     private readonly CancellationTokenSource _stop = new();
@@ -53,10 +53,18 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 _workspace = workspaceFilesFactory.Create(initialSession, _executionPolicy);
                 _rules = _executionPolicy.Rules;
                 _contexts.BindRules(_rules);
-                if (_rules is not null) await RunRulesOperationAsync(token => _rules.EnsureInitializedAsync(token));
-                (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
-                interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。一般輸入隱藏，F2 可安全預覽。\n" +
-                    "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
+                if (initialSession.ResumeWorkId is { } resumeId)
+                {
+                    await RunWorkOperationAsync((work, token) => work.ResumeAsync(resumeId, ConfirmWorkAsync, token), true);
+                }
+                else if (_rules is not null) await RunRulesOperationAsync(token => _rules.EnsureInitializedAsync(token));
+                if (!Stopping)
+                {
+                    (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
+                    _work?.BindRunner(_runner, runtimeFactory.CreateContextInspector(_client));
+                    interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。一般輸入隱藏，F2 可安全預覽。\n" +
+                        "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
+                }
             }
             while (!Stopping)
             {
@@ -82,13 +90,16 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     interaction.Show(new(ChatEventKind.InputRejected, text: "本機指令只接受單行；本次未執行。"));
                     continue;
                 }
+                if (await HandleWorkCommandAsync(text)) continue;
                 if (await HandleRulesCommandAsync(text)) continue;
                 if (await HandleContextCommandAsync(text)) continue;
                 if (await HandleReviewCommandAsync(text)) continue;
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
+                    ShowContextBlock("/work save TITLE：完整預覽後確認保存安全摘要；/work list、/work show ID：歷史查詢；/work delete ID：新確認後只刪單一存檔。\n" +
+                        "存檔是私人目錄中的明文，摘要可能有損；只有保存可能消耗一次摘要生成及 API 用量。--resume ID 重啟時重新確認工作區、輸入 Key 並載入目前規則，續接後進入 Plan，不恢復操作核准或完成證據。clear 只清記憶體，delete 只刪指定存檔。\n" +
+                        "/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
                         "/review [all|staged|unstaged|untracked]：目前 Scope 的唯讀模型審查；/review show：最近成功報告，零生成。差異可能送至 Gemini，消耗共用生成額度；使用原始 bytes 視角，排除範圍會明示，本回合不執行建置或測試。\n" +
                         "確認工作區及輸入 Key 後自動載入根規則，來源可能送至 Gemini；越過巢狀規則須先切 Scope，來源變動需重載及重新確認。\n" +
                         "/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
@@ -144,6 +155,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             SetState(ChatState.Stopping);
             if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
             try { ClearConversationState(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
+            try { if (_workStore is not null) await _workStore.DisposeAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { if (_rules is not null) await _rules.DisposeAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
@@ -390,6 +403,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             return;
         }
         ClearConversationState(); LastOutcome = null;
+        _work = null;
         _rules?.DetachPolicy();
         await DisposeWorkspaceAsync();
         BootstrapSession? replacement = null;
@@ -430,6 +444,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         interaction.ClearInputState();
         lock (_gate)
         {
+            _work?.Clear(); LastWork = null;
             _rules?.InvalidateCandidates();
             _reviews?.Clear();
             if (_contexts is not null) _contexts.Clear(); else context.Clear();
@@ -472,7 +487,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
+            else if (_state is ChatState.Working or ChatState.AwaitingWorkApproval or ChatState.LoadingRules or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;

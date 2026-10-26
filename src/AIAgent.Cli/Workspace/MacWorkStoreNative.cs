@@ -63,8 +63,17 @@ internal static class MacWorkStoreNative
 
     [DllImport(Library, EntryPoint = "open", SetLastError = true)]
     internal static extern int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
+    // Apple arm64 variadic arguments start on the stack after the fixed
+    // arguments. Fill x3...x7 so the mode occupies the first stack slot.
+    internal static int OpenAt(int directory, string name, int flags, uint mode = 0) =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? OpenAtArm64(directory, name, flags, 0, 0, 0, 0, 0, mode)
+            : OpenAtX64(directory, name, flags, mode);
     [DllImport(Library, EntryPoint = "openat", SetLastError = true)]
-    internal static extern int OpenAt(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int flags, uint mode = 0);
+    private static extern int OpenAtX64(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int flags, uint mode);
+    [DllImport(Library, EntryPoint = "openat", SetLastError = true)]
+    private static extern int OpenAtArm64(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int flags,
+        nint padding3, nint padding4, nint padding5, nint padding6, nint padding7, uint mode);
     [DllImport(Library, EntryPoint = "mkdirat", SetLastError = true)]
     internal static extern int MakeDirectoryAt(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, uint mode);
     [DllImport(Library, EntryPoint = "fstat", SetLastError = true)]

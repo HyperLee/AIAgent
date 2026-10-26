@@ -11,7 +11,7 @@ namespace AIAgent.Cli.Tests;
 
 [TestClass]
 [SupportedOSPlatform("macos")]
-public sealed class WorkStoreNativeTests
+public sealed partial class WorkStoreNativeTests
 {
     private const string WorkId = "0123456789abcdef0123456789abcdef";
 
@@ -127,6 +127,8 @@ public sealed class WorkStoreNativeTests
         Assert.AreEqual("none", await crowded.PreflightSaveAsync(default));
         for (var index = 0; index < 1023; index++) File.WriteAllBytes(Path.Combine(StorePath(crowdedHome), "other-" + index), []);
         Assert.AreEqual(0, (await crowded.ListAsync(default)).Count);
+        Assert.AreEqual("store_limit", await crowded.PreflightSaveAsync(default));
+        Assert.AreEqual("store_limit", (await crowded.PublishAsync(WorkId, new byte[] { 1 }, default)).ErrorCode);
         File.WriteAllBytes(Path.Combine(StorePath(crowdedHome), "one-more"), []);
         await AssertCode("store_limit", () => crowded.ListAsync(default));
     }
@@ -162,6 +164,139 @@ public sealed class WorkStoreNativeTests
         await AssertCode("store_limit", () => store.ReadAsync(WorkId, default));
         var tooLarge = await store.PublishAsync(new string('a', 32), new byte[65537], default);
         Assert.AreEqual("store_limit", tooLarge.ErrorCode);
+    }
+
+    [TestMethod]
+    public async Task SAVEAC004_ExistingPrivateNodesAreNeverRepairedAndUnsafeAncestryIsRejected()
+    {
+        var wrongMode = CreateHome();
+        Directory.CreateDirectory(Path.Combine(wrongMode, ".aiagent"), (UnixFileMode)493);
+        await using (var store = new MacWorkSaveStore(wrongMode))
+            Assert.AreEqual("store_unsafe", await store.PreflightSaveAsync(default));
+        Assert.AreEqual((UnixFileMode)493, File.GetUnixFileMode(Path.Combine(wrongMode, ".aiagent")));
+        Assert.IsFalse(Directory.Exists(StorePath(wrongMode)));
+        var extraAcl = CreateHome();
+        Directory.CreateDirectory(Path.Combine(extraAcl, ".aiagent"), (UnixFileMode)448);
+        await FixtureCommand("/bin/chmod", "+a", "everyone deny delete", Path.Combine(extraAcl, ".aiagent"));
+        await using (var store = new MacWorkSaveStore(extraAcl))
+            Assert.AreEqual("store_unsafe", await store.PreflightSaveAsync(default));
+        var unsafeAcl = CreateHome();
+        await FixtureCommand("/bin/chmod", "+a", "everyone allow add_file", unsafeAcl);
+        await using (var store = new MacWorkSaveStore(unsafeAcl))
+            Assert.AreEqual("store_unsafe", await store.PreflightSaveAsync(default));
+        Assert.IsFalse(Directory.Exists(Path.Combine(unsafeAcl, ".aiagent")));
+        var ownAcl = CreateHome();
+        await FixtureCommand("/bin/chmod", "+a", "user:" + Environment.UserName + " allow add_file", ownAcl);
+        await using (var store = new MacWorkSaveStore(ownAcl))
+            Assert.AreEqual("none", await store.PreflightSaveAsync(default));
+    }
+
+    [TestMethod]
+    public async Task SAVEAC004_LinksInDirectoryAndLockNamesNeverFollowTheirTargets()
+    {
+        var linkedHome = CreateHome();
+        var outside = Path.Combine(linkedHome, "outside");
+        Directory.CreateDirectory(outside, (UnixFileMode)448);
+        Directory.CreateSymbolicLink(Path.Combine(linkedHome, ".aiagent"), outside);
+        await using (var store = new MacWorkSaveStore(linkedHome))
+            Assert.AreEqual("store_unsafe", await store.PreflightSaveAsync(default));
+        Assert.AreEqual(0, Directory.GetFileSystemEntries(outside).Length);
+        var lockHome = CreateHome();
+        Directory.CreateDirectory(StorePath(lockHome), (UnixFileMode)448);
+        var target = Path.Combine(lockHome, "lock-target");
+        File.WriteAllBytes(target, [1, 2]);
+        File.SetUnixFileMode(target, (UnixFileMode)384);
+        File.CreateSymbolicLink(Path.Combine(StorePath(lockHome), ".store.lock"), target);
+        await using (var store = new MacWorkSaveStore(lockHome))
+            Assert.AreEqual("store_unsafe", await store.PreflightSaveAsync(default));
+        CollectionAssert.AreEqual(new byte[] { 1, 2 }, File.ReadAllBytes(target));
+    }
+
+    [TestMethod]
+    public async Task SAVEAC022_CancellationAndDisposeDoNotPublishOrDeleteOrCreateRoots()
+    {
+        var emptyHome = CreateHome();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await using (var empty = new MacWorkSaveStore(emptyHome))
+            Assert.AreEqual("work_cancelled", await empty.PreflightSaveAsync(cancelled.Token));
+        Assert.IsFalse(Directory.Exists(Path.Combine(emptyHome, ".aiagent")));
+        var home = CreateHome();
+        var store = new MacWorkSaveStore(home);
+        Assert.AreEqual("none", await store.PreflightSaveAsync(default));
+        var refused = await store.PublishAsync(WorkId, new byte[] { 1 }, cancelled.Token);
+        Assert.AreEqual("work_cancelled", refused.ErrorCode);
+        Assert.AreEqual(WorkPublicationState.NotPublished, refused.PublicationState);
+        Assert.AreEqual(1, Directory.GetFileSystemEntries(StorePath(home)).Length);
+        Assert.AreEqual("none", (await store.PublishAsync(WorkId, new byte[] { 1 }, default)).ErrorCode);
+        var file = await store.ReadAsync(WorkId, default);
+        var notDeleted = await store.DeleteAsync(file, cancelled.Token);
+        Assert.AreEqual("work_cancelled", notDeleted.ErrorCode);
+        Assert.AreEqual(WorkDeleteState.None, notDeleted.DeleteState);
+        Assert.IsTrue(File.Exists(Path.Combine(StorePath(home), WorkId + ".json")));
+        await store.DisposeAsync();
+        Assert.IsTrue(store.Stopped);
+        Assert.AreEqual("store_unavailable", await store.PreflightSaveAsync(default));
+        await AssertCode("store_unavailable", () => store.ReadAsync(WorkId, default));
+    }
+
+    [TestMethod]
+    public async Task SAVEAC005_QuotaIsRecheckedByConcurrentNativePublishers()
+    {
+        var home = CreateHome();
+        await using var first = new MacWorkSaveStore(home);
+        await using var second = new MacWorkSaveStore(home);
+        Assert.AreEqual("none", await first.PreflightSaveAsync(default));
+        for (var index = 0; index < 99; index++)
+        {
+            var path = Path.Combine(StorePath(home), index.ToString("x32") + ".json");
+            File.WriteAllBytes(path, [1]);
+            File.SetUnixFileMode(path, (UnixFileMode)384);
+        }
+        Assert.AreEqual("none", await first.PreflightSaveAsync(default));
+        Assert.AreEqual("none", await second.PreflightSaveAsync(default));
+        using var start = new ManualResetEventSlim();
+        var one = Task.Run(async () => { start.Wait(); return await first.PublishAsync(new string('a', 32), new byte[] { 2 }, default); });
+        var two = Task.Run(async () => { start.Wait(); return await second.PublishAsync(new string('b', 32), new byte[] { 3 }, default); });
+        start.Set();
+        var results = await Task.WhenAll(one, two);
+        Assert.AreEqual(1, results.Count(result => result.PublicationState == WorkPublicationState.PublishedVerified));
+        Assert.IsTrue(results.All(result => result.ErrorCode is "none" or "store_busy" or "store_limit" or "work_conflict"));
+        Assert.AreEqual(100, (await first.ListAsync(default)).Count);
+        Assert.IsFalse(Directory.EnumerateFiles(StorePath(home), ".aiagent-work-*.tmp").Any());
+    }
+
+    [TestMethod]
+    public async Task SAVEAC005_NativeTransactionLockCoordinatesWithAnotherProcess()
+    {
+        var home = CreateHome();
+        await using var store = new MacWorkSaveStore(home);
+        Assert.AreEqual("none", await store.PreflightSaveAsync(default));
+        var start = new ProcessStartInfo("/usr/bin/python3")
+        {
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add("import fcntl,sys; f=open(sys.argv[1],'r+'); fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB); print('ready',flush=True); sys.stdin.readline()");
+        start.ArgumentList.Add(Path.Combine(StorePath(home), ".store.lock"));
+        using var process = Process.Start(start)!;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            Assert.AreEqual("ready", await process.StandardOutput.ReadLineAsync(timeout.Token));
+            Assert.AreEqual("store_busy", await store.PreflightSaveAsync(default));
+            var refused = await store.PublishAsync(WorkId, new byte[] { 1 }, default);
+            Assert.AreEqual("store_busy", refused.ErrorCode);
+            Assert.AreEqual(WorkPublicationState.NotPublished, refused.PublicationState);
+        }
+        finally
+        {
+            await process.StandardInput.WriteLineAsync();
+            await process.StandardInput.FlushAsync();
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        Assert.AreEqual(0, process.ExitCode);
+        Assert.AreEqual("none", await store.PreflightSaveAsync(default));
     }
 
     private static string CreateHome()

@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 15 份產品實作接續（2026-10-26）
+
+[工作保存與續接](15-work-save-and-resume.md)的限定增量：跨次保存由第 15 份明示擴充。載入摘要使用 saved_work_summary／WorkId／歷史標記，仍只有單一有效摘要；本程序回合從零計。首次 compaction 使用載入背景作 previous_summary 並保留來源，立即再保存無新回合時零生成。原文 pins、新身分、記憶／投影容量與唯一記帳保持；/compact 本身不寫存檔。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。
+
 ## 第 14 份產品實作接續（2026-10-26）
 
 [第14份終端機操作改善](14-terminal-interaction.md)只擴充一般ReadInputAsync的隱藏多行／文字元素編輯、F2安全預覽、F3明確貼上、F4換行及程序內安全歷史；Key／認證選單／三種核准仍走原隱藏單行。多行斜線指令在所有解析器之前整筆拒絕，單行精確匹配與Scope／pin字面餘文保持。

@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 15 份產品實作接續（2026-10-26）
+
+[工作保存與續接](15-work-save-and-resume.md)的限定增量：新增不可信歷史計畫投影及受控一次性匯入。只有非 Completed 定義重建為新 PlanId／TaskId、Revision=1、Draft／Pending；basis、summary、block reason、核准及證據不匯入。全完成不建活動計畫但仍進 Plan，切 Execute 另確認；20／8／1／256 與投影上限保持。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。
+
 ## 第 14 份產品實作接續（2026-10-26）
 
 [第14份終端機操作改善](14-terminal-interaction.md)只擴充一般ReadInputAsync的隱藏多行／文字元素編輯、F2安全預覽、F3明確貼上、F4換行及程序內安全歷史；Key／認證選單／三種核准仍走原隱藏單行。多行斜線指令在所有解析器之前整筆拒絕，單行精確匹配與Scope／pin字面餘文保持。

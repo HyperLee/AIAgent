@@ -1,5 +1,9 @@
 # 03：CLI 與 Context 子規格
 
+## 第 15 份產品實作接續（2026-10-26）
+
+[工作保存與續接](15-work-save-and-resume.md)的限定增量：新增 `/work save TITLE`、`list`、`show ID`、`delete ID` 與啟動續接。只有 save 必要時生成一次摘要；命令及新確認不進草稿歷史。續接後進入 Plan 並等待新訊息，`/execute` 仍另取確認；clear 只清記憶體，不刪磁碟存檔。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。
+
 ## 第 14 份產品實作接續（2026-10-26）
 
 [第14份終端機操作改善](14-terminal-interaction.md)只擴充一般ReadInputAsync的隱藏多行／文字元素編輯、F2安全預覽、F3明確貼上、F4換行及程序內安全歷史；Key／認證選單／三種核准仍走原隱藏單行。多行斜線指令在所有解析器之前整筆拒絕，單行精確匹配與Scope／pin字面餘文保持。

@@ -96,6 +96,7 @@ public sealed class WorkCodecTests
     {
         Reject(Edit(x => x["pins"] = new JsonArray(Enumerable.Range(0, 17).Select(_ => JsonValue.Create("pin")).ToArray())), "work_capacity");
         Reject(Edit(x => x["pins"] = new JsonArray(Enumerable.Range(0, 8).Select(_ => JsonValue.Create(new string('x', 1024))).ToArray())), "work_capacity");
+        Reject(Edit(x => x["pins"] = new JsonArray(Enumerable.Range(0, 16).Select(_ => JsonValue.Create(new string('x', 400))).ToArray())), "work_capacity");
         Reject(Edit(x => x["summary"] = JsonNode.Parse("{\"version\":2,\"goals\":[\"goal\"],\"decisions\":[],\"open_questions\":[],\"background\":[]}")), "work_version_unsupported");
         Reject(Edit(x => x["summary"] = JsonNode.Parse("{\"version\":1,\"goals\":[],\"decisions\":[],\"open_questions\":[],\"background\":[]}")), "work_format_invalid");
         Reject(Edit(x => x["pins"] = new JsonArray(new string('x', 1025))), "work_format_invalid");
@@ -115,6 +116,93 @@ public sealed class WorkCodecTests
         using var secrets = new SessionSecrets("format_version".ToCharArray());
         var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
         Assert.AreEqual("work_sensitive_content", Assert.ThrowsExactly<WorkDocumentException>(() => WorkSaveCodec.Parse(Encoding.UTF8.GetBytes(Minimal), Id, policy)).Code);
+    }
+
+    [TestMethod]
+    public void SAVEAC007_WholeDocumentBytesAcceptExactLimitAndRejectOneMore()
+    {
+        using var secrets = new SessionSecrets("synthetic-current-key".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        var atLimit = Minimal + new string(' ', 65536 - Encoding.UTF8.GetByteCount(Minimal));
+        Assert.AreEqual(Id, WorkSaveCodec.Parse(Encoding.UTF8.GetBytes(atLimit), Id, policy).WorkId);
+        Reject(atLimit + " ", "work_capacity");
+    }
+
+    [TestMethod]
+    public void SAVEAC007_OnlyExactLowercaseRandomIdentifiersAreAdmitted()
+    {
+        Assert.IsTrue(WorkSaveCodec.ValidId(Id));
+        foreach (var value in new string?[] { null, "", Id.ToUpperInvariant(), Id + "0", Id[..^1], "../" + Id, Id + ".json", new string('g', 32) })
+            Assert.IsFalse(WorkSaveCodec.ValidId(value));
+    }
+
+    [TestMethod]
+    public void SAVEAC009_ImportedPinEnvelopeAccepts8192AndRejects8193Bytes()
+    {
+        var atLimit = Edit(x => x["pins"] = new JsonArray(Enumerable.Range(0, 8).Select(index => JsonValue.Create(new string('p', index == 7 ? 910 : 904))).ToArray()));
+        using var secrets = new SessionSecrets("synthetic-current-key".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        Assert.AreEqual(8, WorkSaveCodec.Parse(Encoding.UTF8.GetBytes(atLimit), Id, policy).Pins.Count);
+        var over = Edit(x => x["pins"] = new JsonArray(Enumerable.Range(0, 8).Select(index => JsonValue.Create(new string('p', index == 7 ? 911 : 904))).ToArray()));
+        Reject(over, "work_capacity");
+    }
+
+    [TestMethod]
+    public void SAVEAC026_RawCredentialBytesAreRejectedBeforeJsonDecoding()
+    {
+        using var secrets = new SessionSecrets("synthetic-current-key".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        var shape = "AI" + "za" + new string('Q', 35);
+        foreach (var encoding in new Encoding[] { Encoding.Unicode, Encoding.BigEndianUnicode })
+        {
+            var bytes = encoding.GetBytes(shape);
+            Assert.AreEqual("work_sensitive_content", Assert.ThrowsExactly<WorkDocumentException>(() => WorkSaveCodec.Parse(bytes, Id, policy)).Code);
+        }
+    }
+
+    [TestMethod]
+    public void SAVEAC009_SummaryRawAndCanonicalBudgetsAreIndependent()
+    {
+        var summary = "{\"version\":1,\"goals\":[\"goal\"],\"decisions\":[],\"open_questions\":[],\"background\":[]}";
+        var atLimit = summary[..^1] + new string(' ', 16384 - Encoding.UTF8.GetByteCount(summary)) + "}";
+        var raw = Minimal.Replace("\"summary\":null", "\"summary\":" + atLimit);
+        using var secrets = new SessionSecrets("synthetic-current-key".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        Assert.AreEqual("goal", WorkSaveCodec.Parse(Encoding.UTF8.GetBytes(raw), Id, policy).Summary!.Goals.Single());
+        Reject(Minimal.Replace("\"summary\":null", "\"summary\":" + atLimit[..^1] + " }"), "work_capacity");
+        var expanded = Edit(x => x["summary"] = new JsonObject
+        {
+            ["version"] = 1,
+            ["goals"] = new JsonArray(Enumerable.Range(0, 4).Select(_ => JsonValue.Create(new string('\u4e00', 1024))).ToArray()),
+            ["decisions"] = new JsonArray(), ["open_questions"] = new JsonArray(), ["background"] = new JsonArray()
+        });
+        var unescaped = expanded.Replace("\\u4E00", "\u4e00", StringComparison.OrdinalIgnoreCase);
+        Reject(unescaped, "work_capacity");
+    }
+
+    [TestMethod]
+    public void SAVEAC008_SnapshotConversionPersistsHistoricalStateWithoutAuthority()
+    {
+        using var secrets = new SessionSecrets("synthetic-current-key".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        var plan = new PlanSnapshot("prior-plan", 7, "objective", PlanApprovalState.Approved,
+            [new("prior-task", PlanTaskKind.Analysis, "task", "acceptance", [], PlanTaskState.Completed,
+                "historical summary", completionBasis: TaskCompletionBasis.ModelAssessment, completionFactIds: ["old-fact"], completionRulesRevision: 9)]);
+        var pins = new[] { "original pin" };
+        var saved = new WorkSaveDocument(Id, "title", "2026-10-26T08:00:00Z", new("/Users/example/Project", 1, 2), ".", [], null, pins,
+            WorkSaveCodec.FromPlan(plan), []);
+        pins[0] = "changed pin";
+        var bytes = WorkSaveCodec.Write(saved, policy);
+        using var json = JsonDocument.Parse(bytes);
+        var savedPlan = json.RootElement.GetProperty("plan");
+        Assert.IsFalse(savedPlan.TryGetProperty("plan_id", out _));
+        Assert.IsFalse(savedPlan.TryGetProperty("approval", out _));
+        var task = savedPlan.GetProperty("tasks")[0];
+        Assert.IsFalse(task.TryGetProperty("completion_fact_ids", out _));
+        Assert.IsFalse(task.TryGetProperty("task_id", out _));
+        Assert.AreEqual("completed", task.GetProperty("reported_state").GetString());
+        Assert.AreEqual("model_assessment", task.GetProperty("reported_basis").GetString());
+        Assert.AreEqual("original pin", json.RootElement.GetProperty("pins")[0].GetString());
     }
 
     private static string Edit(Action<JsonNode> change)

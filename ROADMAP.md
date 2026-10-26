@@ -29,7 +29,7 @@
 | FUT-05 | [專案規則載入](specs/12-project-rules-loading.md) | 已實作；離線／PTY通過，真人／服務待驗 | 減少每次重述專案慣例與限制。 |
 | FUT-06 | [Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) | 產品實作已加入；分層驗收見 README | 提交前分層差異與有來源位置的唯讀審查。 |
 | FUT-07 | [終端機操作改善](specs/14-terminal-interaction.md) | 已實作；分層驗收見README | 改善日常輸入、編輯與進度辨識。 |
-| FUT-08 | [工作保存與續接](specs/15-work-save-and-resume.md) | 規格已定；待實作／驗收 | 讓跨次工作能保留目標、決策與待辦。 |
+| FUT-08 | [工作保存與續接](specs/15-work-save-and-resume.md) | 已接入；分層驗證見 README | 讓跨次工作能保留目標、決策與待辦。 |
 | FUT-09 | 修改檢查點與復原 | 接續 | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
 | FUT-10 | 可重用工作流程（Skills） | 接續 | 將常用開發流程整理成可按需載入的能力。 |
 | FUT-11 | MCP 外部工具整合 | 延伸 | 連接外部工具與資料來源。 |
@@ -141,7 +141,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-08：工作保存與續接
 
-狀態：已獨立定義[第 15 份開發規格](specs/15-work-save-and-resume.md)，尚未實作或產品驗收。私人目錄、使用者確認後保存安全摘要、啟動時續接及未確認計畫，以該份為準。
+狀態：已依[第 15 份開發規格](specs/15-work-save-and-resume.md)接入私人目錄、確認後安全摘要保存、單檔管理與啟動續接；未完成定義以新 Draft／Pending 匯入。實際分層驗證及真人／服務／原生未驗範圍見 [README](README.md#work-save-validation)，不恢復操作授權或檔案。
 
 撰寫或開發本項目前，必讀第 09 份 [FUT04-HO-001～008](specs/09-plan-mode-and-task-list.md#fut-04-handoff)、第 11 份 CTX-080，以及第 12／13／14 份的 [RULE-HO-007](specs/12-project-rules-loading.md#future-handoffs)／[GIT-HO-007](specs/13-git-diff-and-code-review.md#future-handoffs)／[TERM-HO-007](specs/14-terminal-interaction.md#future-handoffs)。第 15 份[承接對照](specs/15-work-save-and-resume.md#upstream-handoffs)與[前向交接 memo](specs/15-work-save-and-resume.md#future-handoffs)集中記錄耦合，不另建重複筆記；[FUT-09 邊界](specs/15-work-save-and-resume.md#fut-09-handoff)保留脈絡續接與檔案復原各自驗收。
 

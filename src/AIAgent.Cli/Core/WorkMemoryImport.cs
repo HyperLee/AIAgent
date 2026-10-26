@@ -4,12 +4,12 @@ using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Core;
 
-internal sealed class WorkMemoryCandidate(ContextOperationStamp stamp, ContextSummary? summary, List<ContextPin> pins,
+internal sealed class WorkMemoryCandidate(ContextOperationStamp stamp, ContextSummary? summary, IReadOnlyList<ContextPin> pins,
     long nextPinSequence, long nextRevision, long nextPinsRevision, PlanWorkCandidate plan, WorkSavedPlan? history, string workId)
 {
     internal ContextOperationStamp Stamp { get; } = stamp;
     internal ContextSummary? Summary { get; } = summary;
-    internal List<ContextPin> Pins { get; } = pins;
+    internal IReadOnlyList<ContextPin> Pins { get; } = Array.AsReadOnly(pins.ToArray());
     internal long NextPinSequence { get; } = nextPinSequence;
     internal long NextRevision { get; } = nextRevision;
     internal long NextPinsRevision { get; } = nextPinsRevision;
@@ -32,7 +32,7 @@ internal sealed partial class ContextCoordinator
             var summary = document.Summary is { } s ? new ContextSummary(0, 0, s.Goals, s.Decisions, s.OpenQuestions, s.Background, document.WorkId) : null;
             var prepared = context.PrepareWorkPins(document.Pins, document.WorkId);
             var policy = new WorkPersistencePolicy(_policy);
-            var pinsBytes = ContextDocuments.Pins(prepared.Pins); var memory = ContextDocuments.Memory(summary, prepared.Pins);
+            var pinsBytes = ContextDocuments.Pins(prepared.Pins); var memory = WorkHistoryProjection.Memory(summary, prepared.Pins, document.Plan, document.WorkId);
             if (!policy.IsSafe(pinsBytes) || !policy.IsSafe(memory)) throw new WorkDocumentException("work_sensitive_content");
             var plan = plans.PrepareWorkImport(document.Plan);
             return new(stamp, summary, prepared.Pins, prepared.Sequence, checked(context.Revision + 1), checked(context.PinsRevision + 1), plan, document.Plan, document.WorkId);
@@ -45,8 +45,9 @@ internal sealed partial class ContextCoordinator
         {
             if (token.IsCancellationRequested || !IsCurrent(candidate.Stamp) || !plans.IsCurrent(candidate.Plan)) return false;
             // Everything that can fail is prepared first. These commits only assign owned values.
+            var pins = candidate.Pins.ToList();
             plans.PublishWorkImport(candidate.Plan);
-            context.PublishWorkImport(candidate);
+            context.PublishWorkImport(candidate, pins);
             LoadedWorkPlan = candidate.History; LoadedWorkId = candidate.WorkId;
             return true;
         }
@@ -61,9 +62,9 @@ internal sealed partial class ConversationContext
         foreach (var text in texts) pins.Add(new("n" + checked(++sequence).ToString(CultureInfo.InvariantCulture), text, workId));
         return (pins, sequence);
     }
-    internal void PublishWorkImport(WorkMemoryCandidate candidate)
+    internal void PublishWorkImport(WorkMemoryCandidate candidate, List<ContextPin> pins)
     {
-        _turns.Clear(); _pins = candidate.Pins; Summary = candidate.Summary;
+        _turns.Clear(); _pins = pins; Summary = candidate.Summary;
         _pinSequence = candidate.NextPinSequence; Revision = candidate.NextRevision; PinsRevision = candidate.NextPinsRevision;
     }
 }

@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -24,10 +24,52 @@
 | 12：專案規則載入 | 根目錄自動載入、明確 Scope、來源顯示、重驗與失效收尾。 | 已實作並接入正式聊天／工具／程序。 | 當次證據見第 12 份驗證紀錄。 | RULE-AC-033 真人、034 真實 Gemini；既有原生與發布門檻保留。 |
 | 13：Git 差異與程式碼審查 | 原始 bytes 三層快照、專用 GitRead、唯讀審查回合及本機報告驗證。 | 已實作並接入正式聊天。 | 分層證據見第 13 份驗證紀錄。 | GIT-AC-021 真人、022 真實 Gemini；既有原生／發布門檻保留。 |
 | 14：終端機操作改善 | 隱藏多行編輯、安全預覽、明確貼上、程序內歷史及階段進度。 | 已實作並接入正式聊天。 | 當次分層證據見第 14 份紀錄。 | TERM-AC-030 真人、031 真實 Gemini；原生／發布未結門檻保持。 |
+| 15：工作保存與續接 | 私人摘要／pins／歷史計畫、四個工作命令、啟動來源重驗及原子匯入。 | 已接入正式聊天。 | 當次結果見下方紀錄。 | 真人 SAVE-AC-030、真實 Gemini 031、其他 OS／架構及下列原生未驗範圍；既有發布門檻保持。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，不提供刪除檔案。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="work-save-validation"></a>
+
+## 第 15 份工作保存與續接
+
+保存的是可檢視且可能過時的工作背景。檔案為 OS 家目錄 `.aiagent/work/ID.json` 的明文，應用目錄須 0700，檔案／鎖須 0600 且無 extended ACL；不安全的既有權限不會自動修復。同 UID 程序、管理員、備份或實體磁碟仍可能取得內容；SHA-256 只比較變動，不是簽章、加密或防竄改認證。
+
+| 入口 | 行為 |
+|---|---|
+| `/work save TITLE` | 保留標題原文，1～80 UTF-16 單位。必要時以同 client 生成一次摘要，包含最新成功回合；完整預覽後另輸入 y／yes 才建立新 ID。未新增回合時重用有效摘要，僅 pins／plan 也可零生成保存。 |
+| `/work list` | 列出 ID、標題、UTC、工作區及 Scope；零生成，壞檔或不安全項使整次拒絕。 |
+| `/work show ID` | 完整顯示未驗證歷史；不載入、不核准、不查目前檔案，零生成。 |
+| `/work delete ID` | 預覽後新確認，再比對 bytes／身分，只刪指定單一存檔；不清除目前工作。 |
+| `--resume ID` | 新程序確認工作區、隱藏輸入新 Key 後續接；可與 `--workspace DIR` 任意順序各一次。ID 必須精確為 32 個小寫十六進位字元。 |
+
+摘要可能有損，必留原文請另 pin。保存候選完整顯示明文意義、所有欄位與生成／可得用量；拒絕確認也不退已開始生成次數。沒有自動保存、latest、任意路徑、聊天內 load、同步、加密或檔案復原。100 份存檔滿時不自動輪替或清理；每次只接受一個 ID。
+
+續接先精確匹配 root／Device／Identity，再讀目前根規則；Scope hint 另取明確確認。規則與檔案差異完整列出，所有歷史狀態仍未驗證；通過最終重驗後摘要、原文 pins 與計畫一次匯入。只有非 Completed 定義重建新 ID／Revision 1／Draft／Pending，沒有舊證據或核准；全完成也進 Plan，`/execute` 另確認後仍等新一般訊息。只有一份有效摘要，立即再保存及首次 compaction 保留歷史來源，本程序回合從零計。
+
+`/clear`／安全重設／換 Key 清除載入背景、候選、查核與原有記憶體，不刪存檔、不退款；單檔 delete 不清記憶體。發布後取消仍須核對結果；PublishedUnconfirmed／DeleteUnconfirmed／自有暫存或關閉收尾不明會停用本程序儲存操作，clear／換 Key 不能解除，亦不補寫或補刪。一般工具、搜尋、規則、Git 與受控 .NET 都拒絕私人資料，即使工作區直接指向私人根。
+
+### 第 15 份驗證紀錄（2026-10-26）
+
+實作起點 `606d971`。工作期間另有程序建立 `57db2dc`、`825a905`，本次保留它們並繼續未提交變更，沒有由本次工具提交、推送或發布。環境 macOS arm64／.NET SDK 10.0.100；全部自動測試離線，使用合成資料與真實 SDK 配假 HTTP。
+
+| 實際命令／查核 | 結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定依賴還原完成，沒有新增套件。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；CLI／ProcessHost／TerminalHost／測試建置完成，0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；838 通過、0 失敗、0 略過，含既有 767 與新增 71 個執行案例；最終 1 分 21.232 秒。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；36 通過，含原 33 與新增 3 個私人路徑／忽略案例。 |
+| `python3 -B tests/terminal_smoke.py` | 0；112 組通過，含原 99 與新增 13 組 SAVE-AC-029；使用離線記憶體 store，原生儲存證據另列。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；新增工作命令及啟動選項說明，零 Key／client／存檔 I/O 的回歸保留。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`、變更測試／TerminalHost 格式 verify | 0；產品及選定變更檔格式通過，不擴大改寫舊測試。 |
+| CRLF／C# 檔尾、Markdown 連結／圍欄、JSON、差異與敏感掃描 | 44 份變更 C#、17 份 Markdown／349 個本機連結及 6 個 JSON 區塊通過；290 檔來源複製至隔離 Git fixture 後，`scripts/check_sensitive_content.py staged` 為 0 findings。原工作區索引沒有由本次工具改動；此項不是 Release 產物掃描。 |
+
+變更前受限外層環境的基線為 755／767，12 個既有原生案例因 `sandbox_apply: Operation not permitted` 失敗。最終允許外層測試程序初始化 macOS 原生 sandbox，產品子程序維持原隔離，838 項完整回歸通過。真實原生案例涵蓋 UID／mode／ACL、無跟隨與連結／特殊檔拒絕、額度／列舉、跨程序鎖、排他發布與精確讀回、單檔刪除，以及 Git／.NET 子程序私人內容拒絕。內部測試注入另驗證 flush 前失敗、發布後讀回／關閉失敗、自有暫存清理失敗、發布前後取消及刪除後同名重現，核對已知結果與 StoreStopped；注入不等同實際磁碟／核心故障。
+
+獨立唯讀程式碼審閱指出啟動忙碌時 EOF 被升級為退出 130，以及零生成的敏感目前來源未要求共同重設；兩項皆先以回歸重現，再修正並納入最終完整測試。真實原生探針另發現 sandbox regex 的 `{32}` 不符合預期比對，改為明確展開並分拆長 regex；私人檔案讀寫拒絕及公開對照實測通過。後續自查亦以失敗回歸修正缺值 API 用量呈現與 unavailable 檔案的身分重驗；沒有另行獨立複審。
+
+SAVE-AC-030 真人 macOS、031 真實 Gemini 均未執行；其他 OS／x64、非本機檔案系統、真實不同帳戶 UID 的敵對競爭、硬體斷電與核心 close／flush 故障尚未實驗。不得把本次測試數視為上述條件全部驗收。既有第 10 份 MTP／原生未結、第 07 份 BUD-S003 Release 與人工分發門檻保持；沒有使用真實 Key、呼叫 Gemini、推送或發布。
+
 <a id="terminal-interaction-validation"></a>
 
 ## 第 14 份終端機操作改善

@@ -8,6 +8,7 @@ internal interface IWorkspaceFiles : IAsyncDisposable
 {
     IReadSnapshotStore Snapshots { get; }
     IProjectRulesWorkspace? ProjectRulesWorkspace => null;
+    IWorkReferenceWorkspace? WorkReferences => null;
     Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken cancellationToken);
     Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken cancellationToken);

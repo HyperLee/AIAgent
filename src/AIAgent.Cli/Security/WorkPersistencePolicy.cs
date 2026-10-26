@@ -12,12 +12,16 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly Regex GoogleShape = new("AI" + "za[A-Za-z0-9_-]{35}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly Regex PrivateShape = new("-{5}BEGIN (?:RSA |DSA |EC |ENCRYPTED |OPENSSH )?PRIVATE " + "KEY-{5}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
-    private static readonly Regex Assignment = new("(?:^|[^A-Za-z0-9_])(?:ApiKey|api_key|Authorization|Proxy-Authorization|x-goog-api-key|access_token|refresh_token|client_secret)[\"']?[ \\t]*[:=]([^\\r\\n]*)",
-        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
+    private static readonly string[] CredentialNames = ["ApiKey", "api_key", "Authorization", "Proxy-Authorization", "x-goog-api-key", "access_token", "refresh_token", "client_secret"];
+    private static readonly Regex Assignment = new("(?:^|[^A-Za-z0-9_])(?:" + string.Join('|', CredentialNames.Select(AsciiPattern)) + ")[\"']?[ \\t]*[:=]([^\\r\\n]*)",
+        RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.NonBacktracking);
     private static readonly HashSet<string> Placeholders = new(StringComparer.Ordinal)
     { "", "YOUR_GEMINI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN", "YOUR_CLIENT_SECRET", "EXAMPLE_ONLY_NOT_A_SECRET", "[REDACTED]" };
 
     internal ISensitiveDataPolicy CurrentPolicy { get; } = policy;
+
+    private static string AsciiPattern(string name) => string.Concat(name.Select(c => char.IsAsciiLetter(c)
+        ? "[" + char.ToLowerInvariant(c) + char.ToUpperInvariant(c) + "]" : Regex.Escape(c.ToString())));
 
     internal bool IsSafe(string value)
     {
@@ -37,12 +41,7 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
 
     internal bool IsSafe(ReadOnlySpan<byte> bytes)
     {
-        // Latin-1 preserves raw ASCII contiguity even when the surrounding bytes are not UTF-8.
-        if (!SafeCharacters(Encoding.Latin1.GetString(bytes))) return false;
-        for (var offset = 0; offset < 2; offset++)
-        {
-            if (!SafeCharacters(Utf16Ascii(bytes, offset, false)) || !SafeCharacters(Utf16Ascii(bytes, offset, true))) return false;
-        }
+        if (!IsSafeRaw(bytes)) return false;
         string text;
         try { text = StrictUtf8.GetString(bytes); }
         catch (DecoderFallbackException) { return true; }
@@ -52,6 +51,17 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
             return IsSafeJson(json.RootElement);
         }
         catch (JsonException) { return IsSafe(text); }
+    }
+
+    internal bool IsSafeRaw(ReadOnlySpan<byte> bytes)
+    {
+        // Latin-1 preserves raw ASCII contiguity even when the surrounding bytes are not UTF-8.
+        if (!SafeCharacters(Encoding.Latin1.GetString(bytes))) return false;
+        for (var offset = 0; offset < 2; offset++)
+        {
+            if (!SafeCharacters(Utf16Ascii(bytes, offset, false)) || !SafeCharacters(Utf16Ascii(bytes, offset, true))) return false;
+        }
+        return true;
     }
 
     private static string Utf16Ascii(ReadOnlySpan<byte> bytes, int offset, bool bigEndian)
@@ -72,7 +82,11 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
         {
             case JsonValueKind.Object:
                 foreach (var property in value.EnumerateObject())
+                {
                     if (!IsSafe(property.Name) || !IsSafeJson(property.Value)) return false;
+                    if (CredentialNames.Any(name => string.Equals(name, property.Name, StringComparison.OrdinalIgnoreCase)) &&
+                        (property.Value.ValueKind != JsonValueKind.String || !Placeholders.Contains(property.Value.GetString()!.Trim(' ', '\t')))) return false;
+                }
                 return true;
             case JsonValueKind.Array:
                 foreach (var item in value.EnumerateArray()) if (!IsSafeJson(item)) return false;

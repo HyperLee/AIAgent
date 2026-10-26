@@ -7,6 +7,7 @@ Temporary workspaces are retained; no recursive cleanup is performed.
 import argparse
 import errno
 import os
+import re
 from pathlib import Path
 import select
 import signal
@@ -170,6 +171,7 @@ def main():
     rules_cases(["dotnet", str(args.host.resolve())])
     review_cases(["dotnet", str(args.host.resolve())])
     terminal_editor_cases(["dotnet", str(args.host.resolve())])
+    work_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -917,6 +919,130 @@ def terminal_editor_cases(host):
                 print("TERM-AC-029-editor-paste-stop-" + str(len(mode)) + "-" + str(external) + "-" + str(expected) + ": PASS", flush=True)
             finally:
                 terminal.close()
+
+
+def work_cases(host):
+    """SAVE-AC-029: offline storage and explicit new-reader activation gates."""
+    approval = b"OFFLINE_WORK_APPROVAL_READY"
+
+    def start(scenario="work-flow", gate_fd=None):
+        workspace = tempfile.mkdtemp(prefix="aiagent-work-pty-")
+        Path(workspace, "src").mkdir()
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace,
+                                   () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r"); terminal.wait_for(KEY_PROMPT)
+        check(b"OFFLINE_WORK_STORE_OPEN" not in terminal.output, "SAVE-AC-029-store-after-key")
+        terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(approval if scenario.startswith("work-resume") else HOST_PROMPT)
+        return terminal
+
+    def command(terminal, text):
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(text.encode() + b"\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+
+    terminal = start()
+    try:
+        command(terminal, "/context pin 保留原文")
+        terminal.send("/work save   中文工作  \r".encode()); terminal.wait_for(approval)
+        match = re.search(rb'"work_id":"([0-9a-f]{32})"', terminal.output)
+        check(match is not None, "SAVE-AC-029-save-preview-id")
+        work_id = match.group(1).decode()
+        check(b"PublishedVerified" not in terminal.output, "SAVE-AC-029-before-confirm-zero-publish")
+        terminal.send(b"invalid\r"); terminal.wait_for(approval, 2)
+        count = terminal.output.count(HOST_PROMPT); terminal.send(b" YeS \r\n"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"PublishedVerified" in terminal.output, "SAVE-AC-029-verified-save")
+        command(terminal, "/work list"); command(terminal, "/work show " + work_id)
+        check("不載入、不核准、不驗證目前檔案".encode() in terminal.output, "SAVE-AC-029-show-historical")
+        terminal.send(("/work delete " + work_id + "\r").encode()); terminal.wait_for(approval, 3)
+        count = terminal.output.count(HOST_PROMPT); terminal.send(b"n\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        terminal.send(("/work delete " + work_id + "\r").encode()); terminal.wait_for(approval, 4)
+        count = terminal.output.count(HOST_PROMPT); terminal.send(b"y\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"DeletedVerified" in terminal.output, "SAVE-AC-029-single-delete")
+        command(terminal, "/work show " + work_id)
+        check(b"work_not_found" in terminal.output, "SAVE-AC-029-deleted-absent")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("SAVE-AC-029-save-list-show-delete-confirm-retry: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    read_fd, write_fd = os.pipe(); terminal = start("work-preview-gated", read_fd); os.close(read_fd)
+    try:
+        command(terminal, "/context pin keep")
+        terminal.send(b"/work save title\r"); terminal.wait_for(b"OFFLINE_WORK_PREVIEW_PAUSED")
+        terminal.send(b"yes\r"); os.write(write_fd, b"x"); terminal.wait_for(approval)
+        check(b"PublishedVerified" not in terminal.output, "SAVE-AC-029-prebuffered-not-approved")
+        count = terminal.output.count(HOST_PROMPT); terminal.send(b"n\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        check(b"PublishedVerified" not in terminal.output, "SAVE-AC-029-declined-no-publish")
+        print("SAVE-AC-029-preview-drains-old-yes: PASS", flush=True)
+    finally:
+        os.close(write_fd); terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        terminal = start()
+        try:
+            command(terminal, "/context pin keep")
+            terminal.send(b"/work save title\r"); terminal.wait_for(approval)
+            count = terminal.output.count(HOST_PROMPT); terminal.send(control)
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, count + 1); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(b"PublishedVerified" not in terminal.output, "SAVE-AC-029-local-confirm-cancel")
+            print("SAVE-AC-029-local-confirm-stop-" + str(control[0]) + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    for scenario in ("work-resume", "work-resume-scope", "work-resume-completed"):
+        terminal = start(scenario)
+        try:
+            count = 1
+            if scenario.endswith("scope"):
+                terminal.send(b"yes\r"); terminal.wait_for(approval, 2); count = 2
+            terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT)
+            check(b"[Plan]" in terminal.output, "SAVE-AC-029-resume-plan")
+            terminal.send(b"/execute\r")
+            if scenario.endswith("completed"):
+                terminal.wait_for(approval, count + 1)
+            else:
+                terminal.wait_for(b"OFFLINE_PLAN_APPROVAL_READY")
+            current = terminal.output.count(HOST_PROMPT); terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, current + 1)
+            check(b"[Execute]" in terminal.output, "SAVE-AC-029-resume-independent-execute")
+            terminal.send(b"/exit\r"); terminal.finish(0)
+            print("SAVE-AC-029-" + scenario + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    for control, expected in ((b"n\r", 0), (b"\x04", 0), (b"\x03", 130)):
+        terminal = start("work-resume")
+        try:
+            terminal.send(control); terminal.finish(expected)
+            check(READY not in terminal.output, "SAVE-AC-029-resume-no-blank-fallback")
+            print("SAVE-AC-029-startup-stop-" + str(control[0]) + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+    terminal = start("work-resume-scope")
+    try:
+        terminal.send(b"n\r"); terminal.finish(0)
+        check(READY not in terminal.output, "SAVE-AC-029-scope-decline-exits")
+        print("SAVE-AC-029-scope-decline: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        read_fd, write_fd = os.pipe(); terminal = start("work-model-busy", read_fd); os.close(read_fd)
+        try:
+            command(terminal, "question")
+            terminal.send(b"/work save summary\r"); terminal.wait_for(b"OFFLINE_WORK_MODEL_PAUSED")
+            terminal.send(b"yes\r" + control); terminal.wait_for(b"OFFLINE_WORK_CANCEL_OBSERVED")
+            os.write(write_fd, b"x")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, 3); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(b"PublishedVerified" not in terminal.output, "SAVE-AC-029-busy-no-publish")
+            print("SAVE-AC-029-busy-cancel-" + str(control[0]) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
 
 if __name__ == "__main__":
     try:

@@ -1,5 +1,9 @@
 # 08：程式碼搜尋與局部讀檔開發規格書
 
+## 第 15 份產品實作接續（2026-10-26）
+
+[工作保存與續接](15-work-save-and-resume.md)的限定增量：私人存檔目錄與專用暫存納入搜尋、列檔及局部讀取的拒絕／忽略政策。續接只核對計畫 requirements 的安全參照，不全專案搜尋；Scope 外零目標 I/O，歷史 path／hash 不能建立修改基準。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。
+
 ## 第 13 份產品實作接續（2026-10-26）
 
 [第 13 份 Git 差異與程式碼審查](13-git-diff-and-code-review.md) 新增專用 GitRead 能力與三項唯讀工具，依 Plan／Execute 提供九／十二項；`/review` 為共用 Runner 與生成預算的新入口，該回合只允許三項 Git 工具。原十項工具的順序、輸入與成功資料保持，公開 LLM 契約與 SDK 訊息所有權保持。

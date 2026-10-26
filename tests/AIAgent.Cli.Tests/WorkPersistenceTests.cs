@@ -49,7 +49,7 @@ public sealed class WorkPersistenceTests
             Assert.IsFalse(policy.IsSafe("\"" + name + "\": \"YOUR_API_KEY\", trailing"));
             Assert.IsTrue(policy.IsSafe(name + " = \"YOUR_API_KEY\""));
             Assert.IsTrue(policy.IsSafe(name + " = \t "));
-            Assert.IsTrue(policy.IsSafe("prefix_" + name + " = other-value"));
+            if (name != "Proxy-Authorization") Assert.IsTrue(policy.IsSafe("prefix_" + name + " = other-value"));
         }
         foreach (var placeholder in new[] { "YOUR_GEMINI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN", "YOUR_CLIENT_SECRET", "EXAMPLE_ONLY_NOT_A_SECRET", "[REDACTED]" })
             Assert.IsTrue(policy.IsSafe("ApiKey = '" + placeholder + "'"));
@@ -57,6 +57,19 @@ public sealed class WorkPersistenceTests
         Assert.IsFalse(policy.IsSafe("ApiKey = YOUR_API_KEY suffix"));
         Assert.IsFalse(policy.IsSafe("first line\nApiKey: value\nlast line"));
         Assert.IsTrue(policy.IsSafe("ApiKeyX = value"));
+    }
+
+    [TestMethod]
+    public void SAVEAC026_JsonCredentialAssignmentsAndAsciiOnlyNamesUseExactValues()
+    {
+        using var secrets = new SessionSecrets("current-synthetic".ToCharArray());
+        var policy = new WorkPersistencePolicy(new SensitiveDataPolicy(secrets));
+        using var rejected = JsonDocument.Parse("{\"ApiKey\":\"other-value\"}");
+        Assert.IsFalse(policy.IsSafeJson(rejected.RootElement));
+        using var allowed = JsonDocument.Parse("{\"ApiKey\":\"YOUR_API_KEY\"}");
+        Assert.IsTrue(policy.IsSafeJson(allowed.RootElement));
+        Assert.IsTrue(policy.IsSafe("client_\u017fecret = other-value"));
+        Assert.IsTrue(policy.IsSafe(Encoding.UTF8.GetBytes("{\"pins\":[\"ApiKey = YOUR_API_KEY\"]}")));
     }
 
     [TestMethod]

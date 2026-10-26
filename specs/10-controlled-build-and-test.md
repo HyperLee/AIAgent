@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 15 份產品實作接續（2026-10-26）
+
+[工作保存與續接](15-work-save-and-resume.md)的限定增量：私人存檔位置加入 .NET admission 與原生 read／write deny，即使它位於其他允許讀取／輸出根內仍不可達。保存及續接不建立程序證據，也不提升 Validation／test 能力；SDK 10.0.100 的私人 IPC 邊界、test 不支援及既有未結原生驗收保持。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。
+
 ## 第 14 份產品實作接續（2026-10-26）
 
 [第14份終端機操作改善](14-terminal-interaction.md)只擴充一般ReadInputAsync的隱藏多行／文字元素編輯、F2安全預覽、F3明確貼上、F4換行及程序內安全歷史；Key／認證選單／三種核准仍走原隱藏單行。多行斜線指令在所有解析器之前整筆拒絕，單行精確匹配與Scope／pin字面餘文保持。
