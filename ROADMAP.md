@@ -1,6 +1,6 @@
 # AIAgent 未來開發大綱
 
-> 建立日期：2026-10-23｜修訂日期：2026-10-26｜文件版本：0.9｜定位：未來功能摘要與獨立規格書的選題入口
+> 建立日期：2026-10-23｜修訂日期：2026-10-26｜文件版本：0.10｜定位：未來功能摘要與獨立規格書的選題入口
 
 ## 1. 文件目的與目前基線
 
@@ -30,7 +30,7 @@
 | FUT-06 | [Git 差異與程式碼審查](specs/13-git-diff-and-code-review.md) | 產品實作已加入；分層驗收見 README | 提交前分層差異與有來源位置的唯讀審查。 |
 | FUT-07 | [終端機操作改善](specs/14-terminal-interaction.md) | 已實作；分層驗收見README | 改善日常輸入、編輯與進度辨識。 |
 | FUT-08 | [工作保存與續接](specs/15-work-save-and-resume.md) | 已接入；分層驗證見 README | 讓跨次工作能保留目標、決策與待辦。 |
-| FUT-09 | 修改檢查點與復原 | 接續 | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
+| FUT-09 | [修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md) | 規格已定義；待實作 | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
 | FUT-10 | 可重用工作流程（Skills） | 接續 | 將常用開發流程整理成可按需載入的能力。 |
 | FUT-11 | MCP 外部工具整合 | 延伸 | 連接外部工具與資料來源。 |
 | FUT-12 | 網頁查詢與文件擷取 | 延伸 | 取得具來源的官方文件與最新資訊。 |
@@ -152,7 +152,9 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-09：修改檢查點與復原
 
-撰寫本項規格前，必讀 [第 13 份 FUT-09 固定交接](specs/13-git-diff-and-code-review.md#fut-09-handoff)與第 12 份 [RULE-HO-008](specs/12-project-rules-loading.md#future-handoffs)。審查快照不是檢查點、Git 差異不能證明修改者；基準、分層狀態、衝突、核准、規則復原及部分失敗須逐項承接，Git 或獨立快照方案仍由 FUT-09 定案。
+狀態：已獨立定義[第 16 份開發規格](specs/16-change-checkpoints-and-recovery.md)，產品待實作。採程序內獨立快照、每次受控單檔寫入自動捕捉及逐筆新確認復原；新建檔案只提供人工刪除指引。Git 唯讀觀察僅作衝突閘門，不是復原來源，不寫入 index。
+
+開發前必讀 [第 13 份 FUT-09 固定交接](specs/13-git-diff-and-code-review.md#fut-09-handoff)、第 12 份 [RULE-HO-008](specs/12-project-rules-loading.md#future-handoffs)、第 14 份 [TERM-HO-008](specs/14-terminal-interaction.md#future-handoffs)及第 15 份 [FUT-09 邊界／SAVE-HO-008](specs/15-work-save-and-resume.md#fut-09-handoff)。第 16 份[上游承接](specs/16-change-checkpoints-and-recovery.md#upstream-handoffs)與[前向交接 memo](specs/16-change-checkpoints-and-recovery.md#future-handoffs)集中記錄契約擁有者、衝突與驗收責任，不另建重複筆記。審查快照、Git 差異及工作摘要均不能證明復原基準或恢復核准；復原後證據代次與目前狀態投影以第 16 份為準。
 
 - **目的與使用情境**：Agent 的修改不符預期時，讓使用者能確認受影響內容並選擇安全的復原方式。
 - **初步開發範圍**：追蹤 Agent 修改及其基準，提供檢查點、復原差異與逐次確認；初期聚焦受控文字修改，任意命令副作用及外部系統操作不承諾可復原。
