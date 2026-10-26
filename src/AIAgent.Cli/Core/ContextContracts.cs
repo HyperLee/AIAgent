@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace AIAgent.Cli.Core;
 
-internal enum GenerationPurpose { Conversation, Compaction }
+internal enum GenerationPurpose { Conversation, Compaction, WorkSaveSummary }
 internal enum CompactionTrigger { Automatic, Manual }
 internal enum ContextMeasureStatus { Measured, Unavailable }
 
@@ -42,16 +42,18 @@ internal sealed class ContextCompletedTurn(long turnId, IReadOnlyList<LlmMessage
     public override string ToString() => "[ContextCompletedTurn]";
 }
 
-internal sealed class ContextPin(string pinId, string text)
+internal sealed class ContextPin(string pinId, string text, string? sourceWorkId = null)
 {
+    internal string? SourceWorkId { get; } = sourceWorkId;
     internal string PinId { get; } = pinId;
     internal string Text { get; } = text;
     public override string ToString() => "[ContextPin]";
 }
 
 internal sealed class ContextSummary(long throughTurnId, long coveredTurnCount, IReadOnlyList<string> goals,
-    IReadOnlyList<string> decisions, IReadOnlyList<string> openQuestions, IReadOnlyList<string> background)
+    IReadOnlyList<string> decisions, IReadOnlyList<string> openQuestions, IReadOnlyList<string> background, string? sourceWorkId = null)
 {
+    internal string? SourceWorkId { get; } = sourceWorkId;
     internal int Version => 1;
     internal long ThroughTurnId { get; } = throughTurnId;
     internal long CoveredTurnCount { get; } = coveredTurnCount;

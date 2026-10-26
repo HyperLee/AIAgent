@@ -219,6 +219,49 @@ class ScannerTests(unittest.TestCase):
         self.outcome(self.scan(root, "staged"), 1, "findings=1", "BUD-S004")
         self.assertTrue(len(list(root.iterdir())) == 3, "BUD-readonly")
 
+    def test_SAVEAC024_private_store_staged_and_artifact_paths_are_blocked(self):
+        for name, rule in ((".aiagent/work/id.json", "BUD-S001"),
+                           ("nested/.AIAGENT/work/id.json", "BUD-S001"),
+                           (".store.lock", "BUD-S004"),
+                           (".aiagent-work-" + "a" * 32 + ".tmp", "BUD-S004")):
+            with self.subTest(name=name):
+                root = self.repository()
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"ordinary fixture")
+                self.git(root, "add", "-f", "--", name)
+                self.outcome(self.scan(root, "staged"), 1, "blocked", rule)
+                self.assertEqual(path.read_bytes(), b"ordinary fixture")
+                artifacts = self.publish_tree()
+                artifact_path = artifacts / name
+                artifact_path.parent.mkdir(parents=True, exist_ok=True)
+                artifact_path.write_bytes(b"ordinary fixture")
+                result = self.scan(artifacts, "artifacts", "--path", str(artifacts))
+                self.outcome(result, 2 if ".aiagent/" in name.lower() else 1,
+                             "incomplete" if ".aiagent/" in name.lower() else "blocked", rule)
+                self.assertEqual(artifact_path.read_bytes(), b"ordinary fixture")
+
+    def test_SAVEAC024_private_temp_shape_has_no_substring_or_example_exemptions(self):
+        self.engine()
+        from _sensitive_scan.rules import path_rules
+        name = b".aiagent-work-" + b"a" * 32 + b".tmp"
+        for mode in ("staged", "artifacts"):
+            for path in (name, name.upper(), b"parent/" + name, b"parent/.STORE.LOCK"):
+                self.assertEqual(path_rules(path, mode), {"BUD-S004"})
+            for path in (name + b"x", b".aiagent-work-abc.tmp", b".store.locked", b".aiagent-other/id.json"):
+                self.assertEqual(path_rules(path, mode), set())
+            self.assertIn("BUD-S001", path_rules(b".aiagent/work/.env.example", mode))
+        self.assertEqual(path_rules(b".env.example", "staged"), set())
+        self.assertEqual(path_rules(b".env.example", "artifacts"), {"BUD-S001"})
+
+    def test_SAVEAC024_ignore_policy_omits_private_files_before_force_add_scan(self):
+        root = self.repository()
+        shutil.copy2(ROOT / ".gitignore", root / ".gitignore")
+        for path in (".aiagent/work/id.json", "nested/.aiagent/work/id.json", ".store.lock",
+                     "nested/.store.lock", ".aiagent-work-" + "a" * 32 + ".tmp"):
+            self.assertEqual(self.git(root, "check-ignore", "--no-index", "--", path, ok=False).returncode, 0)
+        self.assertNotEqual(self.git(root, "check-ignore", "--no-index", "--", ".env.example", ok=False).returncode, 0)
+
     def test_BUDAC034_minimal_publish_and_all_binary_files(self):
         root = self.publish_tree()
         (root / ".hidden.pdb").write_bytes(b"\x00\xffordinary")

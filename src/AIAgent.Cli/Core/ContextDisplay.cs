@@ -12,7 +12,7 @@ internal static class ContextDisplay
     {
         var snapshot = coordinator.Capture().Context;
         var output = new StringBuilder("[Context]\n原始完整回合：" + N(snapshot.CompletedTurns.Count) + "；");
-        output.Append(snapshot.Summary is { } summary ? "model_summary 版本 1；涵蓋 " + N(summary.CoveredTurnCount) + " 回合；至 " + N(summary.ThroughTurnId) : "摘要：無");
+        output.Append(snapshot.Summary is { } summary ? (summary.SourceWorkId is null ? "model_summary" : "saved_work_summary（未驗證歷史）") + " 版本 1；本程序涵蓋 " + N(summary.CoveredTurnCount) + " 回合；至 " + N(summary.ThroughTurnId) : "摘要：無");
         output.Append("\n備註：").Append(N(snapshot.Pins.Count)).Append("；pins JSON bytes：").Append(N(ContextDocuments.Pins(snapshot.Pins).Length));
         if (coordinator.LastMeasurement is { } measure)
             output.Append("\n最近本機容量估算（").Append(Purpose(measure.Purpose)).Append("）：")
@@ -50,7 +50,7 @@ internal static class ContextDisplay
     }
     internal static bool Safe(string text, ISensitiveDataPolicy policy) =>
         new UTF8Encoding(false, true).GetByteCount(text) <= ContextDocuments.MaxDisplayBytes && policy.CanSendOrUse(text, ContentBoundary.WriteCandidate);
-    internal static string Purpose(GenerationPurpose purpose) => purpose == GenerationPurpose.Compaction ? "摘要" : "一般";
+    internal static string Purpose(GenerationPurpose purpose) => purpose switch { GenerationPurpose.Compaction => "摘要", GenerationPurpose.WorkSaveSummary => "保存摘要", _ => "一般" };
     private static string N(long number) => number.ToString(CultureInfo.InvariantCulture);
 }
 internal sealed class LastMaintenanceOutcome(AgentTurnResult result)

@@ -10,12 +10,14 @@ public sealed class BootstrapSession : IDisposable
     public PublicSettings Settings { get; }
     [JsonIgnore] public ISensitiveDataPolicy Policy { get; }
     internal SessionSecrets Secrets { get; }
+    internal string? ResumeWorkId { get; }
 
-    internal BootstrapSession(ConfirmedWorkspace workspace, PublicSettings settings, SessionSecrets secrets)
+    internal BootstrapSession(ConfirmedWorkspace workspace, PublicSettings settings, SessionSecrets secrets, string? resumeWorkId = null)
     {
         Workspace = workspace;
         Settings = settings;
         Secrets = secrets;
+        ResumeWorkId = resumeWorkId;
         Policy = new SensitiveDataPolicy(secrets);
     }
     public void Dispose() => Secrets.Dispose();

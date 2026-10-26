@@ -1,10 +1,10 @@
 namespace AIAgent.Cli.Core;
 
-internal sealed class ConversationContext
+internal sealed partial class ConversationContext
 {
     internal const int MaxCompletedTurns = 5;
     private readonly List<ContextCompletedTurn> _turns = [];
-    private readonly List<ContextPin> _pins = [];
+    private List<ContextPin> _pins = [];
     private long _turnSequence;
     private long _pinSequence;
     internal object DecisionGate { get; } = new();

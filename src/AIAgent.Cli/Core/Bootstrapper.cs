@@ -53,7 +53,7 @@ public sealed class Bootstrapper
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return BootstrapResult.Ready(new BootstrapSession(root, publicSettings, secrets));
+                return BootstrapResult.Ready(new BootstrapSession(root, publicSettings, secrets, parsed.ResumeWorkId));
             }
             catch { secrets.Dispose(); throw; }
         }

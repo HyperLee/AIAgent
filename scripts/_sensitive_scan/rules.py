@@ -4,7 +4,7 @@ import unicodedata
 
 from .common import Limits, ScanError
 
-DIRECTORIES = frozenset((b".git", b".agents", b".codex", b".aws", b".ssh",
+DIRECTORIES = frozenset((b".git", b".aiagent", b".agents", b".codex", b".aws", b".ssh",
                          b".secrets", b"secrets", b"logs"))
 NAMES = frozenset((b"gemini-api-key.txt", b"api-key.txt", b"appsettings.local.json",
                    b"credentials", b"credentials.json", b"id_rsa", b"id_dsa",
@@ -12,7 +12,7 @@ NAMES = frozenset((b"gemini-api-key.txt", b"api-key.txt", b"appsettings.local.js
 SUFFIXES = (b".secrets.json", b".pem", b".key", b".p12", b".pfx", b".ppk",
             b".keystore", b".jks", b".log", b".dmp", b".dump")
 ARCHIVES = (b".zip", b".tar", b".gz", b".tgz", b".7z", b".rar", b".dmg", b".pkg")
-TEMP = re.compile(br"\.aiagent-edit-[0-9a-f]{32}\.tmp\Z")
+TEMP = re.compile(br"\.aiagent-(?:edit|work)-[0-9a-f]{32}\.tmp\Z")
 KEY = re.compile(br"AIza[A-Za-z0-9_-]{35}")
 PRIVATE = re.compile(br"-{5}BEGIN (?:RSA |DSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY-{5}")
 PLACEHOLDERS = frozenset(("", "YOUR_GEMINI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN",
@@ -28,7 +28,7 @@ def path_rules(path, mode):
     if (any(part in forbidden for part in parts) or name in NAMES or name.endswith(SUFFIXES) or
             (name == b".env" or name.startswith(b".env.")) and not example):
         rules.add("BUD-S001")
-    if TEMP.fullmatch(name):
+    if name == b".store.lock" or TEMP.fullmatch(name):
         rules.add("BUD-S004")
     return rules
 

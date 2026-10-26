@@ -10,7 +10,7 @@ using AIAgent.Cli.Workspace;
 namespace AIAgent.Cli.Core;
 
 /// <summary>獨立於對話歷史的有界帳本；鎖內只有同步、純記憶體決策。</summary>
-internal sealed class PlanStore(ISensitiveDataPolicy policy, object? decisionGate = null)
+internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? decisionGate = null)
 {
     private readonly object _gate = decisionGate ?? new();
     private readonly List<TaskOperationFact> _facts = [];

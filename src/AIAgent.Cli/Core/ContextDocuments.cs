@@ -43,7 +43,7 @@ internal static class ContextDocuments
     private static void WritePins(Utf8JsonWriter w, IReadOnlyList<ContextPin> pins)
     {
         w.WriteStartArray("pins");
-        foreach (var pin in pins) { w.WriteStartObject(); w.WriteString("id", pin.PinId); w.WriteString("text", pin.Text); w.WriteEndObject(); }
+        foreach (var pin in pins) { w.WriteStartObject(); w.WriteString("id", pin.PinId); w.WriteString("text", pin.Text); if (pin.SourceWorkId is { } workId) { w.WriteString("source", "saved_work_pin"); w.WriteString("work_id", workId); w.WriteBoolean("untrusted_history", true); } w.WriteEndObject(); }
         w.WriteEndArray();
     }
     internal static void WriteSummary(Utf8JsonWriter w, ContextSummary summary)
@@ -60,8 +60,10 @@ internal static class ContextDocuments
         if (summary is null) w.WriteNullValue();
         else
         {
-            w.WriteStartObject(); w.WriteString("source", "model_summary"); w.WriteNumber("through_turn_id", summary.ThroughTurnId);
-            w.WriteNumber("covered_turn_count", summary.CoveredTurnCount); w.WritePropertyName("content"); WriteSummary(w, summary); w.WriteEndObject();
+            w.WriteStartObject(); w.WriteString("source", summary.SourceWorkId is null ? "model_summary" : "saved_work_summary");
+            if (summary.SourceWorkId is { } workId) { w.WriteString("work_id", workId); w.WriteBoolean("untrusted_history", true); }
+            if (summary.SourceWorkId is null || summary.CoveredTurnCount > 0) { w.WriteNumber("through_turn_id", summary.ThroughTurnId); w.WriteNumber("covered_turn_count", summary.CoveredTurnCount); }
+            w.WritePropertyName("content"); WriteSummary(w, summary); w.WriteEndObject();
         }
         WritePins(w, pins); w.WriteEndObject();
     });

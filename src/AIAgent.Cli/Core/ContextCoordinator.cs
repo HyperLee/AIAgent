@@ -4,7 +4,7 @@ using AIAgent.Cli.Security;
 
 namespace AIAgent.Cli.Core;
 
-internal sealed class ContextCoordinator(ConversationContext context, PlanStore plans, ISensitiveDataPolicy policy)
+internal sealed partial class ContextCoordinator(ConversationContext context, PlanStore plans, ISensitiveDataPolicy policy)
 {
     private ISensitiveDataPolicy _policy = policy;
     private long _sessionGeneration;
@@ -83,6 +83,7 @@ internal sealed class ContextCoordinator(ConversationContext context, PlanStore 
         var covered = checked((snapshot.Summary?.CoveredTurnCount ?? 0) + count);
         var summary = ContextDocuments.ParseSummary(text, snapshot.CompletedTurns[count - 1].TurnId, covered, _policy);
         if (summary is null) return null;
+        summary = new(summary.ThroughTurnId, summary.CoveredTurnCount, summary.Goals, summary.Decisions, summary.OpenQuestions, summary.Background, snapshot.Summary?.SourceWorkId);
         if (!SafeMemory(summary, snapshot.Pins)) throw new ContextInspectionException();
         return new(stamp, count, summary, Encoding.UTF8.GetString(ContextDocuments.Memory(summary, snapshot.Pins)));
     }
@@ -104,7 +105,7 @@ internal sealed class ContextCoordinator(ConversationContext context, PlanStore 
         lock (context.DecisionGate)
         {
             var next = checked(_sessionGeneration + 1);
-            context.Clear(); _sessionGeneration = next; LastMeasurement = null; LastBodyMeasurement = null;
+            context.Clear(); LoadedWorkPlan = null; LoadedWorkId = null; _sessionGeneration = next; LastMeasurement = null; LastBodyMeasurement = null;
         }
     }
     public override string ToString() => "[ContextCoordinator]";
