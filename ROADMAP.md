@@ -31,7 +31,7 @@
 | FUT-07 | [終端機操作改善](specs/14-terminal-interaction.md) | 已實作；分層驗收見README | 改善日常輸入、編輯與進度辨識。 |
 | FUT-08 | [工作保存與續接](specs/15-work-save-and-resume.md) | 已接入；分層驗證見 README | 讓跨次工作能保留目標、決策與待辦。 |
 | FUT-09 | [修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md) | 已接入產品；分層驗證見 README | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
-| FUT-10 | 可重用工作流程（Skills） | 接續 | 將常用開發流程整理成可按需載入的能力。 |
+| FUT-10 | [可重用工作流程（Skills）](specs/17-reusable-workflows-and-skills.md) | 已定規格；待實作 | 將常用開發流程整理成可按需載入的能力。 |
 | FUT-11 | MCP 外部工具整合 | 延伸 | 連接外部工具與資料來源。 |
 | FUT-12 | 網頁查詢與文件擷取 | 延伸 | 取得具來源的官方文件與最新資訊。 |
 | FUT-13 | 多模型與供應商支援 | 延伸 | 依任務明確選擇不同模型或供應商。 |
@@ -162,6 +162,8 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 - **規格展開重點**：定義快照保存與敏感防護、檢查點範圍、人工修改辨識、復原前重驗及部分失敗；新建檔案、缺失快照與不能安全復原的情況須有明確人工處理方式，不自動批次清理檔案或目錄。
 
 ### FUT-10：可重用工作流程（Skills）
+
+狀態：已獨立定義[第 17 份開發規格](specs/17-reusable-workflows-and-skills.md)，產品待實作。第一版採目前 Scope 下的本機純文字技能、使用者明確選用及單一跨回合啟用；[上游承接對照](specs/17-reusable-workflows-and-skills.md#upstream-handoffs)與[前向交接 memo](specs/17-reusable-workflows-and-skills.md#future-handoffs)集中記錄既有邊界及後續責任，不另建重複筆記。
 
 撰寫本項規格前，必讀 [第 12 份 FUT-10 固定交接](specs/12-project-rules-loading.md#fut-10-handoff)與[其他 FUT 交接](specs/12-project-rules-loading.md#future-handoffs)，逐項承接來源、作用範圍、權限、版本及容量契約；FUT-05 的實作與驗證範圍見 README，仍須核對當時程式與未結驗收。
 
