@@ -79,6 +79,8 @@ internal sealed partial class AgentRunner
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested || Cancelled) { return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled); }
             catch (ProjectRulesFlowException ex) { return Finish(AgentTurnStatus.Stopped, ex.Reason); }
+            catch (SkillsFlowException ex) { return Finish(AgentTurnStatus.Stopped, ex.Reason); }
+            catch (SkillsSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ProjectRulesSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ContextFlowException ex) { return Finish(ex.Status, ex.Reason); }
             catch (ContextInspectionException) { return Invalid(); }

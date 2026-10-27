@@ -15,16 +15,16 @@ internal static class PlanProjection
     private static readonly string[] BlockReasons = ["capability_unavailable", "turn_paused", "turn_cancelled", "generation_limit",
         "model_outcome", "operation_failed", "approval_declined", "file_conflict", "write_unconfirmed", "mode_changed", "model_reported",
         "resource_limit", "workspace_unavailable", "local_failure", "process_start_failed", "process_failed", "process_timed_out", "process_output_limit",
-        "validation_inconclusive", "process_unconfirmed", "rules_changed", "rules_unavailable", "rules_scope_mismatch", "rules_limit", "workspace_restored"];
+        "validation_inconclusive", "process_unconfirmed", "rules_changed", "rules_unavailable", "rules_scope_mismatch", "rules_limit", "skills_changed", "workspace_restored"];
     private static readonly string UpperReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r)).First();
     private static readonly string UpperDisplayReason = BlockReasons.OrderByDescending(r => Encoding.UTF8.GetByteCount(r + "；" + Reason(r))).First();
     internal static string Name<T>(T value) where T : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
-    internal static byte[] State(AgentMode mode, PlanSnapshot? plan, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0)
+    internal static byte[] State(AgentMode mode, PlanSnapshot? plan, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0, long skillsRevision = 0)
     {
         using var output = new MemoryStream();
         using (var writer = new Utf8JsonWriter(output))
         {
-            writer.WriteStartObject(); writer.WriteNumber("evidence_epoch", upper ? long.MaxValue : evidenceEpoch); writer.WriteNumber("rules_revision", upper ? long.MaxValue : rulesRevision); writer.WriteString("mode", upper ? "execute" : Name(mode));
+            writer.WriteStartObject(); writer.WriteNumber("skills_revision", upper ? long.MaxValue : skillsRevision); writer.WriteNumber("evidence_epoch", upper ? long.MaxValue : evidenceEpoch); writer.WriteNumber("rules_revision", upper ? long.MaxValue : rulesRevision); writer.WriteString("mode", upper ? "execute" : Name(mode));
             writer.WritePropertyName("plan");
             if (plan is null) writer.WriteNullValue();
             else
@@ -70,10 +70,11 @@ internal static class PlanProjection
         return output.ToArray();
     }
 
-    internal static string Display(AgentMode mode, PlanSnapshot? plan, int oldFacts, bool approval = false, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0)
+    internal static string Display(AgentMode mode, PlanSnapshot? plan, int oldFacts, bool approval = false, bool upper = false, long rulesRevision = 0, long evidenceEpoch = 0, long skillsRevision = 0)
     {
         var output = new StringBuilder(upper ? "[Execute]\n" : mode == AgentMode.Plan ? "[Plan]\n" : "[Execute]\n");
         output.Append("證據代次：").Append((upper ? long.MaxValue : evidenceEpoch).ToString(CultureInfo.InvariantCulture)).Append('\n');
+        output.Append("技能版本：").Append((upper ? long.MaxValue : skillsRevision).ToString(CultureInfo.InvariantCulture)).Append('\n');
         output.Append("規則版本：").Append((upper ? long.MaxValue : rulesRevision).ToString(CultureInfo.InvariantCulture)).Append('\n');
         if (plan is null) output.Append("目前沒有活動計畫。\n");
         else
@@ -120,6 +121,7 @@ internal static class PlanProjection
     internal static string Reason(string reason) => reason switch
     {
         "workspace_restored" => "工作區已復原；舊證據僅供歷史參考，請重新確認並重讀目前來源",
+        "skills_changed" => "技能流程已變動；請重載或停用、重新確認並給予新指示",
         "rules_changed" => "規則來源已變動；請重載、重新確認並給予新指示",
         "rules_unavailable" => "目前沒有可用規則快照",
         "rules_scope_mismatch" => "目標超出目前規則範圍；請明確選擇 Scope",

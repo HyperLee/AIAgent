@@ -101,6 +101,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
                 var nextGeneration = checked(_generation + 1);
                 _snapshot = new(next, candidate.Chain, projection); _scope = candidate.Chain.Scope;
                 _revision = next; _generation = nextGeneration; _status = ProjectRulesStatus.Valid;
+                _execution.Skills?.RulesPublished(stamp.Scope, candidate.Chain.Scope);
                 _plans.CurrentRulesRevision = next; _pendingInvalidation = stamp.RulesRevision != 0;
             }
             return "none";

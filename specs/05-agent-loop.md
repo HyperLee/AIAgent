@@ -1,5 +1,9 @@
 # 05：Agent 工具循環子規格
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+一般／Review／維護生成及結果採用、工具整批／逐項與最終歷史發布加入技能重驗；新增 skills_changed／skills_unavailable／skills_limit，保持原生 NotExecuted 配對、用量及較嚴格故障優先。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 受控寫入增加 checkpoint 預留與來源完成；checkpoint_limit 停止工具鏈並以 resource_limit 阻擋在途任務。復原完全由本機 ID 入口處理，不新增模型工具或改成功資料格式；一般、Review 及摘要請求加入目前復原警示，保留已發生操作事實及原生成／body 限制。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

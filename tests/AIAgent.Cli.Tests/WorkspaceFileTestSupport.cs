@@ -46,6 +46,7 @@ internal sealed class ControlledWorkspaceFileSystem : IWorkspaceReadFileSystem
     internal void File(string path, byte[] bytes)
     { Nodes["/ws/" + path] = new(new(WorkspaceNodeKind.File, bytes.LongLength, Identity: (ulong)Nodes.Count + 1), bytes); }
     internal void Directory(string path) => Nodes["/ws/" + path] = new(new(WorkspaceNodeKind.Directory, Identity: (ulong)Nodes.Count + 1));
+    public bool HasExactName(string path) => Nodes.ContainsKey(path);
     public WorkspaceNodeState Inspect(string path)
     { Inspected.Add(path); OnInspect?.Invoke(path); return Nodes.TryGetValue(path, out var node) ? node.State : new(WorkspaceNodeKind.Missing); }
     public IEnumerable<string> EnumerateNames(string path)

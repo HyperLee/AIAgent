@@ -243,10 +243,14 @@ internal sealed partial class WorkspaceFiles : ICheckpointWorkspace
                 }
                 _executionPolicy.Recovery.Record(id, record.Path, write, current);
             }
-            if (actual is not null) await CheckRulesAfterPublicationAsync(record.Path, actual.State, operation);
+            if (actual is not null)
+            {
+                await CheckRulesAfterPublicationAsync(record.Path, actual.State, operation);
+                await CheckSkillsAfterPublicationAsync(record.Path, actual.State, operation);
+            }
             rejection = write.CleanupFailed ? "cleanup_failure" : write.WriteState == FileWriteState.Verified ? "none" : "write_unconfirmed";
         }
-        var fatal = write.CleanupFailed || write.WriteState == FileWriteState.Unconfirmed || rejection is "checkpoint_unavailable" or "cleanup_failure" or "process_cleanup_failed" or "process_unconfirmed" or "io_failure";
+        var fatal = _executionPolicy.Skills?.FatalFailure == true || write.CleanupFailed || write.WriteState == FileWriteState.Unconfirmed || rejection is "checkpoint_unavailable" or "cleanup_failure" or "process_cleanup_failed" or "process_unconfirmed" or "io_failure";
         return new(rejection ?? "checkpoint_unavailable", checkpointId: id, relativePath: record.Path, writeState: write.WriteState,
             verifiedByteCount: write.VerifiedByteCount, verifiedHasUtf8Bom: write.VerifiedHasUtf8Bom, cleanupFailed: write.CleanupFailed,
             fatal: fatal, decision: decision);

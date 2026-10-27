@@ -12,6 +12,7 @@ internal static class TestRulesRegistry
     {
         var execution = executionPolicy ?? tools.Select(t => t.ProjectRulesWorkspace?.ExecutionPolicy).FirstOrDefault(e => e is not null) ?? new(new PlanStore(policy));
         execution.Rules ??= new(new EmptyProjectRulesReader(execution), policy, execution);
+        execution.Skills ??= new(null, policy, execution);
         return new(tools, policy, execution);
     }
     internal sealed class EmptyProjectRulesReader(AgentExecutionPolicy execution) : IProjectRulesWorkspace

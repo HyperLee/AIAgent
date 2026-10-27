@@ -1,5 +1,9 @@
 # 15：工作保存與續接開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+承接 SAVE-HO-009：保存摘要／預覽／確認／發布綁技能版本；不直接以技能正文作摘要來源，SAVE v1 無新增欄位。啟動續接 Disabled，歷史／file_refs 只作原安全檔案觀察，不解析或啟用技能。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 工作保存與檔案復原繼續獨立。SAVE v1 不增加 checkpoint bytes、anchor、ID 資格或核准欄位，--resume 無檢查點；RecoveryRevision 使保存候選／量測過時，必要保存摘要含目前復原附錄。清除或換 Key 丟棄程序內復原資料但不刪存檔、不改工作檔、不退生成。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

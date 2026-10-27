@@ -1,5 +1,9 @@
 # 03：CLI 與 Context 子規格
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+新增六種 /skills 本機命令與 LoadingSkills 單一讀取者生命週期；命令不入歷史、零生成、啟用後仍等新訊息，clear／換 Key／退出丟啟用內容。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 四個 `/checkpoint` 命令為 AwaitingInput 本機入口，零模型回合；命令與核准不入歷史。復原必須目前 Execute／Valid 規則、完整新預覽及單檔新確認；發布後先顯示事實，再處理取消、EOF、模式及規則收尾。共同清除與換 Key 丟棄檢查點及最近復原結果，ID／復原代次不重用。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

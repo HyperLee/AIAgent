@@ -58,6 +58,17 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("skills", StringComparison.Ordinal))
+            {
+                if (scenario == "skills-approval" && _calls == 1) return PlanCalls(("create_file", new { path = "new.md", content = "candidate" }));
+                if (scenario == "skills-model-gated")
+                {
+                    Console.WriteLine("OFFLINE_SKILLS_MODEL_WAITING");
+                    await gate!.ReadExactlyAsync(new byte[1], cancellationToken);
+                }
+                var answer = request.SystemInstruction.Contains("\"active\":null", StringComparison.Ordinal) ? "SKILL_DISABLED_RESULT" : "SKILL_ACTIVE_RESULT";
+                return new(LlmStatus.Completed, LlmErrorCode.None, answer, [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("work", StringComparison.Ordinal) && request.Tools.Count == 0)
             {
                 if (scenario == "work-model-busy")
@@ -181,6 +192,7 @@ internal sealed class OfflineWorkspaceFactory(string scenario, FileStream? gate)
     public FileChangeApprovalBridge ApprovalBridge => _factory.ApprovalBridge;
     public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
     {
+        if (scenario == "skills-read-gated") return new WorkspaceFiles(session.Workspace, session.Policy, new GatedRulesFileSystem(gate!, true), executionPolicy: executionPolicy);
         if (scenario == "rules-busy") return new WorkspaceFiles(session.Workspace, session.Policy, new GatedRulesFileSystem(gate!), executionPolicy: executionPolicy);
         if (scenario is "edit-stage-gated" or "edit-publish-gated")
             return new ObservedWriteWorkspace(new WorkspaceFiles(session.Workspace, session.Policy,
@@ -197,6 +209,7 @@ internal sealed class GatedWorkspace(IWorkspaceFiles inner, FileStream gate, str
     public ICheckpointWorkspace? Checkpoints => scenario == "checkpoint-busy" && inner.Checkpoints is { } checkpoints
         ? _checkpoint ??= new GatedCheckpoint(checkpoints, gate) : inner.Checkpoints;
     public IProjectRulesWorkspace? ProjectRulesWorkspace => inner.ProjectRulesWorkspace;
+    public ISkillsWorkspace? SkillsWorkspace => inner.SkillsWorkspace;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
     public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
     public async Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token)
@@ -355,6 +368,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
 internal sealed class ObservedWriteWorkspace(IWorkspaceFiles inner) : IWorkspaceFiles
 {
     public IProjectRulesWorkspace? ProjectRulesWorkspace => inner.ProjectRulesWorkspace;
+    public ISkillsWorkspace? SkillsWorkspace => inner.SkillsWorkspace;
     public IReadSnapshotStore Snapshots => inner.Snapshots;
     public Task<WorkspaceFileSearchResult> SearchFilesAsync(string path, string pattern, CancellationToken token) => inner.SearchFilesAsync(path, pattern, token);
     public Task<WorkspaceTextSearchResult> SearchTextAsync(string path, string query, string filePattern, bool caseSensitive, int contextLines, CancellationToken token) => inner.SearchTextAsync(path, query, filePattern, caseSensitive, contextLines, token);
@@ -382,6 +396,7 @@ internal sealed class GatedEditFileSystem(string scenario, FileStream gate) : IW
         Console.WriteLine("OFFLINE_EDIT_IO_GATE");
         gate.ReadExactly(new byte[1]);
     }
+    public bool HasExactName(string path) => _inner.HasExactName(path);
     public WorkspaceNodeState Inspect(string path) => _inner.Inspect(path);
     public IEnumerable<string> EnumerateNames(string path) => _inner.EnumerateNames(path);
     public IWorkspaceReadFile OpenRead(string path) => _inner.OpenRead(path);
@@ -446,37 +461,38 @@ internal sealed class OfflineProcessTasks(string scenario, FileStream? gate, ISe
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
-internal sealed class GatedRulesFileSystem(FileStream gate) : IWorkspaceReadFileSystem
+internal sealed class GatedRulesFileSystem(FileStream gate, bool skills = false) : IWorkspaceReadFileSystem
 {
     private readonly MacWorkspaceFileSystem _inner = new();
     private int _reads;
+    public bool HasExactName(string path) => _inner.HasExactName(path);
     public WorkspaceNodeState Inspect(string path) => _inner.Inspect(path);
     public IEnumerable<string> EnumerateNames(string path) => _inner.EnumerateNames(path);
     public IWorkspaceReadFile OpenRead(string path)
     {
         var file = _inner.OpenRead(path);
-        return ++_reads == 3 ? new GatedFile(file, gate) : file;
+        return ++_reads == (skills ? 1 : 3) ? new GatedFile(file, gate, skills) : file;
     }
-    private sealed class GatedFile(IWorkspaceReadFile inner, FileStream gate) : IWorkspaceReadFile
+    private sealed class GatedFile(IWorkspaceReadFile inner, FileStream gate, bool skills) : IWorkspaceReadFile
     {
-        private readonly Stream _stream = new GatedStream(inner.Stream, gate);
+        private readonly Stream _stream = new GatedStream(inner.Stream, gate, skills);
         public Stream Stream => _stream;
         public WorkspaceNodeState GetState() => inner.GetState();
         public UnixFileMode GetMode() => inner.GetMode();
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
-    private sealed class GatedStream(Stream inner, FileStream gate) : Stream
+    private sealed class GatedStream(Stream inner, FileStream gate, bool skills) : Stream
     {
         private bool _waited;
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
         {
             if (!_waited)
             {
-                _waited = true; Console.WriteLine("OFFLINE_RULES_READING");
+                _waited = true; Console.WriteLine(skills ? "OFFLINE_SKILLS_READING" : "OFFLINE_RULES_READING");
                 try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
                 catch (OperationCanceledException)
                 {
-                    Console.WriteLine("OFFLINE_RULES_CANCEL_OBSERVED");
+                    Console.WriteLine(skills ? "OFFLINE_SKILLS_CANCEL_OBSERVED" : "OFFLINE_RULES_CANCEL_OBSERVED");
                     _ = await gate.ReadAsync(new byte[1], CancellationToken.None);
                     throw;
                 }

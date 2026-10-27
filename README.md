@@ -1,10 +1,10 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接；第 16 份新增程序內修改檢查點與逐次確認的單檔復原。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接；第 16 份新增程序內修改檢查點與逐次確認的單檔復原；第 17 份加入目前 Scope 下、手動選用的單一可重用技能流程。
 
 離線自動測試、macOS PTY 與 VS Code F5 偵錯已通過；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
-開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
+開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。[17：可重用工作流程](specs/17-reusable-workflows-and-skills.md)定義目前 Scope 的手動單一技能、來源版本及跨模組失效閘門。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 ## 開發進度
 
@@ -25,10 +25,59 @@
 | 13：Git 差異與程式碼審查 | 原始 bytes 三層快照、專用 GitRead、唯讀審查回合及本機報告驗證。 | 已實作並接入正式聊天。 | 分層證據見第 13 份驗證紀錄。 | GIT-AC-021 真人、022 真實 Gemini；既有原生／發布門檻保留。 |
 | 14：終端機操作改善 | 隱藏多行編輯、安全預覽、明確貼上、程序內歷史及階段進度。 | 已實作並接入正式聊天。 | 當次分層證據見第 14 份紀錄。 | TERM-AC-030 真人、031 真實 Gemini；原生／發布未結門檻保持。 |
 | 15：工作保存與續接 | 私人摘要／pins／歷史計畫、四個工作命令、啟動來源重驗及原子匯入。 | 已接入正式聊天。 | 當次結果見下方紀錄。 | 真人 SAVE-AC-030、真實 Gemini 031、其他 OS／架構及下列原生未驗範圍；既有發布門檻保持。 |
+| 16：修改檢查點與復原 | 程序內受控修改捕捉及逐筆單檔復原。 | 已接入正式聊天。 | 分層證據見第 16 份紀錄。 | 真人／真實 Gemini、其他平台及既有原生／發布門檻。 |
+| 17：可重用工作流程 | 目前 Scope 的本機技能、明確單一選用、來源版本及失效閘門。 | 已接入正式聊天、工具與程序。 | 分層證據見[第 17 份紀錄](#skills-validation)。 | SKILL-AC-030 真人、031 真實 Gemini；既有原生／發布門檻保留。 |
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，依目前模式提供九／十二項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="skills-validation"></a>
+
+## 第 17 份可重用工作流程
+
+技能是人工維護的純文字流程，固定位置為目前 Rules Scope 的 `skills/<id>/SKILL.md`。例如 Scope=`src/App` 時只讀 `src/App/skills/<id>/SKILL.md`；不繼承根或祖先技能。啟動不發現、不選用，只有使用者命令可以啟用，同時最多一個。技能內容可能送至 Gemini；它不授權操作，也不證明步驟完成。
+
+| 命令 | 行為 |
+|---|---|
+| `/skills` | 顯示上次觀察的 Disabled／Valid／Stale、Scope、版本與來源 metadata；零磁碟讀取。 |
+| `/skills list` | 按需發現目前 Scope 的完整安全目錄；不自動選用。 |
+| `/skills show ID` | 完整顯示目前磁碟來源；不啟用或更新快照。 |
+| `/skills use ID` | 安全重讀並原子選用／替換；不另問 yes，也不開始執行。 |
+| `/skills reload` | 明確重載目前技能；相同 Valid 來源為 no_change。 |
+| `/skills off` | 純記憶體停用，Stale 或規則不可用時仍可用；不修復規則。 |
+
+ID 為 1～64 個 ASCII 字元、小寫字母起頭，只接受小寫字母、數字及單一連字號分段。前四行固定為 `---`、`name: ID`、`description: 普通單行文字`、`---`，兩個欄位順序可交換；description 最多 512 個 UTF-16 單位。其後 Body 非空白，保留原始換行與空白。採嚴格 UTF-8、可有 BOM，只接受 LF／CRLF；不是完整 YAML。
+
+每次 list 最多 32 份來源及 256 個直接項目；每檔最多 16384 原始 bytes，目錄與啟用投影各 32768 bytes，完整顯示 65536 bytes。超限整份拒絕；不裁切、摘要、展開連結／include／腳本或安裝其他技能。專用讀取共用既有安全核心與排他租約，不建立修改快照、Plan 事實或 checkpoint；無關技能變動不停止目前來源。
+
+來源變動時，生成、工具、Plan／寫入／程序／復原確認、摘要及保存候選都停止採用舊版本。已取得發布權的操作先核對並記錄實際結果，再撤確認及標 Stale；修改／復原目前 SKILL 亦同。reload／off 後仍需重新確認計畫、新訊息與新的逐次操作核准。技能切換保留歷史 Completed／事實，不改 EvidenceEpoch；復原仍由第 16 份管理。
+
+同 Scope 規則改版須明確重載技能；切 Scope 直接停用。clear、安全重設、換 Key、退出丟棄技能內容，版本計數不重用。SAVE v1 不加技能欄位，`--resume` 保持 Disabled；歷史轉述不會恢復選用。一般與 Review 帶目前完整技能附錄，compact／保存摘要不直接帶技能正文，但各候選仍受技能版本查核。十三項工具及 Plan／Execute／Review 九／十二／三項權限保持。
+
+### 第 17 份驗證紀錄（2026-10-28）
+
+開發於 2026-10-27～28 進行，起點為乾淨 `main@445adc4`；macOS arm64、.NET SDK 10.0.100，未新增套件。原受限外層基線為 931／948、17 個原生 sandbox／Git／程序案例失敗；最小 sandbox 初始化亦退出 71。最終測試在允許外層初始化原生 sandbox 的環境執行，產品自身隔離政策保持啟用；兩種環境的證據分列。
+
+| 實際命令／查核 | 最終結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定相依套件。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；1045／1045、0 略過，4 分 02.657 秒；含 97 個新增技能案例及既有 01～16 回歸。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；36／36。 |
+| `python3 -B tests/terminal_smoke.py` | 0；127 組，保留原 122 組並新增 5 組技能情境。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；含技能位置、手動選用、檢視／執行差異與清除限制。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 0；產品完整格式驗證；變更 C#／測試／TerminalHost 另以 whitespace include verify 通過。 |
+| 來源／文件查核 | `git diff --check`、C# CRLF／檔尾、Markdown 圍欄／本機連結、84 個需求／34 個案例／13 個前向交接連號、JSON 範例及 102 bytes／SHA-256 合成來源查核通過。 |
+| 來源敏感掃描 | 325 份目前來源複製到私人隔離 Git fixture 後執行原 `check_sensitive_content.py staged`：0 findings；原工作區索引未 stage。此項不是 Release 產物掃描。 |
+
+離線證據對照：`SkillsTests`／`SkillsBoundaryTests` 覆蓋格式、Scope、來源安全、目錄一致性、原始容量、編碼及無快照／事實；`SkillsCapacityTests` 覆蓋獨立投影／顯示的精確界線與命令語法；`SkillsLifecycleTests` 覆蓋候選失敗、世代、取消／Dispose、規則變動及溢位；`SkillsIntegrationTests`／`SkillsFlowTests` 覆蓋 CLI、純文字與整批結果閘門、Plan／寫入／程序確認、保存／摘要、來源自修改／復原、255→256 事實及真實 SDK body 262144／262145；`SkillsFailurePropagationTests` 驗證復原後與 Git 捕捉期間的敏感／來源關閉故障不被一般結果蓋過。既有工具／模式／協定／安全測試保持，沒有用技能文字放寬能力。
+
+獨立唯讀審查提出兩項 Important：復原完成後未消費技能重設／致命訊號，以及 Git 捕捉將嚴重技能失敗降為 git_failed。新增八個傳遞／真實復原／捕捉案例，其中七個先重現失敗，再修正並全部通過。自查另以失敗測試修正執行代次溢位後 Dispose 等待不結束；上述修正均納入最終 1045 項完整回歸。沒有另行第二輪獨立複審。
+
+PTY 使用離線 TerminalHost、假模型與明確管線／讀取啟用閘門，驗六命令、完整中文來源、Stale／reload／off、輸入歷史與多行拒絕、確認／生成期間來源變動、busy 排空及 Ctrl+C／EOF 等待關閉；不以睡眠猜來源變動時機，也不把 PTY 當真人驗收。
+
+SKILL-AC-030 真人 macOS 終端機／IME、031 真實 Gemini、其他 OS／架構及原有未結原生邊界未驗；本次沒有讀取真實 Key 或連線 Gemini。第 10 份產品 MTP test 不支援、第 07 份 BUD-S003 Release／人工分發及既有各階段未結門檻保留。變更未提交、推送或發布。
+
 <a id="checkpoint-validation"></a>
 
 ## 第 16 份修改檢查點與復原

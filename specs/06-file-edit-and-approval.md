@@ -1,5 +1,9 @@
 # 06：檔案編輯與核准子規格
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+操作與預覽綁技能戳記，核准後及發布前重驗；合法修改目前 SKILL 使用舊戳記完成發布／查核，先保留寫入與 checkpoint 事實，再 Stale 並停止剩餘工具。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 每次合法非 NoChange 候選先原子預留 checkpoint，再取得有限目標 Git guard、原始預覽與核准；發布後完成來源歷史。滿額停止、不淘汰。ID 限定復原另建目前→before 預覽與新核准，復用同目錄原生暫存、完整 mode／bytes 核對與精確清理；新建檔僅人工，沒有一般刪除入口。原 EDIT-044～063 安全閘門及 metadata／TOCTOU 限制保持。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

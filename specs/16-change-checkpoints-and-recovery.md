@@ -1,5 +1,9 @@
 # 16：修改檢查點與復原開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+承接 CKPT-HO-009：復原候選與確認綁技能戳記，Stale 不允許 restore。復原目前 SKILL 先保留結果、RecoveryRevision／EvidenceEpoch，再使技能 Stale；其他檔復原重驗技能但不自動卸載。原 bytes／anchor／Git／逐筆核准所有權保持。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 產品實作接續（2026-10-27）
 
 依使用者本次開發指示實作 FUT-09；原 CKPT-001／002、077～080 與 AC-034 記錄規格撰寫當時的文件交付，保留其歷史，不限制本次已授權產品開發。產品入口、容量／安全／相容性邊界依下列規格，實際分層驗證及未驗項目以 [README](../README.md#checkpoint-validation) 為準；規格中的歷史「待實作」不代表已驗收全部真人／服務／發布條件。

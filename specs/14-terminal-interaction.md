@@ -1,5 +1,9 @@
 # 14：終端機操作改善開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+承接 TERM-HO-009：/skills 沿全域單行／敏感閘門、busy 排空與單一讀取者；來源文字、yes、F2／F3 或歷史回取不是新選用／核准，Ctrl+C／EOF 等待真實收尾。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 新增四個單行本機 checkpoint 命令，沿全域多行／敏感閘門且不入輸入歷史。restore／forget 完整新預覽後停止舊 busy 讀取者、排空已緩衝輸入，再啟用隱藏單行確認；F2／F3／F4／歷史不授權。發布後安全事實先顯示，Ctrl+C／EOF／輸出故障與單一讀取者契約維持。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

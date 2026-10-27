@@ -8,6 +8,7 @@ internal readonly record struct WorkspaceNodeState(WorkspaceNodeKind Kind, long 
 internal interface IWorkspaceReadFileSystem
 {
     WorkspaceNodeState Inspect(string fullPath);
+    bool HasExactName(string fullPath) => throw new PlatformNotSupportedException("無法核對精確來源名稱");
     IEnumerable<string> EnumerateNames(string fullDirectoryPath);
     IWorkspaceReadFile OpenRead(string fullPath);
 }

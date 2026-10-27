@@ -23,7 +23,7 @@ internal sealed partial class ChatApplication
         if (command.Kind == CheckpointCommandKind.Restore)
         {
             if (_plans!.Mode != AgentMode.Execute) { ShowContextBlock("mode_restricted", true); return true; }
-            if (!await CheckRulesReadyAsync()) return true;
+            if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) return true;
         }
         await RunCheckpointOperationAsync(checkpoints, command);
         return true;
@@ -52,8 +52,9 @@ internal sealed partial class ChatApplication
             });
             // Known publication facts are displayed before cancellation, EOF, or rule changes settle.
             ShowCheckpointResult(result);
-            if (result.ErrorCode == "sensitive_content" || _executionPolicy!.Recovery.RequiresContextReset) ClearConversationState();
-            if (result.Fatal || result.CleanupFailed || result.WriteState == FileWriteState.Unconfirmed || result.Decision == FileApprovalDecision.Unavailable)
+            var skillsFatal = _skills?.FatalFailure == true;
+            if (result.ErrorCode == "sensitive_content" || _executionPolicy!.Recovery.RequiresContextReset || _skills?.RequiresContextReset == true) ClearConversationState();
+            if (skillsFatal || result.Fatal || result.CleanupFailed || result.WriteState == FileWriteState.Unconfirmed || result.Decision == FileApprovalDecision.Unavailable)
                 RequestStop(StopReason.Failure);
             else if (result.Decision == FileApprovalDecision.EndOfInput) RequestStop(StopReason.Normal);
         }

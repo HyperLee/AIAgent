@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+Plan 確認與投影加入技能版本／戳記、skills_changed 與必然收尾餘裕。啟停／失效先讓預留事實入帳，再回 Draft、封鎖在途及換代次；PlanId／Revision、Completed／歷史事實與 EvidenceEpoch 保留。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 本機復原不冒充原 Write requirement，也不要求 Completed 任務可反向執行。開始發布後先收尾，增加獨立 EvidenceEpoch、撤確認、在途任務 Blocked/workspace_restored 並進 Plan；原 OperationId、TaskId、規則版本與 Completed 留歷史，但較早所有 Read／Write／Validation facts 不再可選。requirements_version 與 RulesRevision 不為此變更。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

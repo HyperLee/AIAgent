@@ -163,7 +163,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-10：可重用工作流程（Skills）
 
-狀態：已獨立定義[第 17 份開發規格](specs/17-reusable-workflows-and-skills.md)，產品待實作。第一版採目前 Scope 下的本機純文字技能、使用者明確選用及單一跨回合啟用；[上游承接對照](specs/17-reusable-workflows-and-skills.md#upstream-handoffs)與[前向交接 memo](specs/17-reusable-workflows-and-skills.md#future-handoffs)集中記錄既有邊界及後續責任，不另建重複筆記。
+狀態：已獨立定義[第 17 份開發規格](specs/17-reusable-workflows-and-skills.md)，產品已接入，當次驗證及真人／真實 Gemini／既有未結門檻見 [README](README.md#skills-validation)。第一版採目前 Scope 下的本機純文字技能、使用者明確選用及單一跨回合啟用；[上游承接對照](specs/17-reusable-workflows-and-skills.md#upstream-handoffs)與[前向交接 memo](specs/17-reusable-workflows-and-skills.md#future-handoffs)集中記錄既有邊界及後續責任，不另建重複筆記。
 
 撰寫本項規格前，必讀 [第 12 份 FUT-10 固定交接](specs/12-project-rules-loading.md#fut-10-handoff)與[其他 FUT 交接](specs/12-project-rules-loading.md#future-handoffs)，逐項承接來源、作用範圍、權限、版本及容量契約；FUT-05 的實作與驗證範圍見 README，仍須核對當時程式與未結驗收。
 

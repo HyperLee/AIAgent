@@ -1,5 +1,9 @@
 # 08：程式碼搜尋與局部讀檔開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+搜尋與範圍讀取直接入口及結果發布加入目前技能閘門；技能來源讀取不建立搜尋／修改基準，引用資源仍走原正常工作區路徑與 Scope。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 搜尋與局部讀取不能建立 checkpoint、復原來源或證據歸屬。checkpoint 獨立於 read snapshot LRU；復原後下一次一般 replace_text 仍要新的完整 read_file，不從搜尋片段、歷史或復原 anchor 補基準。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

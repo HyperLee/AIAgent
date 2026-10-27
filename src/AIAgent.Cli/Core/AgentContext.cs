@@ -19,12 +19,13 @@ internal sealed partial class AgentRunner
                 var appendix = registry.ExecutionPolicy.Plans.StateAppendix();
                 var memory = coordinator?.BuildMemoryAppendix() ?? "";
                 var rules = registry.ExecutionPolicy.Rules?.BuildAppendix() ?? throw new ProjectRulesFlowException("rules_unavailable");
+                var skills = registry.ExecutionPolicy.Skills?.BuildAppendix() ?? throw new SkillsFlowException("skills_unavailable");
                 var reviewAppendix = review?.Appendix() ?? "";
                 var recovery = registry.ExecutionPolicy.Recovery.BuildAppendix();
                 _requestStamp = coordinator?.Capture();
-                if (appendix is null || !policy.CanSendOrUse(instruction + rules + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
+                if (appendix is null || !policy.CanSendOrUse(instruction + rules + skills + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + rules + memory + appendix + reviewAppendix + recovery, _messages, registry.Definitions);
+                return new(instruction + rules + skills + memory + appendix + reviewAppendix + recovery, _messages, registry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -144,6 +145,8 @@ internal sealed partial class AgentRunner
             catch (OperationCanceledException) when (token.IsCancellationRequested || Cancelled)
             { return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled); }
             catch (ProjectRulesFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
+            catch (SkillsFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
+            catch (SkillsSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ProjectRulesSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ContextFlowException failure) { return Finish(failure.Status, failure.Reason); }
             catch (ContextCapacityException) { return Finish(AgentTurnStatus.Stopped, AgentStopReason.ContextCapacity); }

@@ -82,8 +82,10 @@ internal sealed class ContextSnapshot(long revision, long pinsRevision, ContextS
 }
 
 internal sealed class ContextOperationStamp(long sessionGeneration, ContextSnapshot context, long planGeneration,
-    AgentMode mode, PlanSnapshot? plan, long rulesRevision = 0, long rulesGeneration = 0, long recoveryRevision = 0)
+    AgentMode mode, PlanSnapshot? plan, long rulesRevision = 0, long rulesGeneration = 0, long recoveryRevision = 0, SkillsOperationStamp? skillsStamp = null)
 {
+    internal SkillsOperationStamp? SkillsStamp { get; } = skillsStamp;
+    internal bool SkillsMatches(SkillsOperationStamp? current) => SkillsVersion.Matches(SkillsStamp, current);
     internal long RecoveryRevision { get; } = recoveryRevision;
     internal long RulesRevision { get; } = rulesRevision;
     internal long RulesGeneration { get; } = rulesGeneration;
@@ -111,6 +113,7 @@ internal sealed class CompactionCandidate(ContextOperationStamp stamp, int prefi
 internal sealed class ContextMetricStamp(ContextOperationStamp stamp)
 {
     private readonly WeakReference<PlanSnapshot>? _plan = stamp.Plan is { } plan ? new(plan) : null;
+    private readonly SkillsVersion _skills = new(stamp.SkillsStamp);
     internal long RecoveryRevision { get; } = stamp.RecoveryRevision;
     internal long RulesRevision { get; } = stamp.RulesRevision;
     internal long RulesGeneration { get; } = stamp.RulesGeneration;
@@ -119,7 +122,7 @@ internal sealed class ContextMetricStamp(ContextOperationStamp stamp)
     internal long PinsRevision { get; } = stamp.PinsRevision;
     internal long PlanGeneration { get; } = stamp.PlanGeneration;
     internal AgentMode Mode { get; } = stamp.Mode;
-    internal bool Matches(ContextOperationStamp current) => RecoveryRevision == current.RecoveryRevision && RulesRevision == current.RulesRevision && RulesGeneration == current.RulesGeneration &&
+    internal bool Matches(ContextOperationStamp current) => _skills.Matches(current.SkillsStamp) && RecoveryRevision == current.RecoveryRevision && RulesRevision == current.RulesRevision && RulesGeneration == current.RulesGeneration &&
         SessionGeneration == current.SessionGeneration &&
         ContextRevision == current.ContextRevision && PinsRevision == current.PinsRevision && PlanGeneration == current.PlanGeneration &&
         Mode == current.Mode && (_plan is null ? current.Plan is null : _plan.TryGetTarget(out var prior) && ReferenceEquals(prior, current.Plan));

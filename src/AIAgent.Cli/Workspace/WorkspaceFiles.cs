@@ -46,6 +46,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         _checkpointGitAdapter = checkpointGitAdapter;
         _snapshots = new(_gate, CancelActiveOperation);
         _executionPolicy.Rules ??= new(this, policy, _executionPolicy);
+        _executionPolicy.Skills ??= new(this, policy, _executionPolicy);
     }
 
     public Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken) =>
@@ -123,6 +124,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             TaskCompletionSource? finished;
             lock (_gate) { finished = _inFlight; _inFlight = null; _activeCancellation = null; }
             _executionPolicy.Rules?.Settle();
+            _executionPolicy.Skills?.Settle();
             finished?.TrySetResult();
         }
     }
@@ -346,6 +348,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     private sealed class WorkspaceOperation(long generation, long planGeneration)
     {
         internal ProjectRulesStamp? RulesStamp { get; set; }
+        internal SkillsOperationStamp? SkillsStamp { get; set; }
         internal WorkspaceOperationLease? Lease { get; init; }
         internal List<ProjectRuleObservation> RuleBoundaries { get; } = [];
         internal long Generation { get; } = generation;

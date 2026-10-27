@@ -1,5 +1,9 @@
 # 04：工作區與唯讀工具子規格
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+新增 ISkillsWorkspace 專用安全來源讀取，共用原安全核心、規則邊界及排他租約；不建立 read_file 快照／Plan 事實。技能啟停／失效清除修改基準；原敏感、種類、連結與深度限制不放寬。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 完整 read_file 基準與 checkpoint 的 before／after 分開持有；list／show／forget 不讀目標。復原成功、Unconfirmed 或已觀察衝突清目標修改快照，不把復原 bytes 發布成新 read_file 基準；根換代使全部歷史只能人工查核。一般讀取路徑、敏感與範圍限制沒有擴張。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

@@ -8,6 +8,7 @@ internal interface IWorkspaceFiles : IAsyncDisposable
 {
     IReadSnapshotStore Snapshots { get; }
     IProjectRulesWorkspace? ProjectRulesWorkspace => null;
+    ISkillsWorkspace? SkillsWorkspace => null;
     IWorkReferenceWorkspace? WorkReferences => null;
     ICheckpointWorkspace? Checkpoints => null;
     Task<WorkspaceListResult> ListFilesAsync(string path, CancellationToken cancellationToken);
@@ -44,7 +45,7 @@ internal enum WorkspaceErrorCode
     TextNotFound, AmbiguousMatch, NoChange, EditTooLarge, PreviewTooLarge, BomChangeNotAllowed,
     UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure,
     ModeRestricted, PlanNotApproved, TaskRequired, TaskScopeMismatch, EvidenceLimit, PlanTooLarge,
-    RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit,
+    RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit, SkillsUnavailable, SkillsChanged, SkillsLimit,
     CheckpointLimit, CheckpointGitConflict, CheckpointManualRequired, CheckpointUnavailable
 }
 

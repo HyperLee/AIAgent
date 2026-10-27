@@ -173,6 +173,7 @@ def main():
     terminal_editor_cases(["dotnet", str(args.host.resolve())])
     work_cases(["dotnet", str(args.host.resolve())])
     checkpoint_cases(["dotnet", str(args.host.resolve())])
+    skills_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1143,6 +1144,96 @@ def checkpoint_cases(host):
         print("CKPT-AC-030-preinput-function-keys: PASS", flush=True)
     finally:
         os.close(write_fd); terminal.close()
+
+def skills_cases(host):
+    """SKILL-AC-029: real input handoffs and explicit source-change gates."""
+    source = "---\nname: demo\ndescription: 中文流程😀\n---\nSKILL_PTY_ORIGINAL"
+
+    def start(scenario="skills-flow", gate_fd=None):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-skills-pty-"))
+        skill = workspace / "skills" / "demo" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text(source, encoding="utf-8")
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace,
+                                   () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM); terminal.send(b"y\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(HOST_PROMPT)
+        return terminal, workspace, skill
+
+    def command(terminal, text):
+        count = terminal.output.count(HOST_PROMPT) + 1
+        terminal.send((text + "\r").encode()); terminal.wait_for(HOST_PROMPT, count)
+
+    terminal, workspace, skill = start()
+    try:
+        for text in ("/skills", "/skills list", "/skills show demo", "/Skills use demo", "/skills use  demo", "/skills use demo", "first", "/skills reload"):
+            command(terminal, text)
+        check(b"SKILL_PTY_ORIGINAL" in terminal.output and "中文流程".encode() in terminal.output, "SKILL-AC-029-full-source")
+        check(b"SKILL_ACTIVE_RESULT" in terminal.output and b"no_change" in terminal.output and b"invalid_skills_command" in terminal.output, "SKILL-AC-029-explicit-use")
+        skill.write_text(source.replace("ORIGINAL", "MODIFIED"), encoding="utf-8")
+        for text in ("blocked", "/skills", "/skills reload", "/skills off", "second"):
+            command(terminal, text)
+        check(b"Stale" in terminal.output and b"SKILL_DISABLED_RESULT" in terminal.output, "SKILL-AC-029-stale-reload-off")
+        check(terminal.output.count("處理中".encode()) == 2, "SKILL-AC-029-local-zero-generations")
+        command(terminal, "/skills")
+        count = terminal.output.count(HOST_PROMPT) + 1
+        terminal.send(b"\x10\x1bOQ"); terminal.wait_for(HOST_PROMPT, count)
+        check(b"1: second" in terminal.output, "SKILL-AC-029-commands-not-history")
+        terminal.send(b"\x15/skills\x1bOSlist\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check("本機指令只接受單行".encode() in terminal.output, "SKILL-AC-029-multiline-rejected")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("SKILL-AC-029-commands-source-stale-history: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal, workspace, skill = start("skills-approval")
+    try:
+        command(terminal, "/skills use demo")
+        terminal.send(b"write\r"); terminal.wait_for(b"OFFLINE_APPROVAL_READY")
+        skill.write_text(source.replace("ORIGINAL", "CHANGED"), encoding="utf-8")
+        count = terminal.output.count(HOST_PROMPT) + 1
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, count)
+        check(not (workspace / "new.md").exists(), "SKILL-AC-029-stale-yes-no-publication")
+        check(b"skills_changed" in terminal.output or "技能來源已變動".encode() in terminal.output, "SKILL-AC-029-stale-yes-classification")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("SKILL-AC-029-source-change-during-approval: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    read_fd, write_fd = os.pipe()
+    terminal, workspace, skill = start("skills-model-gated", read_fd); os.close(read_fd)
+    try:
+        command(terminal, "/skills use demo")
+        terminal.send(b"question\r"); terminal.wait_for(b"OFFLINE_SKILLS_MODEL_WAITING")
+        skill.write_text(source.replace("ORIGINAL", "CHANGED"), encoding="utf-8")
+        count = terminal.output.count(HOST_PROMPT) + 1
+        os.write(write_fd, b"x"); terminal.wait_for(HOST_PROMPT, count)
+        check(b"SKILL_ACTIVE_RESULT" not in terminal.output, "SKILL-AC-029-late-text-not-shown")
+        command(terminal, "/skills"); check(b"Stale" in terminal.output, "SKILL-AC-029-late-text-stale")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("SKILL-AC-029-source-change-during-generation: PASS", flush=True)
+    finally:
+        os.close(write_fd); terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        read_fd, write_fd = os.pipe()
+        terminal, workspace, skill = start("skills-read-gated", read_fd); os.close(read_fd)
+        try:
+            terminal.send(b"/skills use demo\r"); terminal.wait_for(b"OFFLINE_SKILLS_READING")
+            terminal.send(b"/skills off\ryes\r" + control); terminal.wait_for(b"OFFLINE_SKILLS_CANCEL_OBSERVED")
+            check(terminal.process.poll() is None, "SKILL-AC-029-waits-for-source-closure")
+            os.write(write_fd, b"x")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, 2); command(terminal, "/skills")
+                check(b"Disabled" in terminal.output, "SKILL-AC-029-cancel-keeps-disabled")
+                terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check("處理中".encode() not in terminal.output, "SKILL-AC-029-busy-input-no-generation")
+            print("SKILL-AC-029-source-read-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
+
 
 if __name__ == "__main__":
     try:

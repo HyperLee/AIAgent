@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+一般與 Review 在規則後加入完整目前技能附錄；Disabled 明示 active=null。技能版本納入 Context／量測／摘要及保存候選，摘要不直接帶技能正文，原 196608／262144 bytes 與唯一預算／用量保持。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 最近已開始發布的復原結果有獨立 RecoveryRevision；所有一般／Review／摘要／保存摘要及估算重建 mandatory 附錄，含安全 ID／相對 path／寫入事實與需重讀來源警示，含包裝最多32768 bytes。復原版本加入 ContextOperationStamp／MetricStamp／compaction／save 候選，過時者拒絕；不改 SDK 原生歷史、不送 raw bytes／anchor、不增加生成或262144-byte實際body上限。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 17 份適用範圍補充（2026-10-27～28）
+
+依[第 17 份](specs/17-reusable-workflows-and-skills.md)新增目前 Rules Scope 下的 `skills/<id>/SKILL.md` 與六種 `/skills` 本機命令；只有使用者可明確選用、同時一個，啟動與續接預設 Disabled。技能是外部流程，使用者／適用規則及硬政策優先，沒有新的工具、程序、網路、核准或完成資格。
+
+正常請求順序為既有固定指示、目前規則、技能狀態／Body、記憶、Plan、Review 及復原附錄；公開 LLM 契約與原生協定不變。摘要不直接納技能正文；Context／量測／保存與所有確認候選綁技能戳記，SAVE v1 不變。啟停／失效先保留實際已發生事實，再撤確認、清修改基準並等待新指示；技能切換不改 EvidenceEpoch，復原保持原所有權。來源與容量、安全、直接入口、取消及生命週期增量依第 17 份；第 07／10 份與真人／真實服務未結門檻不變。當次證據見[README](README.md#skills-validation)。
+
 ## 第 16 份適用範圍補充（2026-10-27）
 
 [16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)接續第5、8～15章：受控 create／replace 在原核准流程內預留容量與保存程序內獨立 bytes，使用者以四個本機 `/checkpoint` 命令查詢、逐筆新確認復原或忘記。僅恢復准入的普通工作檔，根Git metadata只作衝突檢查，不寫index；新建檔交人工，沒有模型復原工具、持久備份、redo、工作區刪除或整體rollback。

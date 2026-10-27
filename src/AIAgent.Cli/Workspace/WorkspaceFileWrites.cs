@@ -301,7 +301,11 @@ internal sealed partial class WorkspaceFiles
         }
         if (path is not null && result.ErrorCode is WorkspaceErrorCode.Conflict or WorkspaceErrorCode.CheckpointGitConflict or WorkspaceErrorCode.SymbolicLink or WorkspaceErrorCode.SensitivePath)
             _checkpoints.MarkPathManual(path, "checkpoint_conflict");
-        if (publishedFile is not null && path is not null) await CheckRulesAfterPublicationAsync(path, publishedFile.State, operation);
+        if (publishedFile is not null && path is not null)
+        {
+            await CheckRulesAfterPublicationAsync(path, publishedFile.State, operation);
+            await CheckSkillsAfterPublicationAsync(path, publishedFile.State, operation);
+        }
         return result;
     }
 

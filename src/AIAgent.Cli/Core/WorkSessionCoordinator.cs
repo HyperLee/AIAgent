@@ -224,7 +224,15 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
         finally { Volatile.Write(ref _running, 0); }
     }
     private async Task RequireRulesAsync(CancellationToken token)
-    { var error = await rules.ValidateAsync(token); if (error != "none") throw new WorkDocumentException(error); }
+    {
+        var error = await rules.ValidateAsync(token); if (error != "none") throw new WorkDocumentException(error);
+        try
+        {
+            var skillsError = plans.Skills is { } skills ? await skills.ValidateAsync(token) : "skills_unavailable";
+            if (skillsError != "none") throw new WorkDocumentException(skillsError);
+        }
+        catch (SkillsSensitiveException) { throw new ContextInspectionException(); }
+    }
     private async Task RequireCurrentAsync(ContextOperationStamp stamp, CancellationToken token)
     { await RequireRulesAsync(token); token.ThrowIfCancellationRequested(); if (!contexts.IsCurrent(stamp)) throw new WorkDocumentException("work_revision_conflict"); }
     private void RequireSafe(string text) { if (!_policy.IsSafe(text)) throw new WorkDocumentException("work_sensitive_content"); }
@@ -267,6 +275,9 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
         AgentStopReason.ContextCapacity => "context_measure_unavailable",
         AgentStopReason.TurnCancelled => "work_cancelled",
         AgentStopReason.SensitiveData or AgentStopReason.InvalidProtocol => "work_sensitive_content",
+        AgentStopReason.SkillsChanged => "skills_changed",
+        AgentStopReason.SkillsUnavailable => "skills_unavailable",
+        AgentStopReason.SkillsLimit => "skills_limit",
         AgentStopReason.RulesChanged => "rules_changed",
         AgentStopReason.RulesUnavailable => "rules_unavailable",
         AgentStopReason.RulesScopeMismatch => "rules_scope_mismatch",

@@ -1,5 +1,9 @@
 # 12：專案規則載入開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+依 FUT10-HO-001～008 接入獨立技能來源；目前 Scope 是技能根的唯一所有者。相同 Valid 規則 no_change 保留技能，同 Scope 新規則使 Stale，Scope 改變直接停用且不掃新根。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 復原依目前 Valid 規則與 Scope 新核准，歷史捕捉規則版本只供顯示。AGENTS.md 受控修改與復原先完成已發生檔案事實及復原代次，再 Stale／撤確認；舊 bytes 不復活舊 RulesRevision、read snapshot 或 yes。規則 reload／Scope 切換保留 checkpoint 歷史但使舊候選失效。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

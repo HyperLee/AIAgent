@@ -18,7 +18,7 @@ internal sealed partial class ChatApplication
 
     private async Task ExecuteModeAsync()
     {
-        if (!await CheckRulesReadyAsync()) return;
+        if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) return;
         if (_plans!.Snapshot is null && (_work?.ResumeExecutionConfirmationRequired == true ||
             _executionPolicy!.Recovery.Last is not null && WorkCoordinator().ResumeExecutionConfirmationRequired))
         { await RunWorkOperationAsync((work, token) => work.ConfirmExecuteAsync(ConfirmWorkAsync, token)); return; }
@@ -38,7 +38,7 @@ internal sealed partial class ChatApplication
         try
         {
             var decision = await interaction.ConfirmPlanAsync(preview, cancellation.Token);
-            if (decision == PlanApprovalDecision.Approved && !await CheckRulesReadyAsync(cancellation.Token)) return;
+            if (decision == PlanApprovalDecision.Approved && (!await CheckRulesReadyAsync(cancellation.Token) || !await CheckSkillsReadyAsync(cancellation.Token))) return;
             string text;
             lock (_gate)
             {

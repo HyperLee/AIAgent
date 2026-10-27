@@ -268,12 +268,12 @@ internal sealed class CheckpointChatWorkspace : ICheckpointWorkspace
     public void Clear() => Clears++;
 }
 
-internal sealed class CheckpointChatFactory(CheckpointChatWorkspace checkpoints) : IWorkspaceFilesFactory
+internal sealed class CheckpointChatFactory(CheckpointChatWorkspace checkpoints, Action<AgentExecutionPolicy>? observe = null) : IWorkspaceFilesFactory
 {
     private readonly TestWorkspaceFilesFactory _inner = new();
     public FileChangeApprovalBridge ApprovalBridge => _inner.ApprovalBridge;
     public IWorkspaceFiles Create(BootstrapSession session, AgentExecutionPolicy? executionPolicy = null)
-    { checkpoints.Recovery = executionPolicy?.Recovery; return new Files(_inner.Create(session, executionPolicy), checkpoints); }
+    { checkpoints.Recovery = executionPolicy?.Recovery; var files = _inner.Create(session, executionPolicy); if (executionPolicy is not null) observe?.Invoke(executionPolicy); return new Files(files, checkpoints); }
     private sealed class Files(IWorkspaceFiles inner, ICheckpointWorkspace checkpoints) : IWorkspaceFiles
     {
         public ICheckpointWorkspace Checkpoints => checkpoints;

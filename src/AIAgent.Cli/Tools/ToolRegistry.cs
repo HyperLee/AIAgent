@@ -55,6 +55,8 @@ internal sealed class ToolRegistry
         if (IsModeRestricted(call.Name)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "mode_restricted", _policy));
         var rulesError = ExecutionPolicy.Rules is { } rules ? await rules.ValidateAsync(cancellationToken) : "rules_unavailable";
         if (rulesError != "none") return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, rulesError, _policy));
+        var skillsError = ExecutionPolicy.Skills is { } skills ? await skills.ValidateAsync(cancellationToken) : "skills_unavailable";
+        if (skillsError != "none") return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, skillsError, _policy));
         var result = await tool.ExecuteAsync(call.Arguments, cancellationToken);
         if (result is null) throw new InvalidOperationException("工具結果不存在");
         if (result.Response is not { } response || SensitiveJson.Contains(response, _policy, ContentBoundary.ToolResult) ||

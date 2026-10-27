@@ -99,6 +99,9 @@ internal static class ChatDisplay
     {
         AgentStopReason.ReviewInvalid => "review_invalid：審查報告格式或來源位置無法驗證；本次未發布新報告。",
         AgentStopReason.GitStopped => "Git 來源或審查閘門已停止本回合；請檢視受控原因，等待新指示。",
+        AgentStopReason.SkillsChanged => "技能來源已變動；請 /skills reload 或 off，重新確認計畫後給予新指示。",
+        AgentStopReason.SkillsUnavailable => "技能來源服務不可用；本回合停止。",
+        AgentStopReason.SkillsLimit => "技能容量超出上限；本回合停止。",
         AgentStopReason.RulesChanged => "專案規則已變動；停止本回合，請 /rules reload、重新確認計畫後給予新指示。",
         AgentStopReason.RulesUnavailable => "專案規則不可用；請 /rules 檢視或明確重載。",
         AgentStopReason.RulesScopeMismatch => "目標超出目前規則 Scope 或遇到新巢狀規則；請明確選擇 Scope。",

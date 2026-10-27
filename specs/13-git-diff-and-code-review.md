@@ -1,5 +1,9 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+承接 GIT-HO-008：明確 /review 可帶目前技能，但固定三個 GitRead 工具、報告 Schema 與本機來源驗證優先；Git 直接入口與審查結果也重驗技能，流程文字不能啟動審查或升權。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 新增借用既有 workspace lease 的目標 metadata guard：兩次有限觀察、literal target 的 HEAD entry／index stage/tag/mode/oid／ITA，加根／gitdir／executable／HEAD／format。沒有 blob、全域 index digest、額外 mutation recipe、持久寫入或新原生例外；唯一 /dev/null 例外保持。Git guard 只拒絕衝突，原始 before bytes 仍由受控寫入持有。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

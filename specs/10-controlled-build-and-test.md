@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 17 份產品實作接續（2026-10-27～28）
+
+受控程序直接入口、確認後及啟動前重驗技能，借用既有排他租約；實際程序結果先入帳再撤確認。recipe、cwd、隔離、預算及 test 不支援保持。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
+
 ## 第 16 份產品實作接續（2026-10-27）
 
 checkpoint 不捕捉 build 產物或程序副作用；本機復原後全部舊 Validation 事實失去新完成資格，須新 epoch 的實際驗證。原受控 recipe、原生隔離、生成／時間預算與產品 MTP test 不支持邊界維持，復原不是 rollback build／test。 詳見 [第16份](16-change-checkpoints-and-recovery.md) 與 [當次分層證據](../README.md#checkpoint-validation)。下列原階段敘述保留歷史範圍。

@@ -26,6 +26,7 @@ internal sealed partial class WorkspaceFiles
             var error = await rules.ValidateAsync(linked.Token, lease);
             if (error != "none") return new(error);
             var stamp = rules.Capture(); operation.RulesStamp = stamp;
+            await CheckSkillsAsync(operation, linked.Token);
             var first = await CollectGitAsync(adapter, operation, stamp, linked.Token, expected is not null);
             if (expected is not null)
                 return new(expected.Scope == first.Scope && expected.Fingerprint == first.Manifest.Fingerprint ? "none" : "git_snapshot_stale");
@@ -35,11 +36,13 @@ internal sealed partial class WorkspaceFiles
             linked.Token.ThrowIfCancellationRequested();
             return new("none", first);
         }
+        catch (SkillsSensitiveException) { return new("sensitive_content"); }
         catch (GitFailure failure) { return new(failure.Code); }
         catch (WorkspaceFailure failure) { return new(WorkspaceToolProjection.Code(failure.Code)); }
         catch (OperationCanceledException) { throw; }
+        catch (Exception) when (_executionPolicy.Skills?.FatalFailure == true) { return new("io_failure"); }
         catch (Exception) { return new("git_failed"); }
-        finally { _executionPolicy.Rules?.Settle(); }
+        finally { _executionPolicy.Rules?.Settle(); _executionPolicy.Skills?.Settle(); }
     }
 
     private async Task<GitSnapshot> CollectGitAsync(IGitReadAdapter adapter, WorkspaceOperation operation, ProjectRulesStamp stamp, CancellationToken token, bool validationOnly = false)
@@ -289,6 +292,7 @@ internal sealed partial class WorkspaceFiles
         var rulesError = await _executionPolicy.Rules!.ValidateAsync(token, operation.Lease);
         if (rulesError != "none") throw new GitFailure(rulesError);
         if (!_executionPolicy.Rules.IsCurrent(stamp)) throw new GitFailure("rules_changed");
+        await CheckSkillsAsync(operation, token);
         if (RevalidateProjectRulesPaths(operation.RuleBoundaries, operation.Lease!) != WorkspaceErrorCode.None) throw new GitFailure("git_snapshot_stale");
         return new("", stamp.Scope, head, format, changes, scan.Exclusions, new(stamp.Scope, scan.Observations.Select(x => new GitObservation(x.Key, x.Value))), stamp);
     }

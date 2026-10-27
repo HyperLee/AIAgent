@@ -24,7 +24,7 @@ internal sealed partial class ChatApplication
             case "/review show": await ShowReviewAsync(); return true;
             default: ShowContextBlock("審查指令無效；請檢視 /help。", true); return true;
         }
-        if (!await CheckRulesReadyAsync()) return true;
+        if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) return true;
         if (await RunTurnAsync(LlmMessage.FromUserText(command), reviewSelection: selection) && !Stopping) await ReplaceKeyAsync();
         return true;
     }
@@ -46,10 +46,13 @@ internal sealed partial class ChatApplication
 
     private void HandleReviewLocalFailure(string error)
     {
+        if (_skills?.RequiresContextReset == true) error = "sensitive_content";
+        var skillsFatal = _skills?.FatalFailure == true;
         _reviews?.Failed(error);
         if (error is "process_unconfirmed" or "process_cleanup_failed")
         { _processFatalStop = true; _executionPolicy!.StopProcesses(); RequestStop(StopReason.Failure); }
         if (error == "sensitive_content") ClearConversationState();
+        if (skillsFatal) RequestStop(StopReason.Failure);
         if (error == "workspace_unavailable") _reviews?.Clear();
         ShowContextBlock("Git 審查：" + error + "；本次未發布新報告。", true);
     }

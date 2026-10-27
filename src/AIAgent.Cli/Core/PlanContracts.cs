@@ -106,13 +106,14 @@ internal sealed class TaskOperationFact(string operationId, TaskExecutionContext
     public override string ToString() => "[TaskOperationFact]";
 }
 
-internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock, long rulesRevision = 0)
+internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock, long rulesRevision = 0, SkillsOperationStamp? skillsStamp = null)
 {
     internal string PlanId { get; } = planId;
     internal long Revision { get; } = revision;
     internal long Generation { get; } = generation;
     internal long RulesRevision { get; } = rulesRevision;
     internal string DisplayBlock { get; } = displayBlock;
+    internal SkillsOperationStamp? SkillsStamp { get; } = skillsStamp;
     public override string ToString() => "[PlanApprovalPreview]";
 }
 

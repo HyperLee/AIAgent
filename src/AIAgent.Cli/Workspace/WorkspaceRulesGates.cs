@@ -15,6 +15,7 @@ internal sealed partial class WorkspaceFiles
         if (!rules.IsCurrent(operation.RulesStamp)) throw Rejected(WorkspaceErrorCode.RulesChanged);
         var boundary = await CheckProjectRulesPathAsync(stamp.Scope, path, directory, operation.RuleBoundaries, operation.Lease, token);
         if (boundary != WorkspaceErrorCode.None) throw Rejected(boundary);
+        await CheckSkillsAsync(operation, token);
     }
     private async Task CheckRulesResultAsync(WorkspaceOperation operation, CancellationToken token)
     {
@@ -22,8 +23,10 @@ internal sealed partial class WorkspaceFiles
         var error = await _executionPolicy.Rules!.ValidateAsync(token, operation.Lease);
         if (error != "none") throw new WorkspaceFailure(error == "workspace_unavailable" ? WorkspaceStatus.Failed : WorkspaceStatus.Rejected, RulesError(error));
         if (operation.RulesStamp is { } stamp && !_executionPolicy.Rules.IsCurrent(stamp)) throw Rejected(WorkspaceErrorCode.RulesChanged);
+        await CheckSkillsAsync(operation, token);
         var boundary = RevalidateProjectRulesPaths(operation.RuleBoundaries, operation.Lease);
         if (boundary != WorkspaceErrorCode.None) throw Rejected(boundary);
+        await CheckSkillsAsync(operation, token);
     }
     private async Task CheckRulesAfterPublicationAsync(string path, WorkspaceNodeState actual, WorkspaceOperation operation)
     {

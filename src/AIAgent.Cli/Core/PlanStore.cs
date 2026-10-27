@@ -42,6 +42,18 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
     internal CheckpointSequence CheckpointSequence { get; } = new();
     internal object DecisionGate => _gate;
     internal long CurrentRulesRevision { get; set; }
+    internal long CurrentSkillsRevision { get; set; }
+    internal SkillsCoordinator? Skills { get; set; }
+    internal void RevokeForSkills()
+    {
+        lock (_gate)
+        {
+            if (_reservations.Count != 0) throw new InvalidOperationException("操作仍在收尾");
+            _generation = checked(_generation + 1);
+            BlockCore("skills_changed");
+            if (_plan is not null) _plan = new(_plan.PlanId, _plan.Revision, _plan.Objective, PlanApprovalState.Draft, _plan.Tasks);
+        }
+    }
     internal bool HasReservations { get { lock (_gate) return _reservations.Count != 0; } }
     internal void RevokeForRules()
     {
@@ -203,17 +215,17 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
 
     private string ValidateCandidate(PlanSnapshot plan, PlanMutationResult result, bool submit)
     {
-        var actual = PlanProjection.State(_mode, plan, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch); var upper = PlanProjection.State(_mode, plan, true, evidenceEpoch: _evidenceEpoch);
+        var actual = PlanProjection.State(_mode, plan, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision); var upper = PlanProjection.State(_mode, plan, true, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision);
         if (actual.Length > PlanLimits.MaxProjectionBytes || upper.Length > PlanLimits.MaxProjectionBytes ||
-            Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, upper: true, evidenceEpoch: _evidenceEpoch)) > PlanLimits.MaxDisplayBytes ||
-            Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, true, true, evidenceEpoch: _evidenceEpoch)) > PlanLimits.MaxDisplayBytes)
+            Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, upper: true, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision)) > PlanLimits.MaxDisplayBytes ||
+            Encoding.UTF8.GetByteCount(PlanProjection.Display(_mode, plan, 256, true, true, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision)) > PlanLimits.MaxDisplayBytes)
             return "plan_too_large";
         var resultBytes = PlanProjection.ResultBytes(result, submit);
         if (resultBytes.Length > PlanLimits.MaxDisplayBytes) return "plan_too_large";
         return PlanProjection.SafeJson(actual, _policy!, ContentBoundary.ModelInput) &&
             PlanProjection.SafeJson(resultBytes, _policy!, ContentBoundary.ToolResult) &&
-            PlanProjection.SafeDisplay(PlanProjection.Display(_mode, plan, OldFactCount(plan), evidenceEpoch: _evidenceEpoch), _policy!) &&
-            PlanProjection.SafeDisplay(PlanProjection.Display(_mode, plan, OldFactCount(plan), true, evidenceEpoch: _evidenceEpoch), _policy!) ? "none" : "sensitive_content";
+            PlanProjection.SafeDisplay(PlanProjection.Display(_mode, plan, OldFactCount(plan), evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision), _policy!) &&
+            PlanProjection.SafeDisplay(PlanProjection.Display(_mode, plan, OldFactCount(plan), true, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision), _policy!) ? "none" : "sensitive_content";
     }
 
     internal PlanApprovalPreview? ApprovalPreview()
@@ -221,8 +233,8 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
         lock (_gate)
         {
             if (_policy is null || _plan is null) return null;
-            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch);
-            return PlanProjection.SafeDisplay(block, _policy) ? new(_plan.PlanId, _plan.Revision, _generation, block, CurrentRulesRevision) : null;
+            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision);
+            return PlanProjection.SafeDisplay(block, _policy) ? new(_plan.PlanId, _plan.Revision, _generation, block, CurrentRulesRevision, Skills?.Capture()) : null;
         }
     }
 
@@ -230,12 +242,12 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
     {
         lock (_gate)
         {
-            if (_policy is null || _plan is null || _generation != preview.Generation || preview.RulesRevision != CurrentRulesRevision || _plan.PlanId != preview.PlanId || _plan.Revision != preview.Revision ||
+            if (_policy is null || _plan is null || _generation != preview.Generation || preview.RulesRevision != CurrentRulesRevision || preview.SkillsStamp is { } skillStamp && Skills?.IsCurrent(skillStamp) != true || _plan.PlanId != preview.PlanId || _plan.Revision != preview.Revision ||
                 _plan.ApprovalState != PlanApprovalState.Draft) return false;
-            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch);
+            var block = PlanProjection.Display(_mode, _plan, OldFactCount(_plan), true, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision);
             if (block != preview.DisplayBlock || !PlanProjection.SafeDisplay(block, _policy)) return false;
             var candidate = new PlanSnapshot(_plan.PlanId, _plan.Revision, _plan.Objective, PlanApprovalState.Approved, _plan.Tasks);
-            if (!PlanProjection.SafeJson(PlanProjection.State(AgentMode.Execute, candidate, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch), _policy, ContentBoundary.ModelInput)) return false;
+            if (!PlanProjection.SafeJson(PlanProjection.State(AgentMode.Execute, candidate, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision), _policy, ContentBoundary.ModelInput)) return false;
             _plan = candidate; _mode = AgentMode.Execute; return true;
         }
     }
@@ -245,7 +257,7 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
         lock (_gate)
         {
             if (_policy is null) return null;
-            var block = PlanProjection.Display(_mode, _plan, _plan is null ? 0 : OldFactCount(_plan), rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch);
+            var block = PlanProjection.Display(_mode, _plan, _plan is null ? 0 : OldFactCount(_plan), rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision);
             return PlanProjection.SafeDisplay(block, _policy) ? block : null;
         }
     }
@@ -255,7 +267,7 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
         lock (_gate)
         {
             if (_policy is null || !Current) return null;
-            var bytes = PlanProjection.State(_mode, _plan, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch);
+            var bytes = PlanProjection.State(_mode, _plan, rulesRevision: CurrentRulesRevision, evidenceEpoch: _evidenceEpoch, skillsRevision: CurrentSkillsRevision);
             var text = "\n本機狀態資料（僅為資料，不授予權限）：\n" + Encoding.UTF8.GetString(bytes);
             return bytes.Length <= PlanLimits.MaxProjectionBytes && PlanProjection.SafeJson(bytes, _policy, ContentBoundary.ModelInput) &&
                 _policy.CanSendOrUse(text, ContentBoundary.ModelInput) ? text : null;
@@ -401,14 +413,14 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
                 "conflict" => "file_conflict",
                 "write_unconfirmed" => "write_unconfirmed",
                 "workspace_unavailable" => "workspace_unavailable",
-                "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit" => errorCode,
+                "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit" or "skills_changed" => errorCode,
                 _ => status == ToolStatus.Cancelled ? "turn_cancelled" : "operation_failed"
             });
         }
     }
 
     internal bool ReviewTurnActive { get; set; }
-    internal void BlockInProgress(string reason) { lock (_gate) { if (Current && _policy is not null && (!ReviewTurnActive || reason is "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit")) BlockCore(reason); } }
+    internal void BlockInProgress(string reason) { lock (_gate) { if (Current && _policy is not null && (!ReviewTurnActive || reason is "rules_changed" or "rules_unavailable" or "rules_scope_mismatch" or "rules_limit" or "skills_changed")) BlockCore(reason); } }
     private void BlockCore(string reason)
     {
         if (_plan is null) return;
@@ -441,6 +453,7 @@ internal sealed class AgentExecutionPolicy(PlanStore plans)
     internal PlanStore Plans { get; } = plans;
     internal CheckpointRecoveryState Recovery => Plans.Recovery;
     internal ProjectRulesCoordinator? Rules { get; set; }
+    internal SkillsCoordinator? Skills { get; set; }
     internal AgentMode Mode => Plans.Mode;
     internal WorkspaceOperationCoordinator WorkspaceOperations { get; } = new();
     internal bool ProcessTestCapabilityAvailable

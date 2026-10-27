@@ -77,7 +77,7 @@ internal sealed class ToolExecutionResult
 
 internal static class ToolErrorCodes
 {
-    internal static bool IsValid(string code) => code is "not_git_repository" or "git_unavailable" or "unsupported_git_layout" or "git_snapshot_required" or "git_snapshot_stale" or "git_source_unavailable" or "git_limit" or "git_failed" or "git_timed_out" or "ignore_unavailable" or "review_invalid" or "review_incomplete" or "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" or "none" or "unknown_tool" or "invalid_arguments" or
+    internal static bool IsValid(string code) => code is "not_git_repository" or "git_unavailable" or "unsupported_git_layout" or "git_snapshot_required" or "git_snapshot_stale" or "git_source_unavailable" or "git_limit" or "git_failed" or "git_timed_out" or "ignore_unavailable" or "review_invalid" or "review_incomplete" or "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" or "skills_unavailable" or "skills_changed" or "skills_limit" or "none" or "unknown_tool" or "invalid_arguments" or
         "invalid_pattern" or "invalid_query" or "invalid_line_range" or
         "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
         "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or

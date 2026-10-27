@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using System.Text;
 
 using Microsoft.Win32.SafeHandles;
 
@@ -18,6 +20,35 @@ internal sealed class MacWorkspaceFileSystem : IWorkspaceWriteFileSystem
         ThrowError(error);
         return default;
     }
+
+    // ATTR_CMN_NAME + FSOPT_NOFOLLOW checks one existing name without scanning sibling resources.
+    public bool HasExactName(string fullPath)
+    {
+        EnsureSupported();
+        var attributes = new NativeAttributes { BitmapCount = 5, Common = 1 };
+        var buffer = new byte[1036];
+        if (GetAttributes(fullPath, ref attributes, buffer, (nuint)buffer.Length, 1) != 0) ThrowError(Marshal.GetLastPInvokeError());
+        var size = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+        var offset = checked(4 + BinaryPrimitives.ReadInt32LittleEndian(buffer.AsSpan(4)));
+        var length = BinaryPrimitives.ReadInt32LittleEndian(buffer.AsSpan(8));
+        if (size is < 12 or > 1036 || offset < 12 || length < 1 || offset > size - length || buffer[offset + length - 1] != 0) throw new IOException("來源名稱觀察無效");
+        var name = new UTF8Encoding(false, true).GetString(buffer, offset, length - 1);
+        return string.Equals(name, Path.GetFileName(fullPath), StringComparison.Ordinal);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeAttributes
+    {
+        internal ushort BitmapCount;
+        internal ushort Reserved;
+        internal uint Common;
+        internal uint Volume;
+        internal uint Directory;
+        internal uint File;
+        internal uint Fork;
+    }
+    [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "getattrlist", SetLastError = true)]
+    private static extern int GetAttributes([MarshalAs(UnmanagedType.LPUTF8Str)] string path, ref NativeAttributes attributes, [Out] byte[] buffer, nuint size, ulong options);
 
     public IEnumerable<string> EnumerateNames(string fullDirectoryPath)
     {

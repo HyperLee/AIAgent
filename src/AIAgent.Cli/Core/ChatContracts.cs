@@ -28,7 +28,7 @@ internal interface IChatRuntimeFactory
     ILlmContextInspector? CreateContextInspector(ILlmClient client) => null;
 }
 
-internal enum ChatState { AwaitingInput, LoadingRules, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
+internal enum ChatState { AwaitingInput, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
 internal enum ChatInputStatus { Submitted, Invalid, EndOfInput, Cancelled, Unavailable }
 internal enum KeyReplacementChoice { Reenter, Exit, EndOfInput, Cancelled, Unavailable }
 internal enum ChatControlSignal { CancelTurn, EndOfInput, Unavailable }

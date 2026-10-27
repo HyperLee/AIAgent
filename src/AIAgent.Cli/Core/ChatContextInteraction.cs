@@ -24,7 +24,7 @@ internal sealed partial class ChatApplication
             case ContextCommandKind.ProgramLimit: error = _generationBudget.SetProgramLimit(command.Number) ? "none" : "invalid_budget"; break;
             case ContextCommandKind.Reset: _generationBudget.RestoreDefaults(); error = "none"; break;
             case ContextCommandKind.Compact:
-                if (!await CheckRulesReadyAsync()) break;
+                if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) break;
                 if (await RunTurnAsync(null, true) && !Stopping) await ReplaceKeyAsync(); break;
             default: error = name.StartsWith("/budget", StringComparison.Ordinal) ? "invalid_budget" : "invalid_context_command"; break;
         }
