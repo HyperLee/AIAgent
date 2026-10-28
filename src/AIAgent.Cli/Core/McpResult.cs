@@ -4,7 +4,7 @@ namespace AIAgent.Cli.Core;
 
 internal static class McpResult
 {
-    internal static JsonElement Project(JsonElement result, McpCallPermit permit, IMcpContentGuard guard)
+    internal static JsonElement Project(JsonElement result, McpCallPermit permit, IMcpContentGuard guard, TimeProvider clock)
     {
         if (result.TryGetProperty("isError", out var error))
         {
@@ -29,14 +29,32 @@ internal static class McpResult
             structured = s;
         }
         if (!texts.Any(t => t.Length > 0) && !(structured?.EnumerateObject().Any() ?? false)) throw new McpFailure("mcp_result_unsupported");
+        void WritePayload(Utf8JsonWriter writer)
+        {
+            writer.WriteStartArray("content");
+            foreach (var text in texts) { writer.WriteStartObject(); writer.WriteString("type", "text"); writer.WriteString("text", text); writer.WriteEndObject(); }
+            writer.WriteEndArray();
+            writer.WritePropertyName("structured_content"); if (structured is { } value) value.WriteTo(writer); else writer.WriteNullValue();
+        }
+        WebDocumentSource? source = null;
+        if (permit.Tool.RemoteName == McpProfile.FetchTool)
+        {
+            var payload = McpJson.Parse(McpJson.Write(w => { w.WriteStartObject(); WritePayload(w); w.WriteEndObject(); }), guard);
+            var url = permit.Arguments.GetProperty("url").GetString()!;
+            var code = WebDocumentUrlPolicy.Validate(url, guard, out var view);
+            if (code != "none") throw new McpFailure(code);
+            var fingerprint = McpJson.Fingerprint(payload);
+            source = new(url, clock.GetUtcNow(), fingerprint, view);
+        }
         var data = McpJson.Write(w =>
         {
             w.WriteStartObject(); w.WriteString("source", "external_mcp"); w.WriteString("server_id", "learn");
             w.WriteString("remote_tool", permit.Tool.RemoteName); w.WriteNumber("catalog_revision", permit.CatalogRevision);
-            w.WriteStartArray("content"); foreach (var text in texts) { w.WriteStartObject(); w.WriteString("type", "text"); w.WriteString("text", text); w.WriteEndObject(); }
-            w.WriteEndArray();
-            w.WritePropertyName("structured_content"); if (structured is { } value) value.WriteTo(w); else w.WriteNullValue(); w.WriteEndObject();
+            WritePayload(w);
+            if (source is not null) { w.WritePropertyName("document_source"); source.WriteTo(w); }
+            w.WriteEndObject();
         });
+        _ = McpJson.Parse(data, guard);
         McpJson.Limit(data.Length, 32768);
         var envelope = McpJson.Write(w =>
         {

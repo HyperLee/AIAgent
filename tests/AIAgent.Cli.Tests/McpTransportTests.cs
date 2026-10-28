@@ -30,13 +30,13 @@ public sealed class McpTransportTests
     }
 
     [TestMethod]
-    public async Task MCPAC002_RealSdkUsesOnlyModernDiscoveryAndTwoBoundedTools()
+    public async Task MCPAC002_RealSdkUsesOnlyModernDiscoveryAndThreeBoundedTools()
     {
         using var session = GeminiFixtures.Session(); var handler = new McpHttpFixture();
         await using var client = new McpReadClient(new McpContentGuard(session.Policy, ["SYNTHETIC_SECRET_INSTRUCTION"]), handler);
         await client.DiscoverAsync(default);
         var catalog = await client.ListToolsAsync(default);
-        Assert.AreEqual(2, catalog.Tools.Count); Assert.AreEqual(1, catalog.Excluded);
+        Assert.AreEqual(3, catalog.Tools.Count); Assert.AreEqual(1, catalog.Excluded);
         CollectionAssert.AreEqual(new[] { "server/discover", "tools/list" }, handler.Methods.ToArray());
         Assert.IsTrue(handler.ValidMetadata); Assert.AreEqual("mcp__learn__microsoft_docs_search", catalog.Tools[0].LocalName);
     }
@@ -104,6 +104,7 @@ public sealed class McpTransportTests
 internal sealed class McpHttpFixture : HttpMessageHandler
 {
     internal List<string> Methods { get; } = [];
+    internal List<JsonElement> Calls { get; } = [];
     internal bool ValidMetadata { get; private set; } = true;
     internal string ToolResult { get; set; } = "{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"Public result\"}],\"structuredContent\":{\"url\":\"https://example.test/reference\"}}";
     internal Func<string, int, string?>? Override { get; set; }
@@ -118,6 +119,7 @@ internal sealed class McpHttpFixture : HttpMessageHandler
         Assert.IsNull(request.Headers.Authorization); Assert.IsFalse(request.Headers.Contains("Cookie")); Assert.IsFalse(request.Headers.Contains("Mcp-Session-Id"));
         using var body = JsonDocument.Parse(await request.Content!.ReadAsByteArrayAsync(cancellationToken));
         var root = body.RootElement; var method = root.GetProperty("method").GetString()!; Methods.Add(method);
+        if (method == "tools/call") Calls.Add(root.GetProperty("params").Clone());
         var meta = root.GetProperty("params").GetProperty("_meta");
         ValidMetadata &= meta.GetProperty("io.modelcontextprotocol/protocolVersion").GetString() == "2026-07-28" &&
             meta.GetProperty("io.modelcontextprotocol/clientCapabilities").EnumerateObject().Count() == 0 &&
@@ -133,5 +135,5 @@ internal sealed class McpHttpFixture : HttpMessageHandler
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Sse ? "data: " + json + "\n\n" : json, Encoding.UTF8, Sse ? "text/event-stream" : "application/json") };
         MutateResponse?.Invoke(response); return response;
     }
-    internal const string Catalog = "{\"resultType\":\"complete\",\"tools\":[{\"name\":\"microsoft_docs_search\",\"description\":\"Search docs\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"minLength\":1}},\"required\":[\"query\"]}},{\"name\":\"microsoft_code_sample_search\",\"description\":\"Search code\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}},{\"name\":\"microsoft_docs_fetch\",\"inputSchema\":{\"type\":\"object\"}}],\"ttlMs\":0,\"cacheScope\":\"public\"}";
+    internal const string Catalog = "{\"resultType\":\"complete\",\"tools\":[{\"name\":\"microsoft_docs_search\",\"description\":\"Search docs\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"minLength\":1}},\"required\":[\"query\"]}},{\"name\":\"microsoft_code_sample_search\",\"description\":\"Search code\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}},{\"name\":\"microsoft_docs_fetch\",\"description\":\"Fetch docs\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}},{\"name\":\"not_admitted\",\"inputSchema\":{\"type\":\"object\"}}],\"ttlMs\":0,\"cacheScope\":\"public\"}";
 }

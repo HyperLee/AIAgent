@@ -62,7 +62,12 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
             _calls++;
             if (scenario.StartsWith("mcp", StringComparison.Ordinal))
             {
-                if (request.Messages[^1].Kind != LlmMessageKind.ToolResults) return PlanCalls((McpProfile.DocsName, new { query = "公開 C# 文件😀" }));
+                if (request.Messages[^1].Kind != LlmMessageKind.ToolResults)
+                {
+                    if (scenario.StartsWith("mcp-fetch", StringComparison.Ordinal)) return PlanCalls((McpProfile.FetchName,
+                        new { url = "https://learn.microsoft.com/zh-tw/aspnet/core/fundamentals?preserve-view=true&view=aspnetcore-10.0" + (scenario == "mcp-fetch-url-rejected" ? "#blocked" : "") }));
+                    return PlanCalls((McpProfile.DocsName, new { query = "公開 C# 文件😀" }));
+                }
                 return new(LlmStatus.Completed, LlmErrorCode.None, "MCP_OFFLINE_RESULT", [], LlmMessage.FromModel(new object()), null, true, false);
             }
             if (scenario.StartsWith("skills", StringComparison.Ordinal))

@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+fetch 完整結果與 document_source 留在既有原生工具配對，計入原容量；狀態附錄只追加第三工具名稱。compact／WorkSaveSummary 僅追加准許 fetch 名稱，仍只投影來源、名稱、目錄版本、status／error_code，不直接納正文、URL、時間、hash 或 view。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 正常請求於目前 Skills 之後、記憶之前加入有界 MCP 狀態附錄；完整定義／安全結果計入估算及實際 body。量測、摘要及保存候選綁 MCP 戳記；摘要工具觀察只保留白名單來源／名稱／版本／狀態，不直接納參數、原始結果或目錄。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

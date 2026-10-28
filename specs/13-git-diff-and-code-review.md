@@ -1,5 +1,9 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 GIT-HO-010：Review 維持三個 Git 工具、零 MCP 網路；文件 URL、hash、時間及自報內容不進 GitSnapshot、位置驗證或本機測試證據。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 Review 仍只提供三項本機 GitRead、零 MCP I/O；新 Review 可在 MCP Stale 下按原來源閘門執行，但不能採用舊共同候選。外部同名、oid、行號與自報測試／復原不建立 GitSnapshot、本機證據或 checkpoint。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

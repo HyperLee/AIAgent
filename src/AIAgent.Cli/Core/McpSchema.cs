@@ -9,6 +9,15 @@ internal static class McpSchema
         try { return AdmitCore(schema); }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or FormatException) { throw new McpFailure("mcp_schema_unsupported"); }
     }
+    internal static JsonElement AdmitFetch(JsonElement schema)
+    {
+        var admitted = Admit(schema);
+        var properties = admitted.GetProperty("properties");
+        if (properties.EnumerateObject().Count() != 1 || !properties.TryGetProperty("url", out var url) ||
+            url.GetProperty("type").ValueKind != JsonValueKind.String || url.GetProperty("type").GetString() != "string" ||
+            !admitted.TryGetProperty("required", out var required) || required.GetArrayLength() != 1 || required[0].GetString() != "url") Fail();
+        return admitted;
+    }
     private static JsonElement AdmitCore(JsonElement schema)
     {
         McpJson.Validate(schema); McpJson.Limit(McpJson.Write(schema).Length, 8192);

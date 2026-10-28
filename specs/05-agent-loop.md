@@ -1,5 +1,9 @@
 # 05：Agent 工具循環子規格
 
+## 第 19 份產品實作接續（2026-10-28）
+
+MCP Ready 追加三項 ExternalRead；fetch 的本機 URL 預檢位於該筆來源 I/O 前。web_url_rejected 停止剩餘工具與生成，保留先筆結果及原生配對；整批敏感／結構預檢仍先於任何派送。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 原十三工具追加兩項 ExternalRead，改以不可變 RegistrySnapshot 綁定同一請求、回應及整批派送。保留 PartIndex／Name／CallId 與原生簽章；MCP 流程失敗停止剩餘工具／生成並保留已完成結果，不自動重送。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

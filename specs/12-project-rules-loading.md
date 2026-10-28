@@ -1,5 +1,9 @@
 # 12：專案規則載入開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 RULE-HO-010：文件 URL 與遠端正文不是 project_rule，也不觸發規則連結擷取。Scope 切換斷線，同 Scope 規則換版使 MCP Stale；新 URL 政策不放寬原來源重驗或敏感硬政策。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 MCP 沿目前 Valid Rules／Scope 重驗，不把 server instructions 當規則或授權。成功切 Scope 斷線並關閉 client，同 Scope 規則換版使目錄 Stale；no_change 保留。候選失敗、原始規則 Stale 與先記事實後撤確認仍由本份擁有。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

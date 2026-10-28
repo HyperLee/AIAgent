@@ -111,7 +111,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                                     : ToolResponseWriter.Create(ToolStatus.NotExecuted, "turn_stopped", policy));
                             return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData);
                         }
-                        try { await RequireRulesAsync(); }
+                        try { if (result.ToolCalls[0].Name != McpProfile.FetchName) await RequireRulesAsync(); }
                         catch (ProjectRulesFlowException ex)
                         { AddRemaining(result.ToolCalls, 0, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
                         catch (McpFailure ex)
@@ -192,7 +192,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     AddRemaining(calls, index, LimitCode(limit));
                     return Finish(AgentTurnStatus.Stopped, limit);
                 }
-                try { await RequireRulesAsync(); }
+                var preflight = registry.PreflightFetch(call, _requestRegistry ?? registry.CaptureSnapshot());
+                try { if (preflight is null) await RequireRulesAsync(); }
                 catch (ProjectRulesFlowException ex)
                 { AddRemaining(calls, index, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
                 catch (McpFailure ex)
@@ -219,7 +220,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 ToolExecutionResult result;
                 var taskBound = registry.IsTaskOperation(call.Name) && registry.ExecutionPolicy.Plans.HasInProgress;
                 var localFailure = false;
-                try { result = await registry.DispatchAsync(call, _requestRegistry ?? registry.CaptureSnapshot(), token); }
+                try { result = preflight ?? await registry.DispatchAsync(call, _requestRegistry ?? registry.CaptureSnapshot(), token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 { result = ToolResponseWriter.Create(ToolStatus.Cancelled, "none", policy); }
                 catch (Exception)

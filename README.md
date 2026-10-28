@@ -1,6 +1,6 @@
 # AIAgent
 
-以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接；第 16 份新增程序內修改檢查點與逐次確認的單檔復原；第 17 份加入目前 Scope 下、手動選用的單一可重用技能流程；第 18 份接入固定 Microsoft Learn 的兩項公開搜尋、逐次外送確認及版本失效。
+以 .NET 10 Console 分階段開發的 Gemini Agent。目前已實作子規格 01～06、08～09 的產品功能，以及第 07 份的整合測試、提交／產物掃描器與選用 hook；第 10 份已加入逐次核准的受控 Debug 建置與 Validation v2，MTP 測試不支援，完整驗收仍待完成。具備啟動與隱藏 Key、Gemini 用戶端、最近 5 個完整回合、用量累計、受限檔案工具、遞迴檔名／文字搜尋、指定行範圍讀取、單檔建立／精確替換、逐次核准，以及 Plan／Execute、版本確認與任務證據；第 11 份提供程序內摘要、原文備註與可調生成額度，預設回合5次／程序100次；第 12 份新增根 AGENTS.md 自動載入、明確目錄 Scope、完整來源呈現與規則失效閘門；第 13 份加入唯讀 Git 三層快照與專用程式碼審查；第 14 份加入隱藏多行編輯、安全預覽、明確貼上、程序內輸入歷史及階段進度；第 15 份提供私人目錄的工作摘要保存、單檔管理與重啟續接；第 16 份新增程序內修改檢查點與逐次確認的單檔復原；第 17 份加入目前 Scope 下、手動選用的單一可重用技能流程；第 18 份接入固定 Microsoft Learn 搜尋、逐次外送確認及版本失效；第 19 份追加文件擷取、原樣 URL 准入與本機來源資料。
 
 歷次離線自動測試、macOS PTY 與 VS Code F5 偵錯已有通過紀錄；第 07 份本機 Release 掃描仍有 BUD-S003 阻擋，真人終端機、真實 Gemini 與人工分發檢查尚未驗證，第三階段整體驗收尚未完成。日期、基線與證據範圍見[最新驗證摘要](#latest-validation)。
 
@@ -27,26 +27,68 @@
 | 15：工作保存與續接 | 私人摘要／pins／歷史計畫、四個工作命令、啟動來源重驗及原子匯入。 | 已接入正式聊天。 | 當次結果見下方紀錄。 | 真人 SAVE-AC-030、真實 Gemini 031、其他 OS／架構及下列原生未驗範圍；既有發布門檻保持。 |
 | 16：修改檢查點與復原 | 程序內受控修改捕捉及逐筆單檔復原。 | 已接入正式聊天。 | 分層證據見第 16 份紀錄。 | 真人／真實 Gemini、其他平台及既有原生／發布門檻。 |
 | 17：可重用工作流程 | 目前 Scope 的本機技能、明確單一選用、來源版本及失效閘門。 | 已接入正式聊天、工具與程序。 | 分層證據見[第 17 份紀錄](#skills-validation)。 | SKILL-AC-030 真人、031 真實 Gemini；既有原生／發布門檻保留。 |
+| 19：文件擷取與來源 | Learn 三工具、嚴格 URL、逐次新確認及來源投影。 | 已接入正式 MCP／聊天流程。 | 分層證據見[第 19 份紀錄](#web-validation)。 | 真人、真 Learn／Gemini 與既有發布門檻另列。 |
 | 18：MCP 外部工具 | 固定 Microsoft Learn 的兩項公開搜尋、逐次新確認與版本失效。 | 已接入正式聊天與安全傳輸。 | 分層證據見[第 18 份紀錄](#mcp-validation)。 | 真人終端機、真實 Learn／Gemini 與既有發布門檻另列。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，登錄總數斷線為十三項、MCP Ready 為十五項；Plan／Execute 分別為九／十二項及十一／十四項，Review 保持三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，登錄總數斷線為十三項、MCP Ready 為十六項；Plan／Execute 分別為九／十二項及十二／十五項，Review 保持三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="latest-validation"></a>
+<a id="web-validation"></a>
+
+## 第 19 份網頁查詢與文件擷取
+
+沿用固定 Microsoft Learn MCP，保留兩項搜尋並最後追加 `mcp__learn__microsoft_docs_fetch`（遠端 `microsoft_docs_fetch`）。connect／reload 必須雙重完整目錄一致且三項各一份；缺少 fetch、Schema 不支援或固定協定不相容即受控拒絕，不退回兩搜尋或切換直接 HTTP。套件、MCP 協定、五個 `/mcp` 命令及設定保持。
+
+fetch 接受使用者直接提供或模型提出的 URL，不必先搜尋。URL 須原樣符合小寫 `https://learn.microsoft.com/{locale}/{area}/{article...}`、ASCII 文章路徑與 1024 UTF-16 上限；拒絕 fragment、百分比、顯式 port、userinfo、非 ASCII、空段、結尾斜線及 dot-segment。area 排除 api／answers／users／search／profile／account；內層 dotnet/api 可用。query 僅允許 `view` 及搭配 view 的 `preserve-view=true`，保留原序、不正規化。完整政策以[規格第 4 節](specs/19-web-search-and-document-fetch.md#url-admission)為準。
+
+每次完整預覽固定 MCP 端點、工具、指紋、目錄版本及全部原參數，再取得新隱藏 y／yes；確認後重新驗來源、目錄及 URL，Permit 僅可消費一次。`web_url_rejected` 在該筆來源 I/O 前停止回合，零 metadata RPC／tools/call／確認／扣款，保持 Ready，保留同批前筆已完成結果。結構錯誤仍為 `invalid_arguments`；敏感或共同致命故障優先。
+
+只有 fetch 成功 data 追加五欄 `document_source`：`observation=provider_response`、原 Permit URL、本機 UTC 接收／解析觀察時間、完整安全 payload 的 SHA-256，以及可空 requested_view。時間不是更新日，hash 不是文件版次／簽章，view 不是已服務版次；success 只表示接受安全服務回應，不保證取得全文或原站 HTTP 成功。只連固定 MCP 端點，本機無法觀察或強制服務內部 DNS／redirect／最終來源。
+
+回答保持一般文字及 Markdown 連結，區分搜尋片段、Learn 服務擷取回應與推論；未擷取連結只作候選。來源不足、衝突及版本不明應明示限制，語意充分性仍需真人／真 Gemini 驗收。搜尋＋fetch 共用每回合兩次啟動機會；兩次成功後仍可用剩餘生成額度回答，第三次外部要求才以 `mcp_limit` 停止。原 32768-byte data 上限包含 metadata，超限整份拒絕。
+
+正文與來源留在原生完整工具配對；compact／工作保存的工具摘要僅追加 fetch 名稱，仍只保留來源、名稱、目錄版本與 status／error_code，不直接納 URL、正文、時間、hash、view 或來源物件。自然語言可能轉述來源，不宣稱語意剔除。SAVE v1、續接 Disconnected、Review 三 Git 工具零網路及本機完成／checkpoint 邊界保持。
+
+### 第 19 份驗證紀錄（2026-10-28）
+
+基線為乾淨 `main@45d5fef`，在現有工作區依核准計畫實作；變更未提交、推送或發布。macOS arm64／.NET SDK 10.0.100。基線 restore／build 成功，MCP 選取 90／90 通過；下表只記本輪實際執行證據。
+
+| 驗證 | 結果 |
+|---|---|
+| 新增功能的 RED→GREEN | 三工具／Schema、URL／來源 I/O 順序、metadata／hash／容量、摘要白名單／指引組裝與 fetch PTY 均先重現失敗再通過。 |
+| MCP＋Web 選取測試 | 189／189，0 失敗、0 略過；含審查修正回歸，完整測試結果另列。 |
+| fetch PTY 選取 | 5 組通過：完整預覽／新確認、URL 拒絕零 RPC、確認後過時、Ctrl+C、EOF。 |
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 0；固定相依不變。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 0；0 警告、0 錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 0；1234／1234、0 失敗、0 略過，4 分 10.875 秒；外層允許初始化原生 sandbox，產品隔離保持啟用。 |
+| `python3 -B -m unittest discover -s tests -p 'test_sensitive_content.py'` | 0；36／36，6.260 秒。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 0；五個 MCP 命令、fetch URL／來源限制與新確認說明，零服務連線。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 0；測試／TerminalHost 變更檔另以各專案 `--include` 選取驗證，皆 0；27 個變更 C# 檔符合 CRLF、無結尾換行。 |
+| `python3 -B tests/terminal_smoke.py` | 0；136 組通過，保留原 131 組並新增五組 fetch。 |
+| 私人暫存來源副本的 `python3 -B scripts/check_sensitive_content.py staged` | 0；356 個來源／文件檔、0 findings；只操作副本 index，原倉庫 HEAD／index 不變。不是 Release 產物掃描。 |
+| 文件／空白查核 | 18 份 Markdown／576 個本機連結、3 個 JSON 範例與 hash、80 需求／32 案例／七上游／十三前向交接；`git diff --check` 及七個新檔 no-index 空白皆通過。 |
+
+受限外層第一輪完整測試為 1213／1230，17 個既有原生 sandbox／Git／程序案例因 `Operation not permitted` 失敗；允許外層初始化 sandbox 後，修正前 1230／1230 通過，審查修正後最終 1234／1234 通過。原生 fixture 回歸通過不代表補完各階段所有原生／發布驗收。
+
+獨立唯讀審查提出一項 Important：fetch 在途失效或逾時後，新的來源 metadata 敏感命中與清理故障可能被較弱分類遮蓋。三個回歸先重現，再修正共同失敗投影，保留敏感重設及致命狀態；另驗證重複欄位中的所有解碼值仍經敏感檢查。普通遲到安全回應仍拒絕採用。無 Critical／Minor，未作第二輪獨立複審。
+
+真 Learn（WEB-AC-028）、真 Gemini（029）未呼叫；真人終端機（027）、其他 OS／架構及本輪 Release／分發未驗。固定協定／Schema 的真服務相容性仍未知，不自動降版或放寬；第 07 份 BUD-S003、第 10 份 MTP test 不支援與未結原生門檻繼續分列。第 19 份第 11 節保留七上游／十三前向交接，沒有另外建立 memo、來源帳本或持久快取。
+
 <a id="mcp-validation"></a>
 
 ## 第 18 份 MCP 外部工具
 
-首版僅支援固定 `learn` profile：`https://learn.microsoft.com/api/mcp`，使用 MCP `2026-07-28` 與 `ModelContextProtocol.Core 2.3.0`。兩個模型工具為 `mcp__learn__microsoft_docs_search`、`mcp__learn__microsoft_code_sample_search`；不提供 fetch、任意端點、認證、外部寫入或 stdio。供應商 Key 仍只供原 Gemini 認證使用。
+首版僅支援固定 `learn` profile：`https://learn.microsoft.com/api/mcp`，使用 MCP `2026-07-28` 與 `ModelContextProtocol.Core 2.3.0`。目前三個模型工具為 `mcp__learn__microsoft_docs_search`、`mcp__learn__microsoft_code_sample_search`、`mcp__learn__microsoft_docs_fetch`；fetch 依[第 19 份](#web-validation)限定接續。不提供任意端點、認證、外部寫入或 stdio。供應商 Key 仍只供原 Gemini 認證使用。
 
 | 命令 | 行為 |
 |---|---|
 | `/mcp` | 顯示上次安全觀察的 Disconnected／Ready／Stale、版本、固定目的地與獨立 MCP 用量；零網路。 |
-| `/mcp connect learn` | 明確授權最小 discovery metadata，雙重完整目錄一致後才接受兩項工具；不開始生成或呼叫搜尋。 |
+| `/mcp connect learn` | 明確授權最小 discovery metadata，雙重完整目錄一致後才接受三項工具；不開始生成或呼叫工具。 |
 | `/mcp tools` | 完整顯示已接受的名稱、描述、Schema、指紋及排除數；零網路，Stale 明示歷史狀態。 |
 | `/mcp reload` | 明確重作 discovery／雙重目錄；有效且相同為 no_change，已失效後重新接受必須換版。 |
 | `/mcp disconnect` | 撤銷外送候選並等待自有工作關閉後停用；已斷線為真正 no_change。 |
 
-每一筆外部搜尋都先重驗目前 Rules／Scope／Skills 及目錄，完整展示固定目的地、來源、工具、版本、指紋與全部參數，再由唯一隱藏單行讀取者取得新 y／yes。確認後再重讀目錄及所有候選戳記；Coordinator 私有簽發權威核發的 Permit 只可由相同 client 消費一次。連線、Plan 確認、上一筆 yes、預輸入、遠端描述或結果都不能代替本次確認。
+每一筆外部操作都先重驗目前 Rules／Scope／Skills 及目錄，完整展示固定目的地、來源、工具、版本、指紋與全部參數，再由唯一隱藏單行讀取者取得新 y／yes。確認後再重讀目錄及所有候選戳記；Coordinator 私有簽發權威核發的 Permit 只可由相同 client 消費一次。連線、Plan 確認、上一筆 yes、預輸入、遠端描述或結果都不能代替本次確認。
 
 同時只有一項 MCP 操作；每一般回合最多兩次 tools/call 啟動機會，每次 30 秒累計主動網路／解析時間，確認等待不計入、不重置已用時間。connect／reload 整體 20 秒，DNS／連線上限 10 秒。原有模型生成與 .NET 兩次／300 秒預算保持獨立，失敗不退款、不重試或重播。
 
@@ -54,7 +96,7 @@
 
 Stale 阻擋一般／摘要／保存生成及執行確認，須明確 reload 或 disconnect；Review 保持既有三項 Git 工具及零 MCP I/O。目錄變動先保留已發布本機操作與事實，再撤確認及清修改快照；不改 EvidenceEpoch，也不把外部文字作為 Verified、TestsPassed、GitSnapshot 或 checkpoint。Scope 切換斷線，同 Scope 規則換版使 MCP Stale，技能或復原換版撤舊候選。clear／安全重設／換 Key／退出先取消並等關閉，保留單一 Coordinator 的版本計數；啟動與續接不連線。
 
-SAVE v1 不增欄位或直接保存 MCP client、目錄、原始結果、Permit；摘要的工具觀察只保留白名單來源、名稱、版本與固定狀態。自然語言歷史仍可能重述資料，但不恢復工具、信任、核准或外部引用擷取。兩項工具的結果只代表外部參考；指紋與 HTTP 成功也不保證服務實作、內容正確或遠端沒有副作用。
+SAVE v1 不增欄位或直接保存 MCP client、目錄、原始結果、Permit；摘要的工具觀察只保留白名單來源、名稱、版本與固定狀態。自然語言歷史仍可能重述資料，但不恢復工具、信任、核准或外部引用擷取。三項工具的結果只代表外部參考；指紋與 HTTP 成功也不保證服務實作、內容正確或遠端沒有副作用。
 
 本輪新增直接相依 `ModelContextProtocol.Core [2.3.0]`（精確解析 2.3.0，Apache-2.0）。新增間接相依為 `Microsoft.Extensions.AI.Abstractions 10.11.0`、`Microsoft.Extensions.DependencyInjection.Abstractions 10.0.13`、`Microsoft.Extensions.Logging.Abstractions 10.0.13`；AI Abstractions 僅為 SDK 相依，沒有第二個生成入口。既有 `Google.GenAI 1.26.1` 及其相依保持，SDK 型別分別留在 `Mcp/`、`Llm/`。
 

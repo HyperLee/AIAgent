@@ -1,5 +1,9 @@
 # 15：工作保存與續接開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 SAVE-HO-010：SAVE v1 不增欄位，fetch 來源、URL／時間／hash／view 不直接進工具摘要或 file_refs；自然語言仍可能轉述。續接預設 Disconnected，連結只作歷史，不恢復連線、來源資格、Permit 或外送同意。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 SAVE v1 保持，不直接持久化 MCP 連線、目錄、原始結果、版本或 Permit；外部 URI 不進 file_refs。保存與摘要候選綁 MCP 戳記，Stale 受控拒絕而不誤判 store 故障；續接不連線、擷取引用或重播。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

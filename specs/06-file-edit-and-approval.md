@@ -1,5 +1,9 @@
 # 06：檔案編輯與核准子規格
 
+## 第 19 份產品實作接續（2026-10-28）
+
+文件 fetch 沿共同 MCP 戳記，外送確認與檔案核准獨立。文件、URL 及 hash 不成為修改基準或寫入資格；已發布本機操作仍先查核／入帳，再撤銷候選。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 檔案候選及確認後來源重驗納入 MCP 戳記；外送確認與檔案確認獨立，不能互相沿用。MCP 失效先保留已發布寫入與 checkpoint／事實，再沿共同 Settle 撤確認與清修改基準，不復原已寫檔案。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

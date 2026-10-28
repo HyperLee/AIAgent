@@ -15,7 +15,7 @@ internal sealed partial class ChatApplication
         {
             if (command is "/mcp" or "/mcp tools") { ShowContextBlock(_mcp.Display(command == "/mcp tools")); return true; }
             if (command == "/mcp connect learn")
-                ShowContextBlock("目的地：https://learn.microsoft.com/api/mcp。公開免認證搜尋；本次只授權最小服務發現 metadata，查詢仍會外送且每次另需完整預覽及新確認。");
+                ShowContextBlock("目的地：https://learn.microsoft.com/api/mcp。公開免認證搜尋與文件擷取；本次只授權最小服務發現 metadata，查詢仍會外送且每次另需完整預覽及新確認。");
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
             lock (_gate) { _turnCancellation = cancellation; _cancelTurn = false; _cancellationNotice = false; _state = ChatState.ExecutingTools; }
             try

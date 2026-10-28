@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+Learn 搜尋與 fetch 共用原 MCP 兩次／30 秒額度，與 .NET 兩次／300 秒分列；外部範例不執行、不授予程序或網路 recipe，也不完成 Validation。原 MTP test 不支援及原生門檻不變。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 程序候選納入 MCP 戳記，在核准後及最終同步啟動權限點重驗；先記事實再 Settle，外部結果不抵 Validation。MCP HTTP client 不取得程序能力，其兩次／30 秒主動網路額度與本份兩次／300 秒預算分列；test 不支援與原生門檻不變。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

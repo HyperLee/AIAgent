@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+[19：網頁查詢與文件擷取](specs/19-web-search-and-document-fetch.md)限定延伸第 18 份：兩項 Learn 搜尋後追加一項文件 fetch，Ready 全登錄／Plan／Execute／Review 為 16／12／15／3，斷線仍為 13／9／12／3。URL 嚴格本機准入、逐次新確認及來源資料沿同一 MCP／Runner；文件不取得本機讀寫、測試或復原資格。搜尋與 fetch 共用原兩次機會與容量，SAVE v1 不增欄位，不新增套件、設定或一般網路 client。
+
+下方第 18 份兩工具與舊階段排除敘述保留為歷史，由第 19 份明示條款限定覆蓋；其他原契約仍有效。當次證據及真 Learn／Gemini、真人、原生、Release 未驗範圍見 [README](README.md#web-validation)。
+
 ## 第 18 份適用範圍補充（2026-10-28）
 
 [18：MCP 外部工具](specs/18-mcp-external-tools.md)接續第 5、6、8～15 章，固定 Microsoft Learn 公開搜尋、兩項 ExternalRead、五個本機命令及逐次完整外送預覽／新隱藏確認。斷線維持十三工具及 Plan／Execute 九／十二項；Ready 追加兩項，Review 保持三 Git 工具。SDK 型別留在 Mcp/，不新增模型生成入口或認證來源。

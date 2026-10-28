@@ -70,6 +70,7 @@ internal sealed class McpCoordinator : IAsyncDisposable
             if (tools)
             {
                 if (_snapshot is null) return "mcp_not_connected";
+                text += "兩項搜尋與一項文件擷取；fetch 僅接受原樣 ASCII Learn 文章 URL，無 fragment／百分比／結尾斜線，query 限 view 及搭配 view 的 preserve-view=true。來源可能過時，原站狀態與實際版次未由本機驗證。\n";
                 foreach (var tool in _snapshot.Catalog.Tools)
                     text += tool.LocalName + "／" + tool.RemoteName + "\nSHA-256：" + tool.Fingerprint + "\n" + tool.Description + "\n" + tool.Schema.GetRawText() + "\n";
                 text += "排除數：" + _excluded + "\n";
@@ -182,9 +183,31 @@ internal sealed class McpCoordinator : IAsyncDisposable
         if (code != "none") throw new McpFailure(code);
         if (!lease.IsCurrent) throw new OperationCanceledException(token);
     }
+    internal ToolExecutionResult? PreflightFetch(string localName, JsonElement arguments, McpOperationStamp expected)
+    {
+        if (localName != McpProfile.FetchName) return null;
+        lock (_gate)
+        {
+            if (_fatal || _disposed || _execution.WorkspaceOperations.IsDisposed || _execution.Rules?.FatalFailure == true || _execution.Skills?.FatalFailure == true) return Failure("unavailable");
+            if (_sensitive) return Failure("sensitive_content");
+            if (_active is not null || _resetting != 0) return Failure("mcp_busy");
+            if (_plans.ReviewTurnActive) return Failure("mode_restricted", false);
+            if (!IsCurrent(expected)) return Failure("mcp_changed");
+            if (_status != McpStatus.Ready || _client is null) return Failure(_status == McpStatus.Stale ? "mcp_catalog_stale" : "mcp_not_connected");
+            if (!_guard.IsSafe(arguments)) return Failure("sensitive_arguments");
+            if (!ToolArguments.TryStrings(arguments, ["url"], out var values)) return Failure("invalid_arguments", false);
+            try
+            {
+                var code = WebDocumentUrlPolicy.Validate(values[0], _guard, out _);
+                return code == "none" ? null : Failure(code);
+            }
+            catch (McpFailure error) { return Failure(error.Code); }
+        }
+    }
     internal async Task<ToolExecutionResult> InvokeAsync(string localName, JsonElement arguments, McpOperationStamp expected, CancellationToken token)
     {
         try { arguments = arguments.Clone(); } catch { return Failure("invalid_arguments", false); }
+        if (PreflightFetch(localName, arguments, expected) is { } rejected) return rejected;
         McpToolDescriptor? tool; IMcpReadClient client; TaskCompletionSource done; CancellationTokenSource cancellation;
         lock (_gate)
         {
@@ -223,7 +246,10 @@ internal sealed class McpCoordinator : IAsyncDisposable
             }
             await CatalogCheck();
             if (!Current()) throw new McpFailure("mcp_changed");
-            var block = SafeDisplay($"外送公開搜尋；唯讀服務仍可能保存查詢。\n目的地：{McpProfile.Endpoint}\n來源：external_mcp／learn\n工具：{tool.LocalName}／{tool.RemoteName}\n目錄版本：{expected.CatalogRevision}；SHA-256：{tool.Fingerprint}\n全部參數：{Encoding.UTF8.GetString(McpJson.Write(arguments))}\n確認本次外送？[y/N] ", false);
+            var explanation = tool.RemoteName == McpProfile.FetchTool
+                ? "將 URL 交給 Learn 服務擷取，服務可能記錄，原站狀態與版次未由本機驗證。"
+                : "外送公開搜尋；唯讀服務仍可能保存查詢。";
+            var block = SafeDisplay($"{explanation}\n目的地：{McpProfile.Endpoint}\n來源：external_mcp／learn\n工具：{tool.LocalName}／{tool.RemoteName}\n目錄版本：{expected.CatalogRevision}；SHA-256：{tool.Fingerprint}\n全部參數：{Encoding.UTF8.GetString(McpJson.Write(arguments))}\n確認本次外送？[y/N] ", false);
             var decision = await _confirm(new(block), cancellation.Token);
             if (decision != McpApprovalDecision.Approved)
                 return Failure(decision is McpApprovalDecision.Cancelled or McpApprovalDecision.EndOfInput ? "cancelled" : decision == McpApprovalDecision.Unavailable ? "unavailable" : "approval_declined");
@@ -233,6 +259,12 @@ internal sealed class McpCoordinator : IAsyncDisposable
             lock (_gate)
             {
                 if (!Current()) throw new McpFailure("mcp_changed");
+                if (!_guard.IsSafe(arguments)) throw new McpFailure("sensitive_arguments");
+                if (tool.RemoteName == McpProfile.FetchTool)
+                {
+                    var code = WebDocumentUrlPolicy.Validate(arguments.GetProperty("url").GetString()!, _guard, out _);
+                    if (code != "none") throw new McpFailure(code);
+                }
                 permit = _issuedPermit = new(this, tool, arguments, expected.CatalogRevision);
                 _permitValidity = Current; _permitConsumed = false;
                 _calls = checked(_calls + 1); _callStarts = checked(_callStarts + 1);
@@ -277,7 +309,11 @@ internal sealed class McpCoordinator : IAsyncDisposable
     {
         lock (_gate)
         {
-            _lastCode = code; if (code == "unavailable") _fatal = true; if (code is "sensitive_arguments" or "sensitive_content") _sensitive = true;
+            // A later stale/cancel/deadline observation cannot erase a stronger received failure.
+            if (code is "sensitive_arguments" or "sensitive_content" || outcome?.ErrorCode is "sensitive_arguments" or "sensitive_content") _sensitive = true;
+            if (code == "unavailable" || outcome?.ErrorCode == "unavailable") code = "unavailable";
+            else if (outcome?.ErrorCode is "sensitive_arguments" or "sensitive_content") code = outcome.ErrorCode;
+            _lastCode = code; if (code == "unavailable") _fatal = true;
             var result = ToolResponseWriter.Create(code == "cancelled" ? ToolStatus.Cancelled : ToolStatus.Rejected, code == "cancelled" ? "none" : code, _policy!);
             if (result.Response is { } response && !_guard.IsSafe(response)) { _sensitive = true; result = result.WithoutResponse(); }
             return new(result.Status, result.ErrorCode, result.Response, stopAfterOperation: stop, mcpOutcome: outcome is null ? new(code, McpTransmission.NotSent) : new(code, outcome.Transmission, bytes: outcome.Bytes));

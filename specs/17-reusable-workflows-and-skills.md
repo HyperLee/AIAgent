@@ -1,5 +1,9 @@
 # 17：可重用工作流程（Skills）開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 SKILL-HO-011：技能與網頁連結保持惰性；遠端描述、文件及假 yes 不安裝／啟用技能，不改規則、來源或工具權限。技能換版撤銷舊 fetch 候選，沿原共同戳記重驗。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 MCP 與 Skills 獨立准入及命名；技能不能 connect／reload、提供 yes 或取得供應商 Key。技能版本改變使舊外送與共同候選過時，不自動卸載有效 MCP 目錄；MCP 描述或結果不成為本機技能來源。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

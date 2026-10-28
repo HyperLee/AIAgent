@@ -33,7 +33,7 @@
 | FUT-09 | [修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md) | 已接入產品；分層驗證見 README | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
 | FUT-10 | [可重用工作流程（Skills）](specs/17-reusable-workflows-and-skills.md) | 已接入產品；分層驗證見 README | 將常用開發流程整理成可按需載入的能力。 |
 | FUT-11 | [MCP 外部工具整合](specs/18-mcp-external-tools.md) | 已接入產品；分層驗證見 README | 連接外部工具與資料來源。 |
-| FUT-12 | [網頁查詢與文件擷取](specs/19-web-search-and-document-fetch.md) | 規格已定義；待實作 | 取得具來源的官方文件與最新資訊。 |
+| FUT-12 | [網頁查詢與文件擷取](specs/19-web-search-and-document-fetch.md) | 已接入產品；分層驗收見 README | 取得具來源的 Microsoft Learn 文件與版本參考。 |
 | FUT-13 | 多模型與供應商支援 | 延伸 | 依任務明確選擇不同模型或供應商。 |
 | FUT-14 | 多 Agent 分工 | 延伸 | 分派獨立工作並彙整成果。 |
 
@@ -185,7 +185,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-12：網頁查詢與文件擷取
 
-狀態：已獨立定義[第 19 份開發規格](specs/19-web-search-and-document-fetch.md)，尚未實作。首版選定 Microsoft Learn／MCP，保留兩項搜尋並追加文件 fetch、來源資料與一般 Markdown 引用；三工具准入、URL、版本提示及來源充分性以該份為準。當前產品仍只有第 18 份的兩項搜尋，真實 Learn 相容性及既有驗收門檻保持分列。
+狀態：已依[第 19 份開發規格](specs/19-web-search-and-document-fetch.md)接入產品，當次分層證據見 [README](README.md#web-validation)。首版固定 Microsoft Learn／MCP，保留兩項搜尋並追加文件 fetch、嚴格原樣 URL 政策、本機來源資料與一般 Markdown 引用。三工具共用逐次新確認、Permit、原網路／生成額度與容量；真實 Learn 固定版本相容性與既有驗收門檻保持分列。
 
 開發前必讀第 12～18 份的 [RULE-HO-010](specs/12-project-rules-loading.md#future-handoffs)、[GIT-HO-010](specs/13-git-diff-and-code-review.md#future-handoffs)、[TERM-HO-009](specs/14-terminal-interaction.md#future-handoffs)、[SAVE-HO-010](specs/15-work-save-and-resume.md#future-handoffs)、[CKPT-HO-011](specs/16-change-checkpoints-and-recovery.md#future-handoffs)、[SKILL-HO-011](specs/17-reusable-workflows-and-skills.md#future-handoffs)、[MCP-HO-011](specs/18-mcp-external-tools.md#future-handoffs)，並核對當時產品。第 19 份[上游承接](specs/19-web-search-and-document-fetch.md#upstream-handoffs)與[前向交接 memo](specs/19-web-search-and-document-fetch.md#future-handoffs)集中記錄原擁有者、限定增量及驗收責任，不另建重複筆記。所選首版依賴 FUT-11 的必要能力，無須合併開發；以下保留原選題方向，不代表已支援其他網站或專用轉接器。
 

@@ -11,10 +11,11 @@ internal sealed class OfflineMcpHandler(string scenario) : HttpMessageHandler
     {
         using var body = JsonDocument.Parse(await request.Content!.ReadAsByteArrayAsync(cancellationToken));
         var root = body.RootElement; var method = root.GetProperty("method").GetString();
+        if (method == "tools/list") Console.WriteLine("OFFLINE_MCP_LIST");
         if (method == "tools/call")
         {
             Console.WriteLine("OFFLINE_MCP_CALL_SENT");
-            if (scenario == "mcp-call-gated")
+            if (scenario.EndsWith("call-gated", StringComparison.Ordinal))
             {
                 Console.WriteLine("OFFLINE_MCP_CALL_WAITING");
                 using var observed = cancellationToken.Register(() => Console.WriteLine("OFFLINE_MCP_CANCEL_OBSERVED"));
@@ -24,6 +25,7 @@ internal sealed class OfflineMcpHandler(string scenario) : HttpMessageHandler
         }
         var description = File.Exists("mcp-stale") ? "Changed fixture" : "公開文件搜尋";
         var schema = new { type = "object", properties = new { query = new { type = "string" } }, required = new[] { "query" }, additionalProperties = false };
+        var fetchSchema = new { type = "object", properties = new { url = new { type = "string" } }, required = new[] { "url" }, additionalProperties = false };
         var result = method switch
         {
             "server/discover" => JsonSerializer.Serialize(new { resultType = "complete", supportedVersions = new[] { "2026-07-28" }, capabilities = new { tools = new { } }, ttlMs = 0, cacheScope = "public" }),
@@ -32,8 +34,9 @@ internal sealed class OfflineMcpHandler(string scenario) : HttpMessageHandler
                 resultType = "complete",
                 tools = new[]
             {
-                new { name = McpProfile.DocsTool, description, inputSchema = schema },
-                new { name = McpProfile.CodeTool, description = "公開範例搜尋", inputSchema = schema }
+                new { name = McpProfile.DocsTool, description, inputSchema = (object)schema },
+                new { name = McpProfile.CodeTool, description = "公開範例搜尋", inputSchema = (object)schema },
+                new { name = McpProfile.FetchTool, description = "文件擷取", inputSchema = (object)fetchSchema }
             },
                 ttlMs = 0,
                 cacheScope = "public"

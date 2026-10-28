@@ -150,12 +150,13 @@ internal sealed class McpFixture : IAsyncDisposable
     internal List<string> Previews { get; } = [];
     internal Func<McpApprovalDecision>? OnConfirm { get; set; }
     internal Func<McpApprovalPreview, CancellationToken, ValueTask<McpApprovalDecision>>? AsyncConfirm { get; set; }
-    internal McpFixture(TimeProvider? clock = null, IWorkspaceReadFileSystem? fileSystem = null)
+    internal McpFixture(TimeProvider? clock = null, IWorkspaceReadFileSystem? fileSystem = null, string key = GeminiFixtures.Key, Func<IMcpContentGuard, IMcpContentGuard>? guardFactory = null)
     {
-        Session = WorkspaceFixtures.Session(Root); Plans = new(Session.Policy); Execution = new(Plans);
+        Session = WorkspaceFixtures.Session(Root, key); Plans = new(Session.Policy); Execution = new(Plans);
         Files = new(Session.Workspace, Session.Policy, fileSystem ?? new MacWorkspaceFileSystem(), new EditApproval(), Execution);
         Contexts = new(new(), Plans, Session.Policy); Contexts.BindRules(Execution.Rules); Contexts.BindSkills(Execution.Skills);
-        Mcp = new(Execution, Session.Policy, new McpContentGuard(Session.Policy, ["SYNTHETIC_PROTECTED_INSTRUCTION"]),
+        IMcpContentGuard guard = new McpContentGuard(Session.Policy, ["SYNTHETIC_PROTECTED_INSTRUCTION"]);
+        Mcp = new(Execution, Session.Policy, guardFactory?.Invoke(guard) ?? guard,
             (preview, token) => { Previews.Add(preview.DisplayBlock); return AsyncConfirm?.Invoke(preview, token) ?? new(OnConfirm?.Invoke() ?? McpApprovalDecision.Approved); },
             () => Files.Snapshots.Clear(), guard =>
             {

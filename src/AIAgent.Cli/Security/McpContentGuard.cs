@@ -19,10 +19,9 @@ internal sealed class McpContentGuard(ISensitiveDataPolicy policy, IReadOnlyList
             switch (current.ValueKind)
             {
                 case JsonValueKind.Object:
-                    var seen = new HashSet<string>(StringComparer.Ordinal);
                     foreach (var p in current.EnumerateObject())
                     {
-                        if (!seen.Add(p.Name) || !IsSafe(p.Name)) return false;
+                        if (!IsSafe(p.Name)) return false;
                         combined.Append(p.Name); names.Append(p.Name);
                         if (!Visit(p.Value)) return false;
                     }

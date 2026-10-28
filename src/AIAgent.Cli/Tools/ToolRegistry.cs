@@ -18,7 +18,7 @@ internal sealed class ToolRegistry
     {
         lock (ExecutionPolicy.Plans.DecisionGate) return new(_definitions.Where(d => !IsModeRestricted(d.Name)).Concat(ExecutionPolicy.Mcp?.GetTools().Where(t => !IsModeRestricted(t.LocalName)).Select(t => t.Definition) ?? []).ToArray(), ExecutionPolicy.Mcp?.Capture());
     }
-    internal bool IsExternalTool(string name) => name is McpProfile.DocsName or McpProfile.CodeName;
+    internal bool IsExternalTool(string name) => name is McpProfile.DocsName or McpProfile.CodeName or McpProfile.FetchName;
 
     internal ToolRegistry(IReadOnlyList<ITool> tools, ISensitiveDataPolicy policy, AgentExecutionPolicy? executionPolicy = null)
     {
@@ -45,6 +45,9 @@ internal sealed class ToolRegistry
     internal bool IsProcessTool(string name) => _capabilities.TryGetValue(name, out var capability) && capability == ToolCapability.DotnetTask;
 
     internal string? SafeName(string name) => (_tools.ContainsKey(name) || IsExternalTool(name)) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
+
+    internal ToolExecutionResult? PreflightFetch(LlmToolCall call, ToolRegistrySnapshot snapshot) =>
+        snapshot.McpStamp is { } stamp ? ExecutionPolicy.Mcp?.PreflightFetch(call.Name, call.Arguments, stamp) : null;
 
     internal bool IsSensitive(LlmToolCall call) => !_policy.CanSendOrUse(call.Name, ContentBoundary.ToolArguments) ||
         call.CallId is { } id && !_policy.CanSendOrUse(id, ContentBoundary.ToolArguments) ||

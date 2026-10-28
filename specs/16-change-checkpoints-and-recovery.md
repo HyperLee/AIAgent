@@ -1,5 +1,9 @@
 # 16：修改檢查點與復原開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 CKPT-HO-011：文件正文與來源資料不成為 before、anchor、路徑映射或復原資格；fetch 候選沿 RecoveryRevision 失效，既有本機發布與事實先入帳，不聲稱遠端 rollback。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 復原候選綁 MCP 戳記；復原變動撤舊外送候選，目錄在相同有效 Scope 下可保留並於下次呼叫完整重驗。MCP 不進受控寫入來源、不增加 EvidenceEpoch、不捕捉外部 bytes 或提供遠端 rollback。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

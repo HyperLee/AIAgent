@@ -1,5 +1,9 @@
 # 04：工作區與唯讀工具子規格
 
+## 第 19 份產品實作接續（2026-10-28）
+
+文件擷取只使用 ExternalRead；URL 准入先於該筆工作區來源查核，外部正文與來源資料不建立讀取／修改快照，也不擴大 Scope 或本機檔案權限。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 外部工具共用排他操作租約與目前 Rules／Scope／Skills 閘門；工作區操作候選綁 MCP 戳記。MCP 不呼叫一般 ReadFileAsync、不取得檔案權限或建立修改快照；已開始發布的本機結果先查核與入帳再撤確認。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

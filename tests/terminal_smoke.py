@@ -175,6 +175,7 @@ def main():
     checkpoint_cases(["dotnet", str(args.host.resolve())])
     skills_cases(["dotnet", str(args.host.resolve())])
     mcp_cases(["dotnet", str(args.host.resolve())])
+    web_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1297,6 +1298,72 @@ def mcp_cases(host):
             print("MCP-AC-029-call-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
         finally:
             os.close(write_fd); terminal.close()
+
+
+def web_cases(host):
+    """WEB-AC-026: fetch URL, fresh hidden confirmation and deterministic lifecycle."""
+    approval = b"OFFLINE_MCP_APPROVAL_READY"
+    url = b"https://learn.microsoft.com/zh-tw/aspnet/core/fundamentals?preserve-view=true&view=aspnetcore-10.0"
+
+    def start(scenario):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-web-pty-"))
+        terminal = TerminalProcess(host + [scenario], workspace)
+        terminal.wait_for(CONFIRM); terminal.send(b"yes\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r"); terminal.wait_for(HOST_PROMPT)
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"/mcp connect learn\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"Ready" in terminal.output, "WEB-AC-026-connected-three-tools")
+        return terminal, workspace
+
+    terminal, _ = start("mcp-fetch-flow")
+    try:
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"question\r"); terminal.wait_for(approval)
+        check(b"microsoft_docs_fetch" in terminal.output and url in terminal.output and b"https://learn.microsoft.com/api/mcp" in terminal.output, "WEB-AC-026-complete-fetch-preview")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"MCP_OFFLINE_RESULT" in terminal.output and terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1, "WEB-AC-026-fetch-approved")
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"again\r"); terminal.wait_for(approval, 2); terminal.send(b"n\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1, "WEB-AC-026-fetch-fresh-decline")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("WEB-AC-026-fetch-preview-fresh-confirmation: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal, _ = start("mcp-fetch-url-rejected")
+    try:
+        before = terminal.output.count(b"OFFLINE_MCP_LIST"); count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"question\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"web_url_rejected" in terminal.output and approval not in terminal.output and b"OFFLINE_MCP_CALL_SENT" not in terminal.output, "WEB-AC-026-rejected-url-no-confirmation")
+        check(before == terminal.output.count(b"OFFLINE_MCP_LIST"), "WEB-AC-026-rejected-url-zero-metadata")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("WEB-AC-026-url-rejected-zero-rpc: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal, workspace = start("mcp-fetch-flow")
+    try:
+        count = terminal.output.count(HOST_PROMPT); terminal.send(b"question\r"); terminal.wait_for(approval)
+        (workspace / "mcp-stale").write_text("synthetic change", encoding="utf-8")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"OFFLINE_MCP_CALL_SENT" not in terminal.output and b"MCP_OFFLINE_RESULT" not in terminal.output, "WEB-AC-026-fetch-stale-after-yes")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("WEB-AC-026-fetch-stale-after-yes: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        terminal, _ = start("mcp-fetch-call-gated")
+        try:
+            count = terminal.output.count(HOST_PROMPT); terminal.send(b"question\r"); terminal.wait_for(approval); terminal.send(b"yes\r")
+            terminal.wait_for(b"OFFLINE_MCP_CALL_WAITING"); terminal.send(control); terminal.wait_for(b"OFFLINE_MCP_CALL_CLOSED")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, count + 1); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1 and b"MCP_OFFLINE_RESULT" not in terminal.output, "WEB-AC-026-fetch-cancel-no-replay")
+            print("WEB-AC-026-fetch-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
+        finally:
+            terminal.close()
 
 
 if __name__ == "__main__":

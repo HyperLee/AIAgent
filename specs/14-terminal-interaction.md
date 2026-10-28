@@ -1,5 +1,9 @@
 # 14：終端機操作改善開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+承接 TERM-HO-009：fetch 完整外送預覽後取得本筆新隱藏 y／yes，沿唯一讀取者及預輸入排空；URL 拒絕零 RPC／確認，確認後過時、Ctrl+C 與 EOF 等待原有安全收尾。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 新增 MCP 外送隱藏確認，沿原唯一讀取者、完整安全預覽、進出排空及回顯恢復。每筆都需新 y／yes，遠端文字／預輸入不授權；Ctrl+C 取消後等自有收尾，EOF 正常退出，關閉故障退出 1。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

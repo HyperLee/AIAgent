@@ -34,7 +34,7 @@ public sealed class McpCapacityTests
     {
         using var session = GeminiFixtures.Session(); var handler = new McpHttpFixture { Sse = sse };
         await using var client = new McpReadClient(new McpContentGuard(session.Policy, []), handler);
-        await client.DiscoverAsync(default); Assert.AreEqual(2, (await client.ListToolsAsync(default)).Tools.Count);
+        await client.DiscoverAsync(default); Assert.AreEqual(3, (await client.ListToolsAsync(default)).Tools.Count);
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public sealed class McpCapacityTests
         handler.Override = (m, _) => m != "tools/list" ? null : ++page == 1 ? McpHttpFixture.Catalog[..^1] + ",\"nextCursor\":\"p2\"}" :
             "{\"tools\":[],\"ttlMs\":0,\"cacheScope\":\"public\"" + (page < pages ? ",\"nextCursor\":\"p" + (page + 1) + "\"}" : "}");
         await using var client = new McpReadClient(new McpContentGuard(session.Policy, []), handler); await client.DiscoverAsync(default);
-        if (accepted) Assert.AreEqual(2, (await client.ListToolsAsync(default)).Tools.Count);
+        if (accepted) Assert.AreEqual(3, (await client.ListToolsAsync(default)).Tools.Count);
         else await Assert.ThrowsExactlyAsync<McpFailure>(async () => await client.ListToolsAsync(default));
         Assert.AreEqual(4, handler.Methods.Count(m => m == "tools/list"));
     }
@@ -80,12 +80,12 @@ public sealed class McpCapacityTests
     public async Task MCPAC006_TotalToolCountIncludesExcludedTools(int count, bool accepted)
     {
         using var document = JsonDocument.Parse(McpHttpFixture.Catalog);
-        var tools = document.RootElement.GetProperty("tools").EnumerateArray().Take(2).Select(t => t.GetRawText()).ToList();
-        tools.AddRange(Enumerable.Range(0, count - 2).Select(i => "{\"name\":\"excluded_" + i + "\",\"inputSchema\":{\"type\":\"object\"}}"));
+        var tools = document.RootElement.GetProperty("tools").EnumerateArray().Take(3).Select(t => t.GetRawText()).ToList();
+        tools.AddRange(Enumerable.Range(0, count - 3).Select(i => "{\"name\":\"excluded_" + i + "\",\"inputSchema\":{\"type\":\"object\"}}"));
         var catalog = "{\"tools\":[" + string.Join(',', tools) + "]}";
         using var session = GeminiFixtures.Session(); var handler = new McpHttpFixture { Override = (m, _) => m == "tools/list" ? catalog : null };
         await using var client = new McpReadClient(new McpContentGuard(session.Policy, []), handler); await client.DiscoverAsync(default);
-        if (accepted) Assert.AreEqual(30, (await client.ListToolsAsync(default)).Excluded);
+        if (accepted) Assert.AreEqual(29, (await client.ListToolsAsync(default)).Excluded);
         else await Assert.ThrowsExactlyAsync<McpFailure>(async () => await client.ListToolsAsync(default));
     }
 

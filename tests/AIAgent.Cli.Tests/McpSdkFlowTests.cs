@@ -56,7 +56,7 @@ public sealed class McpSdkFlowTests
     }
 
     [TestMethod]
-    public async Task MCPAC005_FormalChatAddsTwoToolsAndDisconnectRestoresBuiltins()
+    public async Task MCPAC005_FormalChatAddsThreeToolsAndDisconnectRestoresBuiltins()
     {
         var root = WorkspaceFixtures.NewDirectory(); var fixture = new ChatFixture("/mcp connect learn", "first", "/plan", "second", "/mcp disconnect", "third");
         using var session = WorkspaceFixtures.Session(root); fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
@@ -64,8 +64,8 @@ public sealed class McpSdkFlowTests
         var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "synthetic instruction", new TestWorkspaceFilesFactory(),
             mcpClientFactory: guard => new McpReadClient(guard, handler));
         Assert.AreEqual(0, await app.RunAsync(session, default));
-        CollectionAssert.AreEqual(new[] { 14, 11, 9 }, fixture.Client.Requests.Select(r => r.Tools.Count).ToArray());
-        Assert.AreEqual(McpProfile.CodeName, fixture.Client.Requests[0].Tools[^1].Name);
+        CollectionAssert.AreEqual(new[] { 15, 12, 9 }, fixture.Client.Requests.Select(r => r.Tools.Count).ToArray());
+        Assert.AreEqual("mcp__learn__microsoft_docs_fetch", fixture.Client.Requests[0].Tools[^1].Name);
         Assert.IsTrue(handler.Closed); Assert.AreEqual(3, handler.Methods.Count);
         Assert.AreEqual(3L, fixture.Usage.Snapshot().DispatchedRequests);
     }

@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 19 份產品實作接續（2026-10-28）
+
+MCP Ready 全登錄／Plan／Execute／Review 為 16／12／15／3；Disconnected 為 13／9／12／3。fetch 為 ExternalRead，來源資料不滿足 Read／Write／Validation，不建立本機 facts；Analysis 仍只可沿 ModelAssessment 參考。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 MCP Ready 時 Plan／Execute 為十一／十四項，斷線維持九／十二項，Review 為三項。ExternalRead 不進本機 TaskRequirement／事實；目錄變動撤執行確認但保留模式、PlanId／Revision、Completed 與 EvidenceEpoch，投影預留 MCP 版本及收尾原因。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

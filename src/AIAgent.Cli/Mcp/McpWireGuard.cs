@@ -57,6 +57,11 @@ internal sealed class McpWireGuard(IMcpContentGuard guard, HttpMessageHandler in
         }
         else if (parameters.EnumerateObject().Any(p => p.Name != "_meta" && (_method != "tools/list" || p.Name != "cursor")))
             throw new McpFailure("mcp_protocol_unsupported");
+        if (_method == "tools/call" && _name == McpProfile.FetchTool)
+        {
+            var code = WebDocumentUrlPolicy.Validate(parameters.GetProperty("arguments").GetProperty("url").GetString()!, guard, out _);
+            if (code != "none") throw new McpFailure(code);
+        }
         token.ThrowIfCancellationRequested();
         if (_method == "tools/call") Transmission = McpTransmission.SentUnconfirmed;
         var response = await base.SendAsync(request, token);

@@ -14,6 +14,8 @@ internal static class McpProfile
     internal const string Endpoint = "https://learn.microsoft.com/api/mcp";
     internal const string ProtocolVersion = "2026-07-28";
     internal const string DocsTool = "microsoft_docs_search";
+    internal const string FetchTool = "microsoft_docs_fetch";
+    internal const string FetchName = "mcp__learn__microsoft_docs_fetch";
     internal const string CodeTool = "microsoft_code_sample_search";
     internal const string DocsName = "mcp__learn__microsoft_docs_search";
     internal const string CodeName = "mcp__learn__microsoft_code_sample_search";
@@ -21,7 +23,7 @@ internal static class McpProfile
     internal const int MaxProjectionBytes = 32768;
     internal const int MaxDisplayBytes = 65536;
     internal const int MaxArgumentsBytes = 8192;
-    internal static string? LocalName(string remote) => remote == DocsTool ? DocsName : remote == CodeTool ? CodeName : null;
+    internal static string? LocalName(string remote) => remote == DocsTool ? DocsName : remote == CodeTool ? CodeName : remote == FetchTool ? FetchName : null;
 }
 
 internal interface IMcpContentGuard

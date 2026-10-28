@@ -94,19 +94,19 @@ internal sealed class McpReadClient : IMcpReadClient
                 var description = tool.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString()! : "";
                 McpJson.Limit(description.Length, 2048);
                 if (!tool.TryGetProperty("inputSchema", out var schema)) throw new McpFailure("mcp_catalog_invalid");
-                accepted.Add(new(name, description, McpSchema.Admit(schema), McpJson.Fingerprint(tool)));
+                accepted.Add(new(name, description, name == McpProfile.FetchTool ? McpSchema.AdmitFetch(schema) : McpSchema.Admit(schema), McpJson.Fingerprint(tool)));
             }
             if (!root.TryGetProperty("nextCursor", out var next) || next.ValueKind == JsonValueKind.Null)
             {
-                if (accepted.Count != 2) throw new McpFailure("mcp_catalog_invalid");
-                var ordered = accepted.OrderBy(t => t.RemoteName == McpProfile.DocsTool ? 0 : 1).ToArray();
+                if (accepted.Count != 3) throw new McpFailure("mcp_catalog_invalid");
+                var ordered = accepted.OrderBy(t => t.RemoteName == McpProfile.DocsTool ? 0 : t.RemoteName == McpProfile.CodeTool ? 1 : 2).ToArray();
                 McpJson.Limit(McpJson.Write(w =>
                 {
                     w.WriteStartArray(); foreach (var tool in ordered)
                     { w.WriteStartObject(); w.WriteString("name", tool.LocalName); w.WriteString("description", tool.Definition.Description); w.WritePropertyName("parameters"); tool.Schema.WriteTo(w); w.WriteEndObject(); }
                     w.WriteEndArray();
                 }).Length, McpProfile.MaxProjectionBytes);
-                return new(ordered, count - 2, bytes);
+                return new(ordered, count - 3, bytes);
             }
             if (next.ValueKind != JsonValueKind.String || !cursors.Add(next.GetString()!)) throw new McpFailure("mcp_catalog_invalid");
             cursor = next.GetString();
@@ -120,6 +120,11 @@ internal sealed class McpReadClient : IMcpReadClient
         {
             token.ThrowIfCancellationRequested();
             if (!_guard.IsSafe(permit.Arguments) || !McpSchema.ValidArguments(permit.Tool.Schema, permit.Arguments)) throw new McpFailure("sensitive_arguments");
+            if (permit.Tool.RemoteName == McpProfile.FetchTool)
+            {
+                var code = WebDocumentUrlPolicy.Validate(permit.Arguments.GetProperty("url").GetString()!, _guard, out _);
+                if (code != "none") throw new McpFailure(code);
+            }
             _wire.Begin("tools/call", token, permit);
             _ = await _client.CallToolAsync(new CallToolRequestParams
             {
@@ -127,7 +132,7 @@ internal sealed class McpReadClient : IMcpReadClient
                 Arguments = permit.Arguments.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone(), StringComparer.Ordinal)
             }, CancellationToken.None);
             token.ThrowIfCancellationRequested();
-            var response = McpResult.Project(_wire.Result, permit, _guard);
+            var response = McpResult.Project(_wire.Result, permit, _guard, _clock);
             return new("none", McpTransmission.ResponseReceived, response, true, _wire.Bytes);
         }
         catch (OperationCanceledException) { return new("cancelled", _wire.Transmission, bytes: _wire.Bytes); }
