@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 18 份適用範圍補充（2026-10-28）
+
+[18：MCP 外部工具](specs/18-mcp-external-tools.md)接續第 5、6、8～15 章，固定 Microsoft Learn 公開搜尋、兩項 ExternalRead、五個本機命令及逐次完整外送預覽／新隱藏確認。斷線維持十三工具及 Plan／Execute 九／十二項；Ready 追加兩項，Review 保持三 Git 工具。SDK 型別留在 Mcp/，不新增模型生成入口或認證來源。
+
+目錄／工具快照、所有確認、模型結果、Context／保存及復原候選共用 MCP 戳記。失效先記錄已發生本機事實再撤確認；外部內容不作本機操作／測試／Git 或 checkpoint 證據。啟動、續接、clear、換 Key 不自動連線；SAVE v1 與公開 LLM 契約保持。固定協定不相容即受控停止，不重試／回退；當次分層證據及未結門檻見 [README](README.md#mcp-validation)。
+
 ## 第 17 份適用範圍補充（2026-10-27～28）
 
 依[第 17 份](specs/17-reusable-workflows-and-skills.md)新增目前 Rules Scope 下的 `skills/<id>/SKILL.md` 與六種 `/skills` 本機命令；只有使用者可明確選用、同時一個，啟動與續接預設 Disabled。技能是外部流程，使用者／適用規則及硬政策優先，沒有新的工具、程序、網路、核准或完成資格。

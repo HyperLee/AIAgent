@@ -20,7 +20,7 @@ internal sealed partial class ContextCoordinator
     }
     private static JsonElement WorkToolObservation(JsonElement observation)
     {
-        var allowed = new[] { "name", "status", "error_code", "path", "byte_count", "returned_entries", "truncated", "task", "start_state", "end_state", "exit_code", "cleanup_confirmed", "validation" };
+        var allowed = new[] { "name", "status", "error_code", "source", "server_id", "remote_tool", "catalog_revision", "path", "byte_count", "returned_entries", "truncated", "task", "start_state", "end_state", "exit_code", "cleanup_confirmed", "validation" };
         var bytes = ContextDocuments.Write(ContextDocuments.MaxSourceBytes, writer =>
         {
             writer.WriteStartObject();

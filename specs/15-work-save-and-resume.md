@@ -1,5 +1,9 @@
 # 15：工作保存與續接開發規格書
 
+## 第 18 份產品實作接續（2026-10-28）
+
+SAVE v1 保持，不直接持久化 MCP 連線、目錄、原始結果、版本或 Permit；外部 URI 不進 file_refs。保存與摘要候選綁 MCP 戳記，Stale 受控拒絕而不誤判 store 故障；續接不連線、擷取引用或重播。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 承接 SAVE-HO-009：保存摘要／預覽／確認／發布綁技能版本；不直接以技能正文作摘要來源，SAVE v1 無新增欄位。啟動續接 Disabled，歷史／file_refs 只作原安全檔案觀察，不解析或啟用技能。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

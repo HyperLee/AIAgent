@@ -12,7 +12,7 @@ internal enum AgentStopReason
     WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
     ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit,
     ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed, RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit,
-    GitStopped, ReviewInvalid, SkillsUnavailable, SkillsChanged, SkillsLimit
+    GitStopped, ReviewInvalid, SkillsUnavailable, SkillsChanged, SkillsLimit, McpStopped, McpChanged
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 
@@ -36,6 +36,7 @@ internal sealed class LocalToolOutcome(int generationNumber, int partIndex, stri
     internal bool ProcessCleanupFailed { get; } = result.ProcessCleanupFailed;
     internal ProcessExecutionSummary? ProcessSummary { get; } = result.ProcessSummary;
     internal GitSummary? GitSummary { get; } = result.GitSummary;
+    internal McpCallOutcome? McpOutcome { get; } = result.McpOutcome;
     public override string ToString() => "[LocalToolOutcome]";
 }
 
@@ -56,8 +57,9 @@ internal sealed class AgentEvent(AgentEventKind kind, int generationNumber, int?
 internal sealed class AgentTurnResult(AgentTurnStatus status, AgentStopReason stopReason,
     LlmStatus? modelStatus, LlmErrorCode? modelErrorCode, string safeText,
     IReadOnlyList<LlmMessage> completedTurn, IReadOnlyList<LocalToolOutcome> operations,
-    int generationsStarted, UsageSnapshot turnUsage, bool requiresContextReset, ProjectRulesStamp? rulesStamp = null, SkillsOperationStamp? skillsStamp = null)
+    int generationsStarted, UsageSnapshot turnUsage, bool requiresContextReset, ProjectRulesStamp? rulesStamp = null, SkillsOperationStamp? skillsStamp = null, McpOperationStamp? mcpStamp = null)
 {
+    internal McpOperationStamp? McpStamp { get; } = mcpStamp;
     internal ProjectRulesStamp? RulesStamp { get; } = rulesStamp;
     internal SkillsOperationStamp? SkillsStamp { get; } = skillsStamp;
     internal AgentTurnStatus Status { get; } = status;

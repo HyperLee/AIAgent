@@ -132,7 +132,7 @@ public sealed class AgentLifecycleTests
         interaction.Inputs.Enqueue(() => ChatInputResult.Submitted("/exit"));
         var client = new ScriptClient { Respond = (_, _, _) => Task.FromResult(RunnerFixture.Calls(RunnerFixture.Read(0), RunnerFixture.Read(1))) };
         var factory = new ScriptFactory(client);
-        var session = WorkspaceFixtures.Session(key: projectionFails ? "status" : GeminiFixtures.Key); factory.Sessions.Add(session);
+        var session = WorkspaceFixtures.Session(key: projectionFails ? "error_code" : GeminiFixtures.Key); factory.Sessions.Add(session);
         var app = new ChatApplication(interaction, factory, new(), new(), "instruction", new UnavailableWorkspaceFactory());
         interaction.OnShow = e => { if (cancelTurn && e.Agent?.Operation?.Status == ToolStatus.Failed) app.Interrupt(); };
         Assert.AreEqual(1, await app.RunAsync(session, default), "LOOP-AC-024/028");
@@ -146,7 +146,7 @@ public sealed class AgentLifecycleTests
     [DataRow(true, true)]
     public async Task LOOPAC014_UnexpectedToolExceptionKeepsFatalCauseAcrossCancellationAndProjection(bool projectionFails, bool cancelTurn)
     {
-        using var session = WorkspaceFixtures.Session(key: projectionFails ? "status" : GeminiFixtures.Key);
+        using var session = WorkspaceFixtures.Session(key: projectionFails ? "error_code" : GeminiFixtures.Key);
         using var cancel = new CancellationTokenSource();
         var registry = TestRulesRegistry.Create([new ThrowingTool()], session.Policy);
         var client = new ScriptClient

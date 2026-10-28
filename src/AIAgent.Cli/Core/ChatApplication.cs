@@ -7,7 +7,7 @@ namespace AIAgent.Cli.Core;
 
 internal sealed partial class ChatApplication(IChatInteraction interaction, IChatRuntimeFactory runtimeFactory,
     ConversationContext context, UsageAccumulator usage, string systemInstruction, IWorkspaceFilesFactory workspaceFilesFactory,
-    IControlledDotnetTasksFactory? controlledTasksFactory = null, IGitReadWorkspaceFactory? gitReadWorkspaceFactory = null, Func<IWorkSaveStore>? workSaveStoreFactory = null)
+    IControlledDotnetTasksFactory? controlledTasksFactory = null, IGitReadWorkspaceFactory? gitReadWorkspaceFactory = null, Func<IWorkSaveStore>? workSaveStoreFactory = null, Func<IMcpContentGuard, IMcpReadClient>? mcpClientFactory = null)
 {
     private readonly object _gate = context.DecisionGate;
     private readonly CancellationTokenSource _stop = new();
@@ -53,6 +53,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 _workspace = workspaceFilesFactory.Create(initialSession, _executionPolicy);
                 _rules = _executionPolicy.Rules;
                 _skills = _executionPolicy.Skills ??= new(_workspace.SkillsWorkspace, initialSession.Policy, _executionPolicy);
+                _mcp = new(_executionPolicy, initialSession.Policy, AgentRunner.CreateMcpGuard(initialSession.Policy, systemInstruction), ConfirmMcpAsync, () => _workspace?.Snapshots.Clear(), mcpClientFactory);
+                _plans.Mcp = _mcp;
+                _contexts.BindMcp(_mcp);
                 _contexts.BindSkills(_skills);
                 _contexts.BindRules(_rules);
                 if (initialSession.ResumeWorkId is { } resumeId)
@@ -89,9 +92,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command.Length == 0) continue;
                 if (text.Contains('\n') && text.TrimStart().StartsWith('/'))
                 {
-                    interaction.Show(new(ChatEventKind.InputRejected, text: "本機指令只接受單行；本次未執行。"));
+                    interaction.Show(new(ChatEventKind.InputRejected, text: text.TrimStart().StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) ? "invalid_mcp_command：本機指令只接受單行；本次未執行。" : "本機指令只接受單行；本次未執行。"));
                     continue;
                 }
+                if (await HandleMcpCommandAsync(text)) continue;
                 if (await HandleSkillsCommandAsync(text)) continue;
                 if (await HandleCheckpointCommandAsync(text)) continue;
                 if (await HandleWorkCommandAsync(text)) continue;
@@ -101,7 +105,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/skills：上次觀察狀態；/skills list：目前 Scope 的 skills/<id>/SKILL.md；/skills show ID：完整磁碟檢視；/skills use ID：手動單一選用；/skills reload：明確重載；/skills off：停用。\n" +
+                    ShowContextBlock("/mcp、/mcp tools：零網路狀態／目錄；/mcp connect learn：固定公開 Microsoft Learn；/mcp reload：明確重載；/mcp disconnect：停用。每次外送完整預覽及新隱藏確認；Stale 須重載或斷線，clear／換 Key／續接不自動連線。\n" +
+                        "/skills：上次觀察狀態；/skills list：目前 Scope 的 skills/<id>/SKILL.md；/skills show ID：完整磁碟檢視；/skills use ID：手動單一選用；/skills reload：明確重載；/skills off：停用。\n" +
                         "技能可能送至 Gemini，只能指導既有能力，不代表執行或核准；檢視不會啟用，來源過時須重載或停用，再重新確認計畫並給新指示。clear／換 Key／退出會丟棄技能，續接不恢復；每筆操作仍逐次核准。\n" +
                         "/checkpoint list：程序內修改歷史；/checkpoint show cN：原始修改差異；/checkpoint restore cN：Execute 下逐筆新確認復原；/checkpoint forget cN：新確認後丟棄單筆記憶體。\n" +
                         "檢查點只在本程序記憶體保留，clear／換 Key／退出會丟棄；容量滿停止新寫入，新建檔須人工核對及刪除。復原不復原 Git index、建置副作用、owner、ACL、xattr 或硬連結關係，仍須重新確認計畫並給新指示。\n" +
@@ -131,7 +136,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/execute") { await ExecuteModeAsync(); continue; }
                 if (command == "/clear")
                 {
-                    ClearConversationState(); LastOutcome = null;
+                    await ClearConversationStateAsync(); LastOutcome = null;
                     if (_rules?.Capture().Status == ProjectRulesStatus.Valid) await CheckRulesReadyAsync();
                     interaction.Show(new(ChatEventKind.ContextCleared, text: "對話已清除。"));
                     continue;
@@ -146,7 +151,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                     interaction.Show(new(ChatEventKind.InputRejected, text: "模型輸入含當前 Key；已阻擋本次傳送。"));
                     continue;
                 }
-                if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) continue;
+                if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync() || !CheckMcpReady()) continue;
                 interaction.RememberAcceptedInput(text);
                 interaction.Show(new(ChatEventKind.UserMessage, text: text));
                 if (await RunTurnAsync(LlmMessage.FromUserText(text)) && !Stopping) await ReplaceKeyAsync();
@@ -162,9 +167,11 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         {
             SetState(ChatState.Stopping);
             if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
-            try { ClearConversationState(); }
+            try { await ClearConversationStateAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { if (_workStore is not null) await _workStore.DisposeAsync(); }
+            catch (Exception) { RequestStop(StopReason.Failure); }
+            try { if (_mcp is not null) await _mcp.DisposeAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { if (_skills is not null) await _skills.DisposeAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
@@ -208,7 +215,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 reviewScope = _executionPolicy!.EnterReview(); review = _reviews!; review.BeginAttempt();
                 SetState(ChatState.CapturingReview); ShowContextBlock("正在捕捉目前 Scope 的 Git 原始來源。");
                 var captureError = await _git!.CaptureAsync(cancellation.Token);
-                if (captureError != "none") { HandleReviewLocalFailure(captureError); return false; }
+                if (captureError != "none") { await HandleReviewLocalFailureAsync(captureError); return false; }
                 _git.Bind(selection);
                 if (_git.EligibleChangeCount == 0)
                 {
@@ -225,9 +232,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token, review);
             var status = result.Status;
             var reason = result.StopReason;
-            var requiresContextReset = result.RequiresContextReset;
+            var requiresContextReset = result.RequiresContextReset || _mcp?.RequiresContextReset == true;
             var publishAnswer = false;
-            if (status == AgentTurnStatus.Completed && !result.RequiresContextReset)
+            if (result.McpStamp is { } mcpStamp && _mcp?.IsCurrent(mcpStamp) != true) { status = AgentTurnStatus.Stopped; reason = AgentStopReason.McpChanged; }
+            if (status == AgentTurnStatus.Completed && !requiresContextReset)
             {
                 var rulesError = "none";
                 try { rulesError = _rules is null ? "rules_unavailable" : await _rules.ValidateAsync(cancellation.Token); }
@@ -259,7 +267,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             }
             if (requiresContextReset)
             {
-                ClearConversationState();
+                await ClearConversationStateAsync();
                 if (_rules?.Capture().Status == ProjectRulesStatus.Valid) _ = await _rules.ValidateAsync(CancellationToken.None);
             }
             lock (_gate)
@@ -268,6 +276,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
                     reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
+                else if (status == AgentTurnStatus.Completed && !requiresContextReset && result.McpStamp is { } finalMcp && _mcp?.IsCurrent(finalMcp) != true)
+                { status = AgentTurnStatus.Stopped; reason = AgentStopReason.McpChanged; }
                 else if (status == AgentTurnStatus.Completed && !requiresContextReset &&
                     (result.SkillsStamp is { } finalSkill && _skills?.IsCurrent(finalSkill) != true))
                 { status = AgentTurnStatus.Stopped; reason = AgentStopReason.SkillsChanged; }
@@ -303,7 +313,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(),
                 generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage, purpose: maintenance ? GenerationPurpose.Compaction : GenerationPurpose.Conversation));
             if (result.ModelErrorCode == LlmErrorCode.ClientUnavailable ||
-                result.StopReason is AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable) RequestStop(StopReason.Failure);
+                result.StopReason is AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable || _mcp?.FatalFailure == true) RequestStop(StopReason.Failure);
             lock (_gate)
             {
                 keyHandoff = !_cancelTurn && _stopReason == StopReason.None &&
@@ -426,7 +436,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             RequestStop(input.Status switch { KeyInputStatus.EndOfInput => StopReason.Normal, KeyInputStatus.Cancelled => StopReason.Cancelled, _ => StopReason.Failure });
             return;
         }
-        ClearConversationState(); LastOutcome = null;
+        await ClearConversationStateAsync(); LastOutcome = null;
         _work = null;
         _rules?.DetachPolicy();
         await DisposeWorkspaceAsync();
@@ -438,7 +448,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
             _plans!.BindPolicy(replacement.Policy);
             _contexts!.BindPolicy(replacement.Policy);
-            _executionPolicy = new(_plans) { Rules = _rules, Skills = _skills };
+            _executionPolicy = new(_plans) { Rules = _rules, Skills = _skills, Mcp = _mcp };
+            _mcp?.BindPolicy(_executionPolicy, replacement.Policy, AgentRunner.CreateMcpGuard(replacement.Policy, systemInstruction));
             client = runtimeFactory.CreateClient(replacement);
             workspace = workspaceFilesFactory.Create(replacement, _executionPolicy);
             if (_rules is not null && workspace.ProjectRulesWorkspace is { } reader) _rules.BindPolicy(replacement.Policy, reader);
@@ -464,8 +475,9 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         }
     }
 
-    private void ClearConversationState()
+    private async Task ClearConversationStateAsync()
     {
+        if (_mcp is not null) await _mcp.ResetAsync();
         interaction.ClearInputState();
         lock (_gate)
         {
@@ -516,7 +528,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 try { _planCancellation?.Cancel(); }
                 catch (Exception) { RequestStop(StopReason.Failure); }
             }
-            else if (_state is ChatState.Working or ChatState.AwaitingWorkApproval or ChatState.CheckpointOperation or ChatState.AwaitingCheckpointApproval or ChatState.LoadingRules or ChatState.LoadingSkills or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.Cancelling)
+            else if (_state is ChatState.Working or ChatState.AwaitingWorkApproval or ChatState.CheckpointOperation or ChatState.AwaitingCheckpointApproval or ChatState.LoadingRules or ChatState.LoadingSkills or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.AwaitingMcpApproval or ChatState.Cancelling)
             {
                 _cancelTurn = true;
                 _state = ChatState.Cancelling;
@@ -525,7 +537,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             }
             else RequestStop(StopReason.Cancelled);
             if (!_cancellationNotice && signal != ChatControlSignal.Unavailable &&
-                _state is ChatState.Cancelling or ChatState.LoadingRules or ChatState.LoadingSkills or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval)
+                _state is ChatState.Cancelling or ChatState.LoadingRules or ChatState.LoadingSkills or ChatState.CapturingReview or ChatState.Generating or ChatState.ExecutingTools or ChatState.AwaitingApproval or ChatState.AwaitingProcessApproval or ChatState.AwaitingMcpApproval)
             { _cancellationNotice = true; showCancellation = true; }
             _turnSignal?.TrySetResult();
         }

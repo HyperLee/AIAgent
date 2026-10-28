@@ -80,6 +80,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             var skillsError = await skills.ValidateAsync(lease.CancellationToken, lease);
             if (skillsError != "none") return Reject(skillsError);
             var skillsStamp = skills.Capture();
+            var mcpStamp = execution.Mcp?.Capture();
             if (!_budget.CanStart) return Reject("process_limit");
             var installation = DotnetInstallation.Discover(); if (installation is null) return Reject("capability_unavailable");
             var admission = new DotnetProjectAdmission(new MacWorkspaceFileSystem(), policy);
@@ -105,6 +106,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                     decision is ProcessApprovalDecision.Cancelled or ProcessApprovalDecision.EndOfInput ? ToolStatus.Cancelled : decision == ProcessApprovalDecision.Unavailable ? ToolStatus.Failed : ToolStatus.Rejected);
             if (!lease.IsCurrent || preview.Generation != execution.Plans.Generation || lifetime.IsCancellationRequested)
                 return NotStarted("turn_cancelled", ToolStatus.Cancelled);
+            if (mcpStamp is not null && execution.Mcp?.IsCurrent(mcpStamp) != true) return NotStarted("mcp_changed");
             rulesError = await rules.ValidateAsync(lease.CancellationToken, lease);
             if (rulesError != "none" || !rules.IsCurrent(rulesStamp)) return NotStarted(rulesError == "none" ? "rules_changed" : rulesError);
             skillsError = await skills.ValidateAsync(lease.CancellationToken, lease);
@@ -125,10 +127,17 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             if (scopeError != WorkspaceErrorCode.None) return NotStarted(WorkspaceToolProjection.Code(scopeError));
             skillsError = await skills.ValidateAsync(lease.CancellationToken, lease);
             if (skillsError != "none" || !skills.IsCurrent(skillsStamp)) return NotStarted(skillsError == "none" ? "skills_changed" : skillsError);
+            if (mcpStamp is not null && execution.Mcp?.IsCurrent(mcpStamp) != true) return NotStarted("mcp_changed");
             workspaceFiles.InvalidateForProcess(lease);
             // No await separates final authority checks from the single budget/consent consumption point.
-            if (!_budget.TryStart(task, out var budget)) return NotStarted("process_limit");
-            granted = true;
+            ProcessBudgetLease? budget;
+            lock (execution.Plans.DecisionGate)
+            {
+                if (mcpStamp is not null && execution.Mcp?.IsCurrent(mcpStamp) != true) return NotStarted("mcp_changed");
+                if (!lease.IsCurrent || lifetime.IsCancellationRequested) return NotStarted("turn_cancelled", ToolStatus.Cancelled);
+                if (!_budget.TryStart(task, out budget)) return NotStarted("process_limit");
+                granted = true;
+            }
             DotnetTaskResult result;
             using (budget)
             {
@@ -165,6 +174,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                 lease?.Dispose();
                 execution.Rules?.Settle();
                 execution.Skills?.Settle();
+                execution.Mcp?.Settle();
                 lock (_gate) { _active?.TrySetResult(); _active = null; }
             }
         }

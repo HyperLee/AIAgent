@@ -77,6 +77,7 @@ internal static class ChatDisplay
         if (result.WriteState == FileWriteState.Unconfirmed)
             return "[本機結果] 寫入結果未確認；停止後續操作" + (result.CleanupFailed ? "；內部暫存清理未完成；需人工處理" : "");
         if (result.CleanupFailed) return "[本機結果] 內部暫存清理未完成；需人工處理";
+        if (result.McpOutcome is { } mcp) return "[本機結果] " + name + "：" + result.Status + "／" + result.ErrorCode + "；外部傳輸=" + mcp.Transmission + "；安全結果採用=" + mcp.SafeResultAccepted + "；外部資料不證明本機完成。";
         if (result.ErrorCode == "approval_declined") return "[本機結果] 未套用此變更";
         if (result.Status != ToolStatus.Success) return "[本機結果] " + name + "：" + result.Status + "／" + result.ErrorCode;
         if (result.DiscoverySummary is { } discovery)
@@ -97,6 +98,8 @@ internal static class ChatDisplay
 
     private static string TurnText(ChatEvent message) => message.StopReason switch
     {
+        AgentStopReason.McpStopped => "MCP 流程已停止；本回合不重試，請核對本機固定原因與外送觀察。",
+        AgentStopReason.McpChanged => "mcp_changed：外部目錄或版本已變動；請明確重載或斷線、重新確認並給新指示。",
         AgentStopReason.ReviewInvalid => "review_invalid：審查報告格式或來源位置無法驗證；本次未發布新報告。",
         AgentStopReason.GitStopped => "Git 來源或審查閘門已停止本回合；請檢視受控原因，等待新指示。",
         AgentStopReason.SkillsChanged => "技能來源已變動；請 /skills reload 或 off，重新確認計畫後給予新指示。",

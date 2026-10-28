@@ -10,6 +10,8 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
     private long _sessionGeneration;
     private ProjectRulesCoordinator? _rules;
     private SkillsCoordinator? _skills;
+    private McpCoordinator? _mcp;
+    internal void BindMcp(McpCoordinator? mcp) { lock (context.DecisionGate) _mcp = mcp; }
     internal void BindSkills(SkillsCoordinator? skills) { lock (context.DecisionGate) _skills = skills; }
     internal void BindRules(ProjectRulesCoordinator? rules) { lock (context.DecisionGate) _rules = rules; }
     internal object DecisionGate => context.DecisionGate;
@@ -18,12 +20,12 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
     internal ContextBodyMeasurement? LastBodyMeasurement { get; private set; }
     internal ContextOperationStamp Capture()
     {
-        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0, plans.Recovery.Revision, _skills?.Capture());
+        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0, plans.Recovery.Revision, _skills?.Capture(), _mcp?.Capture());
     }
     internal bool IsCurrent(ContextOperationStamp stamp)
     {
         lock (context.DecisionGate) return stamp.SessionGeneration == _sessionGeneration && stamp.RecoveryRevision == plans.Recovery.Revision &&
-            stamp.SkillsMatches(_skills?.Capture()) &&
+            stamp.SkillsMatches(_skills?.Capture()) && stamp.McpMatches(_mcp?.Capture()) &&
             stamp.RulesRevision == (_rules?.Capture().RulesRevision ?? 0) && stamp.RulesGeneration == (_rules?.Capture().RulesGeneration ?? 0) &&
             stamp.ContextRevision == context.Revision && stamp.PinsRevision == context.PinsRevision &&
             stamp.PlanGeneration == plans.Generation && stamp.Mode == plans.Mode && ReferenceEquals(stamp.Plan, plans.Snapshot);

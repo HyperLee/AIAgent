@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 18 份產品實作接續（2026-10-28）
+
+正常請求於目前 Skills 之後、記憶之前加入有界 MCP 狀態附錄；完整定義／安全結果計入估算及實際 body。量測、摘要及保存候選綁 MCP 戳記；摘要工具觀察只保留白名單來源／名稱／版本／狀態，不直接納參數、原始結果或目錄。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 一般與 Review 在規則後加入完整目前技能附錄；Disabled 明示 active=null。技能版本納入 Context／量測／摘要及保存候選，摘要不直接帶技能正文，原 196608／262144 bytes 與唯一預算／用量保持。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

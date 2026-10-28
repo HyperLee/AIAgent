@@ -10,7 +10,7 @@ internal enum PlanTaskKind { Analysis, Read, Write, Validation }
 internal enum PlanTaskState { Pending, InProgress, Completed, Blocked }
 internal enum TaskCompletionBasis { None, LocalOperation, ModelAssessment }
 internal enum PlanApprovalDecision { Approved, Declined, Cancelled, EndOfInput, Unavailable }
-internal enum ToolCapability { Unspecified, WorkspaceRead, WorkspaceWrite, SubmitPlan, UpdateTask, DotnetTask, GitRead }
+internal enum ToolCapability { Unspecified, WorkspaceRead, WorkspaceWrite, SubmitPlan, UpdateTask, DotnetTask, GitRead, ExternalRead }
 
 internal static class PlanLimits
 {
@@ -106,7 +106,7 @@ internal sealed class TaskOperationFact(string operationId, TaskExecutionContext
     public override string ToString() => "[TaskOperationFact]";
 }
 
-internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock, long rulesRevision = 0, SkillsOperationStamp? skillsStamp = null)
+internal sealed class PlanApprovalPreview(string planId, long revision, long generation, string displayBlock, long rulesRevision = 0, SkillsOperationStamp? skillsStamp = null, McpOperationStamp? mcpStamp = null)
 {
     internal string PlanId { get; } = planId;
     internal long Revision { get; } = revision;
@@ -114,6 +114,7 @@ internal sealed class PlanApprovalPreview(string planId, long revision, long gen
     internal long RulesRevision { get; } = rulesRevision;
     internal string DisplayBlock { get; } = displayBlock;
     internal SkillsOperationStamp? SkillsStamp { get; } = skillsStamp;
+    internal McpOperationStamp? McpStamp { get; } = mcpStamp;
     public override string ToString() => "[PlanApprovalPreview]";
 }
 

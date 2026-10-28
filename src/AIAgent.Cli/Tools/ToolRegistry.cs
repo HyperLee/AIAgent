@@ -13,7 +13,12 @@ internal sealed class ToolRegistry
     private readonly Dictionary<string, ToolCapability> _capabilities = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<LlmToolDefinition> _definitions;
     internal AgentExecutionPolicy ExecutionPolicy { get; }
-    internal IReadOnlyList<LlmToolDefinition> Definitions => Array.AsReadOnly(_definitions.Where(d => !IsModeRestricted(d.Name)).ToArray());
+    internal IReadOnlyList<LlmToolDefinition> Definitions => CaptureSnapshot().Definitions;
+    internal ToolRegistrySnapshot CaptureSnapshot()
+    {
+        lock (ExecutionPolicy.Plans.DecisionGate) return new(_definitions.Where(d => !IsModeRestricted(d.Name)).Concat(ExecutionPolicy.Mcp?.GetTools().Where(t => !IsModeRestricted(t.LocalName)).Select(t => t.Definition) ?? []).ToArray(), ExecutionPolicy.Mcp?.Capture());
+    }
+    internal bool IsExternalTool(string name) => name is McpProfile.DocsName or McpProfile.CodeName;
 
     internal ToolRegistry(IReadOnlyList<ITool> tools, ISensitiveDataPolicy policy, AgentExecutionPolicy? executionPolicy = null)
     {
@@ -31,7 +36,7 @@ internal sealed class ToolRegistry
         _definitions = Array.AsReadOnly(definitions.ToArray());
     }
 
-    internal bool IsModeRestricted(string name) => _capabilities.TryGetValue(name, out var capability) && !ExecutionPolicy.Allows(capability);
+    internal bool IsModeRestricted(string name) => IsExternalTool(name) ? !ExecutionPolicy.Allows(ToolCapability.ExternalRead) : _capabilities.TryGetValue(name, out var capability) && !ExecutionPolicy.Allows(capability);
     internal bool IsWorkspaceTool(string name) => _capabilities.TryGetValue(name, out var capability) &&
         capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite;
 
@@ -39,17 +44,22 @@ internal sealed class ToolRegistry
         capability is ToolCapability.WorkspaceRead or ToolCapability.WorkspaceWrite or ToolCapability.DotnetTask or ToolCapability.GitRead;
     internal bool IsProcessTool(string name) => _capabilities.TryGetValue(name, out var capability) && capability == ToolCapability.DotnetTask;
 
-    internal string? SafeName(string name) => _tools.ContainsKey(name) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
+    internal string? SafeName(string name) => (_tools.ContainsKey(name) || IsExternalTool(name)) && _policy.CanSendOrUse(name, ContentBoundary.ToolArguments) ? name : null;
 
     internal bool IsSensitive(LlmToolCall call) => !_policy.CanSendOrUse(call.Name, ContentBoundary.ToolArguments) ||
         call.CallId is { } id && !_policy.CanSendOrUse(id, ContentBoundary.ToolArguments) ||
         SensitiveJson.Contains(call.Arguments, _policy, ContentBoundary.ToolArguments);
 
-    internal async Task<ToolExecutionResult> DispatchAsync(LlmToolCall call, CancellationToken cancellationToken)
+    internal Task<ToolExecutionResult> DispatchAsync(LlmToolCall call, CancellationToken cancellationToken) => DispatchAsync(call, CaptureSnapshot(), cancellationToken);
+    internal async Task<ToolExecutionResult> DispatchAsync(LlmToolCall call, ToolRegistrySnapshot snapshot, CancellationToken cancellationToken)
     {
         using var generation = ExecutionPolicy.Plans.BorrowGeneration();
         if (cancellationToken.IsCancellationRequested) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Cancelled, "none", _policy));
         if (IsSensitive(call)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "sensitive_arguments", _policy));
+        if (snapshot.McpStamp is { } mcpStamp && ExecutionPolicy.Mcp?.IsCurrent(mcpStamp) != true)
+            return new(ToolStatus.Rejected, "mcp_changed", ToolResponseWriter.Create(ToolStatus.Rejected, "mcp_changed", _policy).Response, stopAfterOperation: true);
+        if (IsExternalTool(call.Name) && ExecutionPolicy.Mcp is { } mcp && snapshot.McpStamp is { } stamp)
+            return await mcp.InvokeAsync(call.Name, call.Arguments, stamp, cancellationToken);
         if (!_tools.TryGetValue(call.Name, out var tool)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy));
         if (!ExecutionPolicy.Plans.IsExecutionCurrent) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Failed, "unavailable", _policy));
         if (IsModeRestricted(call.Name)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "mode_restricted", _policy));

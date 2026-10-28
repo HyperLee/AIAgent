@@ -46,7 +46,7 @@ internal enum WorkspaceErrorCode
     UnsupportedMetadata, ApprovalDeclined, Conflict, PublishUnsupported, WriteUnconfirmed, CleanupFailure,
     ModeRestricted, PlanNotApproved, TaskRequired, TaskScopeMismatch, EvidenceLimit, PlanTooLarge,
     RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit, SkillsUnavailable, SkillsChanged, SkillsLimit,
-    CheckpointLimit, CheckpointGitConflict, CheckpointManualRequired, CheckpointUnavailable
+    CheckpointLimit, CheckpointGitConflict, CheckpointManualRequired, CheckpointUnavailable, McpChanged
 }
 
 internal static class WorkspaceLimits

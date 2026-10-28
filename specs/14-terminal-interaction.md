@@ -1,5 +1,9 @@
 # 14：終端機操作改善開發規格書
 
+## 第 18 份產品實作接續（2026-10-28）
+
+新增 MCP 外送隱藏確認，沿原唯一讀取者、完整安全預覽、進出排空及回顯恢復。每筆都需新 y／yes，遠端文字／預輸入不授權；Ctrl+C 取消後等自有收尾，EOF 正常退出，關閉故障退出 1。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 承接 TERM-HO-009：/skills 沿全域單行／敏感閘門、busy 排空與單一讀取者；來源文字、yes、F2／F3 或歷史回取不是新選用／核准，Ctrl+C／EOF 等待真實收尾。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

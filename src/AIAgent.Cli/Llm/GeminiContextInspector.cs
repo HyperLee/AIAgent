@@ -74,7 +74,7 @@ public sealed partial class GeminiClient
 internal static class GeminiContextTools
 {
     private static readonly HashSet<string> Registered = new(StringComparer.Ordinal)
-    { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range" };
+    { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range", McpProfile.DocsName, McpProfile.CodeName };
     internal static JsonElement? Project(LlmToolResult result)
     {
         if (!Registered.Contains(result.Name)) return null;
@@ -90,7 +90,12 @@ internal static class GeminiContextTools
                 w.WritePropertyName(target ?? name); value.WriteTo(w);
             }
             Copy(root, "status"); Copy(root, "error_code");
-            if (result.Name is not ("submit_plan" or "update_task") && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+            if (result.Name is McpProfile.DocsName or McpProfile.CodeName)
+            {
+                if (root.TryGetProperty("data", out var external) && external.ValueKind == JsonValueKind.Object)
+                    foreach (var field in new[] { "source", "server_id", "remote_tool", "catalog_revision" }) Copy(external, field);
+            }
+            else if (result.Name is not ("submit_plan" or "update_task") && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
             {
                 Copy(data, "path"); Copy(data, "byte_count"); Copy(data, "truncated");
                 if (result.Name is "git_status" or "git_diff" or "read_git_file_range")

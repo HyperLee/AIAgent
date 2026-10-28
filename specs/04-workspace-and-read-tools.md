@@ -1,5 +1,9 @@
 # 04：工作區與唯讀工具子規格
 
+## 第 18 份產品實作接續（2026-10-28）
+
+外部工具共用排他操作租約與目前 Rules／Scope／Skills 閘門；工作區操作候選綁 MCP 戳記。MCP 不呼叫一般 ReadFileAsync、不取得檔案權限或建立修改快照；已開始發布的本機結果先查核與入帳再撤確認。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 新增 ISkillsWorkspace 專用安全來源讀取，共用原安全核心、規則邊界及排他租約；不建立 read_file 快照／Plan 事實。技能啟停／失效清除修改基準；原敏感、種類、連結與深度限制不放寬。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

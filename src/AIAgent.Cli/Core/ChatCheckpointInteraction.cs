@@ -51,9 +51,9 @@ internal sealed partial class ChatApplication
                 _ => throw new InvalidOperationException("檢查點指令無效")
             });
             // Known publication facts are displayed before cancellation, EOF, or rule changes settle.
-            ShowCheckpointResult(result);
+            await ShowCheckpointResultAsync(result);
             var skillsFatal = _skills?.FatalFailure == true;
-            if (result.ErrorCode == "sensitive_content" || _executionPolicy!.Recovery.RequiresContextReset || _skills?.RequiresContextReset == true) ClearConversationState();
+            if (result.ErrorCode == "sensitive_content" || _executionPolicy!.Recovery.RequiresContextReset || _skills?.RequiresContextReset == true) await ClearConversationStateAsync();
             if (skillsFatal || result.Fatal || result.CleanupFailed || result.WriteState == FileWriteState.Unconfirmed || result.Decision == FileApprovalDecision.Unavailable)
                 RequestStop(StopReason.Failure);
             else if (result.Decision == FileApprovalDecision.EndOfInput) RequestStop(StopReason.Normal);
@@ -69,7 +69,7 @@ internal sealed partial class ChatApplication
         }
     }
 
-    private void ShowCheckpointResult(CheckpointOperationResult result)
+    private async Task ShowCheckpointResultAsync(CheckpointOperationResult result)
     {
         var text = result.DisplayBlock ?? "[檢查點操作] " + result.ErrorCode;
         if (result.WriteState != FileWriteState.NotApplied || result.CleanupFailed)
@@ -84,7 +84,7 @@ internal sealed partial class ChatApplication
         }
         if (!CheckpointDisplaySafe(text))
         {
-            ClearConversationState();
+            await ClearConversationStateAsync();
             interaction.Show(new(ChatEventKind.InputRejected, text: "無法安全完整顯示檢查點操作結果；已清除記憶體。"));
             return;
         }

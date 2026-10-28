@@ -16,7 +16,7 @@ internal sealed partial class ChatApplication
             try
             {
                 if (command.Kind == SkillsCommandKind.Status) ShowContextBlock(_skills.Display() ?? "skills_limit");
-                else ShowSkillsResult(_skills.Disable());
+                else await ShowSkillsResultAsync(_skills.Disable());
             }
             catch (SkillsSensitiveException) { ShowContextBlock("sensitive_content", true); }
             return true;
@@ -30,9 +30,9 @@ internal sealed partial class ChatApplication
         });
         return true;
     }
-    private void ShowSkillsResult(SkillsOperationResult result)
+    private async Task ShowSkillsResultAsync(SkillsOperationResult result)
     {
-        if (result.RequiresContextReset) ClearConversationState();
+        if (result.RequiresContextReset) await ClearConversationStateAsync();
         if (result.DisplayBlock is { } display) ShowContextBlock(display);
         ShowContextBlock("技能操作：" + result.ErrorCode + "；等待新指示。", result.ErrorCode is not ("none" or "no_change"));
         if (result.ErrorCode == "io_failure" || _skills?.FatalFailure == true) RequestStop(StopReason.Failure);
@@ -49,9 +49,9 @@ internal sealed partial class ChatApplication
         {
             _busyObserver = interaction.ObserveBusyInput(HandleSignal);
             var result = await operation(cancellation.Token);
-            if (show && !Stopping) ShowSkillsResult(result);
+            if (show && !Stopping) await ShowSkillsResultAsync(result);
         }
-        catch (SkillsSensitiveException) { ClearConversationState(); ShowContextBlock("sensitive_content", true); }
+        catch (SkillsSensitiveException) { await ClearConversationStateAsync(); ShowContextBlock("sensitive_content", true); }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         { if (!Stopping) ShowContextBlock("技能操作已取消；等待新指示。"); }
         catch (Exception) { RequestStop(StopReason.Failure); }

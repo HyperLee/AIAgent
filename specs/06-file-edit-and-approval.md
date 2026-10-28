@@ -1,5 +1,9 @@
 # 06：檔案編輯與核准子規格
 
+## 第 18 份產品實作接續（2026-10-28）
+
+檔案候選及確認後來源重驗納入 MCP 戳記；外送確認與檔案確認獨立，不能互相沿用。MCP 失效先保留已發布寫入與 checkpoint／事實，再沿共同 Settle 撤確認與清修改基準，不復原已寫檔案。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 操作與預覽綁技能戳記，核准後及發布前重驗；合法修改目前 SKILL 使用舊戳記完成發布／查核，先保留寫入與 checkpoint 事實，再 Stale 並停止剩餘工具。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

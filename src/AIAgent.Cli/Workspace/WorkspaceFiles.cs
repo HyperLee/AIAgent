@@ -70,7 +70,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             generation = _snapshots.Generation;
             _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;
         }
-        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration) { Lease = lease! }, lease!);
+        return RunCoreAsync(operation, end, new WorkspaceOperation(generation, _activePlanGeneration) { Lease = lease!, McpStamp = _executionPolicy.Mcp?.Capture() }, lease!);
     }
 
     private async Task<T> RunCoreAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
@@ -125,6 +125,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             lock (_gate) { finished = _inFlight; _inFlight = null; _activeCancellation = null; }
             _executionPolicy.Rules?.Settle();
             _executionPolicy.Skills?.Settle();
+            _executionPolicy.Mcp?.Settle();
             finished?.TrySetResult();
         }
     }
@@ -349,6 +350,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     {
         internal ProjectRulesStamp? RulesStamp { get; set; }
         internal SkillsOperationStamp? SkillsStamp { get; set; }
+        internal McpOperationStamp? McpStamp { get; set; }
         internal WorkspaceOperationLease? Lease { get; init; }
         internal List<ProjectRuleObservation> RuleBoundaries { get; } = [];
         internal long Generation { get; } = generation;

@@ -1,5 +1,9 @@
 # 12：專案規則載入開發規格書
 
+## 第 18 份產品實作接續（2026-10-28）
+
+MCP 沿目前 Valid Rules／Scope 重驗，不把 server instructions 當規則或授權。成功切 Scope 斷線並關閉 client，同 Scope 規則換版使目錄 Stale；no_change 保留。候選失敗、原始規則 Stale 與先記事實後撤確認仍由本份擁有。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 依 FUT10-HO-001～008 接入獨立技能來源；目前 Scope 是技能根的唯一所有者。相同 Valid 規則 no_change 保留技能，同 Scope 新規則使 Stale，Scope 改變直接停用且不掃新根。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

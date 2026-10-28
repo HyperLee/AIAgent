@@ -18,7 +18,7 @@ internal sealed partial class ChatApplication
 
     private async Task ExecuteModeAsync()
     {
-        if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync()) return;
+        if (!await CheckRulesReadyAsync() || !await CheckSkillsReadyAsync() || !CheckMcpReady()) return;
         if (_plans!.Snapshot is null && (_work?.ResumeExecutionConfirmationRequired == true ||
             _executionPolicy!.Recovery.Last is not null && WorkCoordinator().ResumeExecutionConfirmationRequired))
         { await RunWorkOperationAsync((work, token) => work.ConfirmExecuteAsync(ConfirmWorkAsync, token)); return; }

@@ -1,9 +1,11 @@
 using AIAgent.Cli.Security;
+using AIAgent.Cli.Tools;
 
 namespace AIAgent.Cli.Core;
 
 internal sealed partial class AgentRunner
 {
+    internal static IMcpContentGuard CreateMcpGuard(ISensitiveDataPolicy policy, string instruction) => new McpContentGuard(policy, [instruction, CompactionInstruction]);
     private sealed class ContextFlowException(AgentStopReason reason, AgentTurnStatus status = AgentTurnStatus.Stopped) : Exception("Context 流程停止")
     {
         internal AgentStopReason Reason { get; } = reason;
@@ -12,20 +14,23 @@ internal sealed partial class AgentRunner
     private sealed partial class Turn
     {
         private ContextOperationStamp? _requestStamp;
+        private ToolRegistrySnapshot? _requestRegistry;
         private LlmRequest Request()
         {
             lock (_gate)
             {
                 var appendix = registry.ExecutionPolicy.Plans.StateAppendix();
                 var memory = coordinator?.BuildMemoryAppendix() ?? "";
+                var mcp = registry.ExecutionPolicy.Mcp?.BuildAppendix(review is not null) ?? "";
                 var rules = registry.ExecutionPolicy.Rules?.BuildAppendix() ?? throw new ProjectRulesFlowException("rules_unavailable");
                 var skills = registry.ExecutionPolicy.Skills?.BuildAppendix() ?? throw new SkillsFlowException("skills_unavailable");
                 var reviewAppendix = review?.Appendix() ?? "";
                 var recovery = registry.ExecutionPolicy.Recovery.BuildAppendix();
                 _requestStamp = coordinator?.Capture();
-                if (appendix is null || !policy.CanSendOrUse(instruction + rules + skills + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
+                _requestRegistry = registry.CaptureSnapshot();
+                if (appendix is null || !policy.CanSendOrUse(instruction + rules + skills + mcp + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + rules + skills + memory + appendix + reviewAppendix + recovery, _messages, registry.Definitions);
+                return new(instruction + rules + skills + mcp + memory + appendix + reviewAppendix + recovery, _messages, _requestRegistry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -145,6 +150,7 @@ internal sealed partial class AgentRunner
             catch (OperationCanceledException) when (token.IsCancellationRequested || Cancelled)
             { return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled); }
             catch (ProjectRulesFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
+            catch (McpFailure failure) { if (failure.Code is "sensitive_content" or "sensitive_arguments") _reset = true; return Finish(AgentTurnStatus.Stopped, McpReason(failure.Code)); }
             catch (SkillsFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
             catch (SkillsSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ProjectRulesSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }

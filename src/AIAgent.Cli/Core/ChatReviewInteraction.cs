@@ -39,19 +39,19 @@ internal sealed partial class ChatApplication
             var display = _reviews is null ? "尚無成功審查報告。" : await _reviews.ShowAsync(_rules!.Capture().Scope, cancellation.Token);
             if (!cancellation.IsCancellationRequested) ShowContextBlock(display ?? "無法安全完整顯示報告。", display is null);
         }
-        catch (GitFailure failure) { HandleReviewLocalFailure(failure.Code); }
+        catch (GitFailure failure) { await HandleReviewLocalFailureAsync(failure.Code); }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { if (!Stopping) ShowContextBlock("審查顯示已取消。"); }
         finally { StopBusyObserver(); lock (_gate) { _turnCancellation = null; _state = Stopping ? ChatState.Stopping : ChatState.AwaitingInput; } }
     }
 
-    private void HandleReviewLocalFailure(string error)
+    private async Task HandleReviewLocalFailureAsync(string error)
     {
         if (_skills?.RequiresContextReset == true) error = "sensitive_content";
         var skillsFatal = _skills?.FatalFailure == true;
         _reviews?.Failed(error);
         if (error is "process_unconfirmed" or "process_cleanup_failed")
         { _processFatalStop = true; _executionPolicy!.StopProcesses(); RequestStop(StopReason.Failure); }
-        if (error == "sensitive_content") ClearConversationState();
+        if (error == "sensitive_content") await ClearConversationStateAsync();
         if (skillsFatal) RequestStop(StopReason.Failure);
         if (error == "workspace_unavailable") _reviews?.Clear();
         ShowContextBlock("Git 審查：" + error + "；本次未發布新報告。", true);

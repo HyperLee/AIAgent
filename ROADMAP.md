@@ -31,8 +31,8 @@
 | FUT-07 | [終端機操作改善](specs/14-terminal-interaction.md) | 已實作；分層驗收見README | 改善日常輸入、編輯與進度辨識。 |
 | FUT-08 | [工作保存與續接](specs/15-work-save-and-resume.md) | 已接入；分層驗證見 README | 讓跨次工作能保留目標、決策與待辦。 |
 | FUT-09 | [修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md) | 已接入產品；分層驗證見 README | 提供可追蹤、可確認且能辨識衝突的修改復原。 |
-| FUT-10 | [可重用工作流程（Skills）](specs/17-reusable-workflows-and-skills.md) | 已定規格；待實作 | 將常用開發流程整理成可按需載入的能力。 |
-| FUT-11 | [MCP 外部工具整合](specs/18-mcp-external-tools.md) | 已定規格；待實作 | 連接外部工具與資料來源。 |
+| FUT-10 | [可重用工作流程（Skills）](specs/17-reusable-workflows-and-skills.md) | 已接入產品；分層驗證見 README | 將常用開發流程整理成可按需載入的能力。 |
+| FUT-11 | [MCP 外部工具整合](specs/18-mcp-external-tools.md) | 已接入產品；分層驗證見 README | 連接外部工具與資料來源。 |
 | FUT-12 | 網頁查詢與文件擷取 | 延伸 | 取得具來源的官方文件與最新資訊。 |
 | FUT-13 | 多模型與供應商支援 | 延伸 | 依任務明確選擇不同模型或供應商。 |
 | FUT-14 | 多 Agent 分工 | 延伸 | 分派獨立工作並彙整成果。 |
@@ -174,7 +174,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 
 ### FUT-11：MCP 外部工具整合
 
-狀態：已獨立定義[第 18 份開發規格](specs/18-mcp-external-tools.md)，產品待實作。首版固定 Microsoft Learn 公開 Streamable HTTP、兩個搜尋工具及逐次完整外送預覽／新確認；固定 MCP 2026-07-28／C# SDK 2.3.0，真服務相容性尚未驗證，不自動回退。以下保留原選題摘要，廣泛服務、認證、外部寫入與一般網頁擷取仍須另定。
+狀態：已依[第 18 份開發規格](specs/18-mcp-external-tools.md)接入產品，當次分層證據見 [README](README.md#mcp-validation)。首版固定 Microsoft Learn 公開 Streamable HTTP、兩個搜尋工具及逐次完整外送預覽／新確認；固定 MCP 2026-07-28／C# SDK 2.3.0，真服務相容性尚未驗證，不自動回退。以下保留原選題摘要，廣泛服務、認證、外部寫入與一般網頁擷取仍須另定。
 
 開發前必讀第 12～17 份的 [RULE-HO-009](specs/12-project-rules-loading.md#future-handoffs)、[GIT-HO-009](specs/13-git-diff-and-code-review.md#future-handoffs)、[TERM-HO-009](specs/14-terminal-interaction.md#future-handoffs)、[SAVE-HO-010](specs/15-work-save-and-resume.md#future-handoffs)、[CKPT-HO-010](specs/16-change-checkpoints-and-recovery.md#future-handoffs)、[SKILL-HO-010](specs/17-reusable-workflows-and-skills.md#future-handoffs)，並核對當時產品。第 18 份的[上游承接](specs/18-mcp-external-tools.md#upstream-handoffs)與[前向交接 memo](specs/18-mcp-external-tools.md#future-handoffs)集中記錄擁有者及驗收責任，不另建重複筆記；外部結果不能冒充本機規則、核准、Git 快照、完成證據或復原來源。FUT-12 僅在採 MCP 路線時條件式依賴，沒有必須合併開發的 FUT。
 

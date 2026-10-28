@@ -55,7 +55,7 @@ internal sealed partial class ChatApplication
             ShowWorkResult(result);
             if (result.RequiresContextReset || result.ModelErrorCode == LlmErrorCode.AuthenticationFailed)
             {
-                ClearConversationState(); LastWork = result;
+                await ClearConversationStateAsync(); LastWork = result;
             }
             if (result.Fatal || result.Decision == WorkApprovalDecision.Unavailable || _processFatalStop) RequestStop(StopReason.Failure);
             else if (result.Decision == WorkApprovalDecision.EndOfInput) RequestStop(StopReason.Normal);

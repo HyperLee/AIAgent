@@ -5,6 +5,7 @@ using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
 using AIAgent.Cli.Git;
 using AIAgent.Cli.Llm;
+using AIAgent.Cli.Mcp;
 using AIAgent.Cli.Processes;
 using AIAgent.Cli.Security;
 using AIAgent.Cli.Tools;
@@ -28,7 +29,8 @@ try
     var session = result.TakeSession();
     var chat = new ChatApplication(interaction, new OfflineRuntime(scenario, gate), new(), new(), "test instruction", new OfflineWorkspaceFactory(scenario, gate), scenario.StartsWith("build", StringComparison.Ordinal) ? new OfflineProcessFactory(scenario, gate) : null,
         scenario.StartsWith("review", StringComparison.Ordinal) ? new OfflineGitFactory(scenario, gate) : null,
-        scenario.StartsWith("work", StringComparison.Ordinal) ? () => new OfflineWorkStore(scenario, session) : null);
+        scenario.StartsWith("work", StringComparison.Ordinal) ? () => new OfflineWorkStore(scenario, session) : null,
+        scenario.StartsWith("mcp", StringComparison.Ordinal) ? guard => new McpReadClient(guard, new OfflineMcpHandler(scenario)) : null);
     interrupts.RouteTo(chat.Interrupt);
     return await chat.RunAsync(session, cancellation.Token);
 }
@@ -58,6 +60,11 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("mcp", StringComparison.Ordinal))
+            {
+                if (request.Messages[^1].Kind != LlmMessageKind.ToolResults) return PlanCalls((McpProfile.DocsName, new { query = "公開 C# 文件😀" }));
+                return new(LlmStatus.Completed, LlmErrorCode.None, "MCP_OFFLINE_RESULT", [], LlmMessage.FromModel(new object()), null, true, false);
+            }
             if (scenario.StartsWith("skills", StringComparison.Ordinal))
             {
                 if (scenario == "skills-approval" && _calls == 1) return PlanCalls(("create_file", new { path = "new.md", content = "candidate" }));
@@ -272,6 +279,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     private bool _processApprovalPrinted;
     private bool _workApprovalPrinted;
     private bool _checkpointApprovalPrinted;
+    private bool _mcpApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -306,12 +314,19 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
             _processApprovalPrinted = false; Console.WriteLine("OFFLINE_PROCESS_APPROVAL_READY");
         }
         if (key is null && _checkpointApprovalPrinted) { _checkpointApprovalPrinted = false; Console.WriteLine("OFFLINE_CHECKPOINT_APPROVAL_READY"); }
+        if (key is null && _mcpApprovalPrinted) { _mcpApprovalPrinted = false; Console.WriteLine("OFFLINE_MCP_APPROVAL_READY"); }
         if (key is null && _workApprovalPrinted) { _workApprovalPrinted = false; Console.WriteLine("OFFLINE_WORK_APPROVAL_READY"); }
         return key;
     }
     public void Write(string text)
     {
         source.Write(text);
+        if (text.EndsWith("確認本次外送？[y/N] ", StringComparison.Ordinal))
+        {
+            _mcpApprovalPrinted = true;
+            if (scenario == "mcp-preview-gated" && !_previewWaited)
+            { _previewWaited = true; Console.WriteLine("OFFLINE_MCP_PREVIEW_PAUSED"); gate!.ReadExactly(new byte[1]); }
+        }
         if (text.EndsWith(CheckpointLimits.RestorePrompt, StringComparison.Ordinal) || text.EndsWith(CheckpointLimits.ForgetPrompt, StringComparison.Ordinal))
         {
             _checkpointApprovalPrinted = true;

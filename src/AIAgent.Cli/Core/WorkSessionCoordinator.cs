@@ -55,6 +55,7 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
             try
             {
                 RequireSafe(title);
+                plans.Mcp?.RequireReadyForGeneration();
                 await RequireRulesAsync(token);
                 var stamp = contexts.Capture();
                 if (plans.HasReservations || plans.HasInProgress) throw new WorkDocumentException("work_revision_conflict");
@@ -110,6 +111,7 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
                 return new(published.ErrorCode, generation: generation, mutation: published, workId: id);
             }
             catch (OperationCanceledException) { return new("work_cancelled", generation: generation, decision: WorkApprovalDecision.Cancelled); }
+            catch (McpFailure ex) { return new(ex.Code, requiresContextReset: ex.Code is "sensitive_content" or "sensitive_arguments", fatal: ex.Code == "unavailable"); }
             catch (WorkDocumentException ex) { return new(ex.Code, generation: generation, requiresContextReset: generation is not null && ex.Code == "work_sensitive_content"); }
             catch (WorkStoreException ex) { return new(ex.Code, generation: generation); }
             catch (ContextCapacityException) { return new("work_capacity", generation: generation); }
@@ -217,6 +219,7 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
             return await action();
         }
         catch (OperationCanceledException) { return new("work_cancelled", decision: WorkApprovalDecision.Cancelled); }
+        catch (McpFailure ex) { return new(ex.Code, requiresContextReset: ex.Code is "sensitive_content" or "sensitive_arguments", fatal: ex.Code == "unavailable"); }
         catch (WorkDocumentException ex) { return new(ex.Code); }
         catch (WorkStoreException ex) { return new(ex.Code); }
         catch (ContextCapacityException) { return new("work_capacity"); }
@@ -282,6 +285,8 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
         AgentStopReason.RulesUnavailable => "rules_unavailable",
         AgentStopReason.RulesScopeMismatch => "rules_scope_mismatch",
         AgentStopReason.RulesLimit => "rules_limit",
+        AgentStopReason.McpChanged => "mcp_changed",
+        AgentStopReason.McpStopped => "mcp_catalog_stale",
         AgentStopReason.ContextCompactionFailed => "work_revision_conflict",
         _ => "work_summary_failed"
     };

@@ -14,6 +14,7 @@ internal interface IChatInteraction
     void RememberAcceptedInput(string text);
     void ClearInputState();
     void Show(ChatEvent message);
+    ValueTask<McpApprovalDecision> ConfirmMcpAsync(McpApprovalPreview preview, CancellationToken cancellationToken) => new(McpApprovalDecision.Unavailable);
     ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(FileApprovalDecision.Unavailable);
     ValueTask<ProcessApprovalDecision> ConfirmProcessAsync(ProcessApprovalPreview preview, CancellationToken cancellationToken) => new(ProcessApprovalDecision.Unavailable);
     ValueTask<PlanApprovalDecision> ConfirmPlanAsync(PlanApprovalPreview preview, CancellationToken cancellationToken) => new(PlanApprovalDecision.Unavailable);
@@ -28,7 +29,7 @@ internal interface IChatRuntimeFactory
     ILlmContextInspector? CreateContextInspector(ILlmClient client) => null;
 }
 
-internal enum ChatState { AwaitingInput, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
+internal enum ChatState { AwaitingInput, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, AwaitingMcpApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
 internal enum ChatInputStatus { Submitted, Invalid, EndOfInput, Cancelled, Unavailable }
 internal enum KeyReplacementChoice { Reenter, Exit, EndOfInput, Cancelled, Unavailable }
 internal enum ChatControlSignal { CancelTurn, EndOfInput, Unavailable }

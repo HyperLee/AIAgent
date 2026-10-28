@@ -174,6 +174,7 @@ def main():
     work_cases(["dotnet", str(args.host.resolve())])
     checkpoint_cases(["dotnet", str(args.host.resolve())])
     skills_cases(["dotnet", str(args.host.resolve())])
+    mcp_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1231,6 +1232,69 @@ def skills_cases(host):
             terminal.finish(0)
             check("處理中".encode() not in terminal.output, "SKILL-AC-029-busy-input-no-generation")
             print("SKILL-AC-029-source-read-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
+
+
+def mcp_cases(host):
+    """MCP-AC-029: real hidden choices, bounded fake SDK service, deterministic gates."""
+    approval = b"OFFLINE_MCP_APPROVAL_READY"
+
+    def start(scenario="mcp-flow", gate_fd=None):
+        workspace = Path(tempfile.mkdtemp(prefix="aiagent-mcp-pty-"))
+        terminal = TerminalProcess(host + [scenario] + ([] if gate_fd is None else [str(gate_fd)]), workspace,
+                                   () if gate_fd is None else (gate_fd,))
+        terminal.wait_for(CONFIRM); terminal.send(b"yes\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r"); terminal.wait_for(HOST_PROMPT)
+        return terminal, workspace
+
+    def command(terminal, text):
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(text.encode() + b"\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+
+    terminal, _ = start()
+    try:
+        for text in ("/mcp", "/mcp tools", "/Mcp", "/mcp connect  learn", "/mcp connect learn", "/mcp tools", "/mcp reload"):
+            command(terminal, text)
+        check(b"Disconnected" in terminal.output and b"Ready" in terminal.output and b"invalid_mcp_command" in terminal.output, "MCP-AC-029-commands")
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"public question\r"); terminal.wait_for(approval)
+        check("公開 C# 文件".encode() in terminal.output and b"external_mcp" in terminal.output, "MCP-AC-029-complete-preview")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"MCP_OFFLINE_RESULT" in terminal.output and terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1, "MCP-AC-029-approved-call")
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"public question\r"); terminal.wait_for(approval, 2); terminal.send(b"n\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1, "MCP-AC-029-fresh-decline")
+        command(terminal, "/mcp disconnect"); terminal.send(b"/exit\r"); terminal.finish(0)
+        print("MCP-AC-029-commands-preview-fresh-confirmation: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    terminal, workspace = start()
+    try:
+        command(terminal, "/mcp connect learn"); count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"question\r"); terminal.wait_for(approval)
+        (workspace / "mcp-stale").write_text("synthetic change", encoding="utf-8")
+        terminal.send(b"yes\r"); terminal.wait_for(HOST_PROMPT, count + 1); command(terminal, "/mcp")
+        check(b"Stale" in terminal.output and b"OFFLINE_MCP_CALL_SENT" not in terminal.output, "MCP-AC-029-catalog-change-after-yes")
+        command(terminal, "/mcp disconnect"); terminal.send(b"/exit\r"); terminal.finish(0)
+        print("MCP-AC-029-stale-after-yes: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        read_fd, write_fd = os.pipe()
+        terminal, _ = start("mcp-call-gated", read_fd); os.close(read_fd)
+        try:
+            command(terminal, "/mcp connect learn"); count = terminal.output.count(HOST_PROMPT)
+            terminal.send(b"question\r"); terminal.wait_for(approval); terminal.send(b"yes\r")
+            terminal.wait_for(b"OFFLINE_MCP_CALL_WAITING"); terminal.send(b"/mcp disconnect\ryes\r" + control)
+            terminal.wait_for(b"OFFLINE_MCP_CALL_CLOSED")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, count + 1); terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1 and b"MCP_OFFLINE_RESULT" not in terminal.output, "MCP-AC-029-cancel-no-replay")
+            print("MCP-AC-029-call-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
         finally:
             os.close(write_fd); terminal.close()
 

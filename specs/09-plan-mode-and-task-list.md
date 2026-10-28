@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 18 份產品實作接續（2026-10-28）
+
+MCP Ready 時 Plan／Execute 為十一／十四項，斷線維持九／十二項，Review 為三項。ExternalRead 不進本機 TaskRequirement／事實；目錄變動撤執行確認但保留模式、PlanId／Revision、Completed 與 EvidenceEpoch，投影預留 MCP 版本及收尾原因。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 Plan 確認與投影加入技能版本／戳記、skills_changed 與必然收尾餘裕。啟停／失效先讓預留事實入帳，再回 Draft、封鎖在途及換代次；PlanId／Revision、Completed／歷史事實與 EvidenceEpoch 保留。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。

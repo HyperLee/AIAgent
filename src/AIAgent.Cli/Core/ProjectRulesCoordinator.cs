@@ -102,6 +102,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
                 _snapshot = new(next, candidate.Chain, projection); _scope = candidate.Chain.Scope;
                 _revision = next; _generation = nextGeneration; _status = ProjectRulesStatus.Valid;
                 _execution.Skills?.RulesPublished(stamp.Scope, candidate.Chain.Scope);
+                _execution.Mcp?.RulesPublished(stamp.Scope, candidate.Chain.Scope);
                 _plans.CurrentRulesRevision = next; _pendingInvalidation = stamp.RulesRevision != 0;
             }
             return "none";
@@ -120,6 +121,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
             owned?.Dispose();
             lock (_gate) { _activeCancellation = null; _active?.TrySetResult(); _active = null; }
             Settle();
+            if (_execution.Mcp is { } mcp) await mcp.DrainDisconnectedAsync();
         }
     }
 
@@ -180,6 +182,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
             _status = _snapshot is null ? ProjectRulesStatus.Unavailable : ProjectRulesStatus.Stale;
             if (_generation == long.MaxValue) _fatalFailure = true; else _generation++;
             _pendingInvalidation = true;
+            _execution.Mcp?.MarkStale();
         }
     }
     internal void Settle()

@@ -30,6 +30,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             var turn = new Turn(client, registry, policy, systemInstruction, programUsage, onEvent,
                 initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector, review: review);
             _budget.BeginConversation();
+            if (review is null) registry.ExecutionPolicy.Mcp?.BeginTurn();
             return await turn.RunAsync();
         }
         catch (Exception) { return Unavailable(AgentStopReason.LocalFailure); }
@@ -61,6 +62,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
         private readonly List<LlmMessage> _messages = initial.ToList();
         private readonly List<LlmMessage> _current = initial.Count == 0 ? [] : [initial[^1]];
         private readonly List<LocalToolOutcome> _operations = [];
+        private McpOperationStamp? _mcpStamp;
+        private static AgentStopReason McpReason(string code) => code is "mcp_changed" or "mcp_catalog_stale" ? AgentStopReason.McpChanged : code is "sensitive_content" or "sensitive_arguments" ? AgentStopReason.SensitiveData : AgentStopReason.McpStopped;
         private readonly UsageAccumulator _usage = new();
         private bool _cancelled;
         private bool _reset;
@@ -87,6 +90,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     _reset |= result.RequiresContextReset;
                     if (!ValidResult(result)) return Invalid();
                     await RequireReviewAsync();
+                    RequireMcpCurrent();
                     _modelStatus = result.Status; _modelError = result.ErrorCode;
                     _reset |= result.ErrorCode is LlmErrorCode.SensitiveOutput or LlmErrorCode.InvalidResponse or LlmErrorCode.UnexpectedToolCall;
                     if (policy.ContainsCurrentKey(result.SafeText))
@@ -110,6 +114,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                         try { await RequireRulesAsync(); }
                         catch (ProjectRulesFlowException ex)
                         { AddRemaining(result.ToolCalls, 0, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
+                        catch (McpFailure ex)
+                        { AddRemaining(result.ToolCalls, 0, "turn_stopped"); return Finish(AgentTurnStatus.Stopped, McpReason(ex.Code)); }
                         catch (SkillsFlowException ex)
                         { AddRemaining(result.ToolCalls, 0, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
                         catch (SkillsSensitiveException)
@@ -157,6 +163,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             catch (OperationCanceledException) when (token.IsCancellationRequested || Cancelled)
             { return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled); }
             catch (ProjectRulesFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
+            catch (McpFailure failure) { if (failure.Code is "sensitive_content" or "sensitive_arguments") _reset = true; return Finish(AgentTurnStatus.Stopped, McpReason(failure.Code)); }
             catch (SkillsFlowException failure) { return Finish(AgentTurnStatus.Stopped, failure.Reason); }
             catch (SkillsSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
             catch (ProjectRulesSensitiveException) { _reset = true; return Finish(AgentTurnStatus.Failed, AgentStopReason.SensitiveData); }
@@ -188,6 +195,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 try { await RequireRulesAsync(); }
                 catch (ProjectRulesFlowException ex)
                 { AddRemaining(calls, index, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
+                catch (McpFailure ex)
+                { AddRemaining(calls, index, "turn_stopped"); return Finish(AgentTurnStatus.Stopped, McpReason(ex.Code)); }
                 catch (SkillsFlowException ex)
                 { AddRemaining(calls, index, ex.Code); return Finish(AgentTurnStatus.Stopped, ex.Reason); }
                 catch (SkillsSensitiveException)
@@ -210,19 +219,22 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 ToolExecutionResult result;
                 var taskBound = registry.IsTaskOperation(call.Name) && registry.ExecutionPolicy.Plans.HasInProgress;
                 var localFailure = false;
-                try { result = await registry.DispatchAsync(call, token); }
+                try { result = await registry.DispatchAsync(call, _requestRegistry ?? registry.CaptureSnapshot(), token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 { result = ToolResponseWriter.Create(ToolStatus.Cancelled, "none", policy); }
                 catch (Exception)
                 { result = ToolResponseWriter.Create(ToolStatus.Failed, "unavailable", policy); localFailure = true; }
 
                 AddOperation(call, result);
-                if (result.Response is null || registry.ExecutionPolicy.Skills?.RequiresContextReset == true) _reset = true;
+                if (result.Response is null || registry.ExecutionPolicy.Skills?.RequiresContextReset == true || registry.ExecutionPolicy.Mcp?.RequiresContextReset == true) _reset = true;
                 var reason = result.ProcessCleanupFailed || result.ProcessSummary?.EndState == ProcessEndState.Unconfirmed ||
                     result.ErrorCode is "process_unconfirmed" or "process_cleanup_failed" ? AgentStopReason.ProcessUnconfirmed
                     : localFailure || registry.ExecutionPolicy.Skills?.FatalFailure == true || registry.ExecutionPolicy.Rules?.FatalFailure == true || _eventFailed || result.CleanupFailed || result.ErrorCode is "unavailable" or "checkpoint_unavailable" ? AgentStopReason.LocalFailure
                     : result.WriteState == FileWriteState.Unconfirmed ? AgentStopReason.WriteUnconfirmed
                     : registry.ExecutionPolicy.Skills?.RequiresContextReset == true || result.Response is null || result.ErrorCode is "sensitive_arguments" or "sensitive_content" ? AgentStopReason.SensitiveData
+                    : registry.ExecutionPolicy.Mcp?.RequiresContextReset == true ? AgentStopReason.SensitiveData
+                    : result.McpOutcome is not null && result.StopAfterOperation ? McpReason(result.ErrorCode)
+                    : result.ErrorCode == "mcp_changed" ? AgentStopReason.McpChanged
                     : result.ErrorCode == "process_limit" ? AgentStopReason.ProcessResourceLimit
                     : result.ErrorCode == "workspace_unavailable" ? AgentStopReason.WorkspaceUnavailable
                     : result.ErrorCode is "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" ? new ProjectRulesFlowException(result.ErrorCode).Reason
@@ -247,7 +259,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     if (result.ErrorCode == "sensitive_arguments") _reset = true;
                     AddRemaining(calls, index + 1, reason == AgentStopReason.TurnCancelled ? "turn_cancelled" : "turn_stopped");
                     return Finish(reason == AgentStopReason.TurnCancelled ? AgentTurnStatus.Cancelled :
-                        reason is AgentStopReason.SkillsChanged or AgentStopReason.SkillsUnavailable or AgentStopReason.SkillsLimit or AgentStopReason.RulesUnavailable or AgentStopReason.RulesChanged or AgentStopReason.RulesScopeMismatch or AgentStopReason.RulesLimit or AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed or
+                        reason is AgentStopReason.McpStopped or AgentStopReason.McpChanged or AgentStopReason.SkillsChanged or AgentStopReason.SkillsUnavailable or AgentStopReason.SkillsLimit or AgentStopReason.RulesUnavailable or AgentStopReason.RulesChanged or AgentStopReason.RulesScopeMismatch or AgentStopReason.RulesLimit or AgentStopReason.WorkspaceUnavailable or AgentStopReason.ApprovalDeclined or AgentStopReason.FileConflict or AgentStopReason.WriteUnconfirmed or
                             AgentStopReason.ModeRestricted or AgentStopReason.PlanRequired or AgentStopReason.PlanNotApproved or AgentStopReason.TaskBlocked or AgentStopReason.TaskResourceLimit ||
                         (reason is AgentStopReason.FileWriteFailed or AgentStopReason.ProcessFailed) && result.Status == ToolStatus.Rejected || reason == AgentStopReason.ProcessResourceLimit ? AgentTurnStatus.Stopped : AgentTurnStatus.Failed, reason);
                 }
@@ -286,8 +298,17 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             catch (Exception) { _eventFailed = true; throw; }
         }
 
+        private void RequireMcpCurrent()
+        {
+            var mcp = registry.ExecutionPolicy.Mcp;
+            if (mcp is null) return;
+            if (review is null) mcp.RequireReadyForGeneration();
+            if (_mcpStamp is { } stamp && !mcp.IsCurrent(stamp)) throw new McpFailure("mcp_changed");
+            _mcpStamp ??= mcp.Capture();
+        }
         private async Task RequireRulesAsync()
         {
+            RequireMcpCurrent();
             var rules = registry.ExecutionPolicy.Rules;
             if (registry.ExecutionPolicy.WorkspaceOperations.IsDisposed || rules?.FatalFailure == true) throw new InvalidOperationException("工作區來源服務無法使用");
             var error = rules is null ? "rules_unavailable" : await rules.ValidateAsync(token);
@@ -327,7 +348,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
         {
             get
             {
-                lock (_gate) return _cancelled || token.IsCancellationRequested || (_planGeneration != registry.ExecutionPolicy.Plans.Generation && registry.ExecutionPolicy.Skills?.Capture().Status != SkillsStatus.Stale &&
+                lock (_gate) return _cancelled || token.IsCancellationRequested || (_planGeneration != registry.ExecutionPolicy.Plans.Generation && (_mcpStamp is null || registry.ExecutionPolicy.Mcp?.IsCurrent(_mcpStamp) == true) && registry.ExecutionPolicy.Skills?.Capture().Status != SkillsStatus.Stale &&
             (_skillsStamp is null || registry.ExecutionPolicy.Skills?.Capture().SkillsRevision == _skillsStamp.SkillsRevision) && registry.ExecutionPolicy.Rules?.Capture().Status != ProjectRulesStatus.Stale &&
             (_rulesStamp is null || registry.ExecutionPolicy.Rules?.Capture().RulesRevision == _rulesStamp.RulesRevision));
             }
@@ -347,6 +368,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             if (_eventFailed) { status = AgentTurnStatus.Failed; reason = AgentStopReason.LocalFailure; text = ""; completed = null; }
             if (!maintenance) registry.ExecutionPolicy.Plans.BlockInProgress(reason switch
             {
+                AgentStopReason.McpChanged => "mcp_changed",
                 AgentStopReason.SkillsChanged or AgentStopReason.SkillsUnavailable or AgentStopReason.SkillsLimit => "skills_changed",
                 AgentStopReason.RulesChanged => "rules_changed",
                 AgentStopReason.RulesUnavailable => "rules_unavailable",
@@ -369,7 +391,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 _ => "model_outcome"
             });
             return new(status, reason, _modelStatus, _modelError, text,
-                status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, _generations, _usage.Snapshot(), _reset, _rulesStamp, _skillsStamp);
+                status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, _generations, _usage.Snapshot(), _reset, _rulesStamp, _skillsStamp, _mcpStamp);
         }
 
         private string ProcessBlockReason() => _operations.LastOrDefault(o => o.ToolName == "run_dotnet_task")?.ErrorCode switch

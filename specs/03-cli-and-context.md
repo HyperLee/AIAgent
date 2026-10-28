@@ -1,5 +1,9 @@
 # 03：CLI 與 Context 子規格
 
+## 第 18 份產品實作接續（2026-10-28）
+
+新增五個 /mcp 本機命令及 AwaitingMcpApproval，沿唯一隱藏單行讀取者、新確認與 busy 排空。命令不進輸入歷史／Context、不生成；clear／換 Key／退出等待外部工作關閉，續接預設斷線。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。
+
 ## 第 17 份產品實作接續（2026-10-27～28）
 
 新增六種 /skills 本機命令與 LoadingSkills 單一讀取者生命週期；命令不入歷史、零生成、啟用後仍等新訊息，clear／換 Key／退出丟啟用內容。詳見[第 17 份](17-reusable-workflows-and-skills.md)及[當次分層驗證](../README.md#skills-validation)。歷史文件交付敘述保留，未結原生／真人／真實 Gemini／Release 門檻不變。
