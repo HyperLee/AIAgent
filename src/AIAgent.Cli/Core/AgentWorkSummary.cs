@@ -46,7 +46,7 @@ internal sealed partial class AgentRunner
         {
             using var generation = registry.ExecutionPolicy.Plans.BorrowGeneration();
             return await new Turn(client, registry, policy, systemInstruction, programUsage, onEvent, [], token,
-                _budget, contextCoordinator, _inspector, true).RunWorkSummaryAsync(stamp, source);
+                _budget, contextCoordinator, _inspector, true, profile: modelProfile).RunWorkSummaryAsync(stamp, source);
         }
         finally { Volatile.Write(ref _running, 0); }
     }

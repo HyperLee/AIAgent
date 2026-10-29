@@ -1,8 +1,12 @@
 # 20：多模型與供應商支援開發規格書
 
-> 文件版本：0.1｜建立日期：2026-10-29｜文件狀態：待實作
+> 文件版本：0.1｜建立日期：2026-10-29｜文件狀態：A、B 產品已接入並完成離線驗證；人工／服務／發布未驗，原規格撰寫查核保留
 >
-> 選題依據：[ROADMAP：FUT-13](../ROADMAP.md#fut-13多模型與供應商支援)。上位文件：[總規格](../SPEC.md)第 5～10、14～15 章。FUT-13 是項目代號，20 是子規格編號。本次交付規格書與本檔內的固定交接 memo；產品、測試與服務驗收另行執行。
+> 選題依據：[ROADMAP：FUT-13](../ROADMAP.md#fut-13多模型與供應商支援)。上位文件：[總規格](../SPEC.md)第 5～10、14～15 章。FUT-13 是項目代號，20 是子規格編號。原規格階段交付本檔與固定交接 memo；本次產品接續與分層驗證見下節。
+
+## 產品實作接續（2026-10-29）
+
+本次依使用者後續開發指示進入產品實作；MODEL-001、076～080 與 MODEL-AC-038 的「僅新增本檔」描述保留為原規格撰寫階段紀錄，不限制本次經授權的程式、測試與契約同步。A、B 證據分開，見 [README](../README.md#model-validation)；第 11 節仍是唯一交接 memo，不新增第二份。
 
 ## 1. 目的、方案與交付邊界
 
@@ -231,6 +235,19 @@ Responses 使用 call_id 對應 function_call_output；明確 strict=false 可�
 | WEB-HO-012／第 19 份 | MODEL-018、030～032、052、062：同三工具能力、原 URL／來源／逐筆確認；切換不重送 fetch、不把文件當本機事實。 | MODEL-AC-016～019、026、030、032 |
 
 第 09／11 份沒有專屬 FUT-13 HO 編號；第 2 節列出的 Plan／Context 原契約仍須直接承接，不能因上表無列而跳過。FUT-13 的主要直接耦合是共同預算、認證與各候選的失效／清除；沒有新增共用持久資料格式，也沒有需要先另寫第二份 memo 才能開發的事項。
+
+本次產品實作的八筆承接如下；A 建立共同生命週期，B 讓第三 profile 沿用同一路徑。這是離線程式與回歸證據，真人、真實服務及發布門檻仍依 [README](../README.md#model-validation)另列。
+
+| 原交接 | A／B 接入結果與證據 |
+|---|---|
+| RULE-HO-011 | A 在確認後重驗來源、用新政策重讀原實體根並回根 Scope；B 的六個有向 profile 切換共用此路徑。[ModelChatTests](../tests/AIAgent.Cli.Tests/ModelChatTests.cs)涵蓋預覽期間來源改版及新根規則載入取消，[ModelWorkflowTests](../tests/AIAgent.Cli.Tests/ModelWorkflowTests.cs)涵蓋六方向。 |
+| GIT-HO-011 | A 切換沿共同清除路徑丟棄快照與報告；B 三個 profile 均經正式 Runner 以恰三個 Git 工具執行 Review，見 [ModelWorkflowTests](../tests/AIAgent.Cli.Tests/ModelWorkflowTests.cs)。既有 Git 來源與 finding 回歸仍保留。 |
+| TERM-HO-010 | A 完整預覽、新確認、先釋放再讀 Key 與取消分界由 [ModelChatTests](../tests/AIAgent.Cli.Tests/ModelChatTests.cs)、[ModelTerminalTests](../tests/AIAgent.Cli.Tests/ModelTerminalTests.cs)覆蓋；B 的 [PTY](../tests/terminal_smoke.py)增加跨供應商來回流程，包含預輸入丟棄與終端機還原。 |
+| SAVE-HO-011 | A 沿原 SAVE v1 與新確認；B 三 profile 的 compact／save、跨供應商重啟 resume 零生成及目前目的地預覽見 [ModelWorkflowTests](../tests/AIAgent.Cli.Tests/ModelWorkflowTests.cs)，編碼與佔位值重驗見 [ModelSecurityTests](../tests/AIAgent.Cli.Tests/ModelSecurityTests.cs)。 |
+| CKPT-HO-012 | A 預覽明示不可復原的清除範圍，換模重用既有 checkpoint／anchor 清除並保留已寫檔案；B 同樣受共同代次限制。[ModelTerminalTests](../tests/AIAgent.Cli.Tests/ModelTerminalTests.cs)驗完整預覽，既有 checkpoint 回歸沿用。 |
+| SKILL-HO-012 | A 清除後 Disabled、預覽期間技能改版阻止切換；B 沿同一來源驗證與新政策，不移交啟用。見 [ModelChatTests](../tests/AIAgent.Cli.Tests/ModelChatTests.cs)與既有 Skills 回歸。 |
+| MCP-HO-012 | A 重設時斷線並撤 Permit；B 三 profile 的完整 MCP 工具目錄及逐次新核准經正式工廠／Runner 驗證，見 [ModelWorkflowTests](../tests/AIAgent.Cli.Tests/ModelWorkflowTests.cs)。 |
+| WEB-HO-012 | A 保留原 URL／來源／外送所有者；B 三 profile 共用 Learn 搜尋與擷取工具 Schema，沒有 hosted web 或切換重送。見 [ModelWorkflowTests](../tests/AIAgent.Cli.Tests/ModelWorkflowTests.cs)及既有 WEB 假傳輸回歸；真實 Learn 未驗。 |
 
 <a id="future-handoffs"></a>
 

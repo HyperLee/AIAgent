@@ -1,5 +1,9 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 GIT-HO-011：各 profile 仍以相同三項 Git 工具及原報告驗證進行 Review；切換清除來源、候選與報告，不能失敗後換模型重送。Git 觀察與模型判斷仍不建立本機完成事實。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 GIT-HO-010：Review 維持三個 Git 工具、零 MCP 網路；文件 URL、hash、時間及自報內容不進 GitSnapshot、位置驗證或本機測試證據。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

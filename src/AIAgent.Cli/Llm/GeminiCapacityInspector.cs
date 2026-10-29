@@ -8,7 +8,7 @@ public sealed partial class GeminiClient
     {
         lock (gate)
         {
-            if (disposal is not null || sdk is null || policy is null || inFlight is not null)
+            if (disposal is not null || sdk is null || policy is null || inFlight is not null || !session.IsModelSessionCurrent)
                 return Task.FromResult(new ContextRequestMeasure(ContextMeasureStatus.Unavailable));
             if (cancellationToken.IsCancellationRequested) return Task.FromCanceled<ContextRequestMeasure>(cancellationToken);
             inFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);

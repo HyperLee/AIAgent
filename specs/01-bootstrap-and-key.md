@@ -1,5 +1,9 @@
 # 01：專案啟動與 API Key 子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+新增非機密 Llm.Provider／Model，並相容原 Gemini.Model；固定目錄准入在讀 Key 前完成。啟動確認列 Provider、Model 與官方目的地，認證仍只由隱藏終端機輸入取得。--help 不讀設定或工作區。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：新增 `--resume ID`，可與 `--workspace DIR` 任意順序各出現一次；選項只經 internal 資料交接。工作區確認與隱藏新 Key 完成後才讀存檔，不從存檔取得認證或選定工作區。`--help` 保持零 Key／client／規則／存檔 I/O，語法錯誤退出 2。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

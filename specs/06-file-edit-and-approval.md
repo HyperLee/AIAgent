@@ -1,5 +1,9 @@
 # 06：檔案編輯與核准子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+模型切換撤銷原核准與修改快照，不能復用舊 client 的候選或完成資格；已發生寫入先收尾，丟資料不復原檔案。新模型仍須完整讀檔、產生差異及逐筆新核准。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 文件 fetch 沿共同 MCP 戳記，外送確認與檔案核准獨立。文件、URL 及 hash 不成為修改基準或寫入資格；已發布本機操作仍先查核／入帳，再撤銷候選。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

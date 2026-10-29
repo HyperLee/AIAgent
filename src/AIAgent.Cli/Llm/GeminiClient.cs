@@ -10,13 +10,14 @@ using Google.GenAI.Types;
 namespace AIAgent.Cli.Llm;
 
 /// <summary>一次生成最多一次傳輸；只持有本 session 的模型協定，不管理聊天或執行工具。</summary>
-public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILlmContextTelemetry
+public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILlmContextTelemetry, ILlmRuntimePolicyValidator
 {
     private readonly object gate = new();
     private readonly object owner = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly TimeProvider timeProvider;
     private readonly string model;
+    private readonly BootstrapSession session;
     private ISensitiveDataPolicy? policy;
     private Client? sdk;
     private GeminiTransport? transport;
@@ -28,13 +29,14 @@ public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILl
 
     internal GeminiClient(BootstrapSession session, HttpMessageHandler handler, TimeProvider? timeProvider = null)
     {
+        this.session = session;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         model = session.Settings.Model ?? "";
         policy = session.Policy;
-        if (!ModelIdentifier.IsValid(model)) { handler.Dispose(); return; }
+        if (ModelCatalog.Find(session.Settings)?.ProtocolKind != ModelProtocolKind.GeminiGenerateContent) { handler.Dispose(); return; }
         try
         {
-            transport = new GeminiTransport(handler, model, policy);
+            transport = new GeminiTransport(handler, model, policy, () => session.IsModelSessionCurrent);
             http = new HttpClient(transport) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
             // The SDK owns the necessary string copy. Never retain a second application-level string key.
             sdk = new Client(enterprise: false, vertexAI: false, apiKey: new string(session.Secrets.AuthenticationKey),
@@ -54,6 +56,7 @@ public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILl
         lock (gate)
         {
             if (disposal is not null) return Task.FromResult(Failure(LlmErrorCode.ClientUnavailable, new()));
+            if (!session.IsModelSessionCurrent) return Task.FromResult(Failure(LlmErrorCode.ClientUnavailable, new()));
             if (cancellationToken.IsCancellationRequested) return Task.FromResult(Cancelled(new()));
             if (inFlight is not null) return Task.FromResult(Failure(LlmErrorCode.InvalidRequest, new()));
             inFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -75,6 +78,7 @@ public sealed partial class GeminiClient : ILlmClient, ILlmContextInspector, ILl
             transport!.Operation = state;
             var response = await sdk.Models.GenerateContentAsync(model, contents, config, linked.Token);
             linked.Token.ThrowIfCancellationRequested();
+            if (!session.IsModelSessionCurrent) return Failure(LlmErrorCode.ClientUnavailable, state);
             var parsed = GeminiResults.Parse(response, request.Tools.Count > 0, state.InvalidParts);
             var message = parsed.Content is null ? null : LlmMessage.FromModel(new GeminiModelContent(parsed.Content, owner, parsed.Calls), parsed.Calls);
             linked.Token.ThrowIfCancellationRequested();

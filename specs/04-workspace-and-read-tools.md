@@ -1,5 +1,9 @@
 # 04：工作區與唯讀工具子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+模型切換丟棄讀取快照並重建工作區服務；重新核對原實體根，沒有工作區切換或權限擴充。後續完整讀檔仍是寫入基準的必要來源。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 文件擷取只使用 ExternalRead；URL 准入先於該筆工作區來源查核，外部正文與來源資料不建立讀取／修改快照，也不擴大 Scope 或本機檔案權限。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

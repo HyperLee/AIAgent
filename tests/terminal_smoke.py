@@ -109,7 +109,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", type=Path, default=Path(__file__).resolve().parents[1] / "src/AIAgent.Cli/bin/Debug/net10.0/AIAgent.Cli.dll")
     parser.add_argument("--host", type=Path, default=Path(__file__).resolve().parents[1] / "tests/AIAgent.Cli.TerminalHost/bin/Debug/net10.0/AIAgent.Cli.TerminalHost.dll")
+    parser.add_argument("--group", choices=("all", "model"), default="all")
     args = parser.parse_args()
+    if args.group == "model":
+        model_cases(["dotnet", str(args.host.resolve())])
+        return
     check(sys.platform == "darwin", "macOS-required")
     command = ["dotnet", str(args.app.resolve())]
     confirm = (CONFIRM, b"yes\r", 1)
@@ -176,6 +180,7 @@ def main():
     skills_cases(["dotnet", str(args.host.resolve())])
     mcp_cases(["dotnet", str(args.host.resolve())])
     web_cases(["dotnet", str(args.host.resolve())])
+    model_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1362,6 +1367,65 @@ def web_cases(host):
             terminal.finish(0)
             check(terminal.output.count(b"OFFLINE_MCP_CALL_SENT") == 1 and b"MCP_OFFLINE_RESULT" not in terminal.output, "WEB-AC-026-fetch-cancel-no-replay")
             print("WEB-AC-026-fetch-" + ("CtrlC" if control == b"\x03" else "EOF") + ": PASS", flush=True)
+        finally:
+            terminal.close()
+
+
+def model_cases(host):
+    """MODEL-AC-034: offline selection, destructive switch and key-gap controls."""
+    approval = b"OFFLINE_MODEL_APPROVAL_READY"
+
+    def start():
+        workspace = tempfile.mkdtemp(prefix="aiagent-model-pty-")
+        terminal = TerminalProcess(host + ["model-flow"], workspace)
+        terminal.wait_for(CONFIRM); terminal.send(b"yes\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r")
+        terminal.wait_for(HOST_PROMPT)
+        return terminal
+
+    def command(terminal, text):
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(text.encode() + b"\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+
+    terminal = start()
+    try:
+        for text in ("/model", "/model list", "/model use gemini gemini-3.5-flash-lite", "/model use  gemini gemini-3.6-flash"):
+            command(terminal, text)
+        check(b"already_selected" in terminal.output and b"invalid_model_command" in terminal.output, "MODEL-AC-034-local")
+        check(terminal.output.count(KEY_PROMPT) == 1, "MODEL-AC-034-noop-no-key")
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(b"/model use gemini gemini-3.6-flash\r"); terminal.wait_for(approval)
+        check("檢查點".encode() in terminal.output and b"generativelanguage.googleapis.com" in terminal.output, "MODEL-AC-034-complete-preview")
+        terminal.send(b"yes\r"); terminal.wait_for(b"OFFLINE_KEY_READY")
+        terminal.send(b"FAKE_NEW_MODEL_KEY_ONLY\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check("模型已切換".encode() in terminal.output and b"[Plan]" in terminal.output, "MODEL-AC-034-switched")
+        for target in ("openai gpt-6.1-terra", "gemini gemini-3.5-flash-lite"):
+            count = terminal.output.count(HOST_PROMPT)
+            approvals = terminal.output.count(approval)
+            keys = terminal.output.count(b"OFFLINE_KEY_READY")
+            terminal.send(("/model use " + target + "\r").encode()); terminal.wait_for(approval, approvals + 1)
+            terminal.send(b"yes\r"); terminal.wait_for(b"OFFLINE_KEY_READY", keys + 1)
+            terminal.send(b"FAKE_NEW_MODEL_KEY_ONLY\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+        check(b"https://api.openai.com/v1/responses" in terminal.output, "MODEL-AC-034-both-providers")
+        command(terminal, "/model")
+        check(b"FAKE_NEW_MODEL_KEY_ONLY" not in terminal.output, "MODEL-AC-034-new-key-noecho")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("MODEL-AC-034-local-and-switch: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control, approved, expected in ((b"n\r", False, 0), (b"\x03", False, 0), (b"\x04", False, 0), (b"\x03", True, 130), (b"\x04", True, 0)):
+        terminal = start()
+        try:
+            count = terminal.output.count(HOST_PROMPT)
+            terminal.send(b"/model use gemini gemini-3.6-flash\r"); terminal.wait_for(approval)
+            if approved:
+                terminal.send(b"yes\r"); terminal.wait_for(b"OFFLINE_KEY_READY")
+            terminal.send(control)
+            if not approved and control != b"\x04":
+                terminal.wait_for(HOST_PROMPT, count + 1); terminal.send(b"/exit\r")
+            terminal.finish(expected)
+            print("MODEL-AC-034-control-" + str(approved) + "-" + str(control[0]) + ": PASS", flush=True)
         finally:
             terminal.close()
 

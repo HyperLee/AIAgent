@@ -1,4 +1,5 @@
 using System.Text;
+
 using AIAgent.Cli.Cli;
 using AIAgent.Cli.Configuration;
 using AIAgent.Cli.Core;
@@ -30,13 +31,13 @@ public sealed class ConfigurationTests
     [TestMethod]
     public void AC004_StrictJsonAndApplicationLocation()
     {
-        foreach (var model in new[] { "\"gemini-3.5-flash-lite\"", "\" model-name \"" })
+        foreach (var model in new[] { "\"gemini-3.5-flash-lite\"", "\" gemini-3.6-flash \"" })
         {
             var opened = "";
             var loader = new SettingsLoader("/application", path => { opened = path; return Json("{\"Gemini\":{\"Model\":" + model + "}}"); });
             var settings = loader.Load();
             Assert.IsTrue(opened == "/application/appsettings.json", "AC-004");
-            Assert.IsTrue(settings.Model == (model.Contains("model-name", StringComparison.Ordinal) ? "model-name" : "gemini-3.5-flash-lite"), "AC-004");
+            Assert.IsTrue(settings.Model == model.Trim('"', ' '), "AC-004");
         }
         string[] invalid = ["", "[]", "{}", "{\"gemini\":{\"Model\":null}}", "{\"Gemini\":null}", "{\"Gemini\":{}}", "{\"Gemini\":{\"Model\":12}}", "{\"Gemini\":{\"Model\":\"\"}}", "{\"Gemini\":{\"Model\":\" \"}}", "{\"Gemini\":{\"Model\":\"x\\ny\"}}", "{\"Gemini\":{\"Model\":null,\"Model\":null}}", "{\"Gemini\":{\"Model\":null},\"Gemini\":{\"Model\":null}}", "{\"Gemini\":{\"Model\":null,\"ApiKey\":\"FAKE_CONFIG_ONLY\"}}", "{\"Gemini\":{\"Model\":null},\"extra\":0}", "{\"Gemini\":{\"Model\":null,}}", "{/*comment*/\"Gemini\":{\"Model\":null}}"];
         foreach (var json in invalid) ExpectSettingsFailure(() => new SettingsLoader("/application", _ => Json(json)).Load());
@@ -54,7 +55,7 @@ public sealed class ConfigurationTests
             using var result = await new Bootstrapper(loader, fake, fake, fake, () => "/startup").StartAsync([], default);
             Assert.IsTrue(result.ErrorCode == BootstrapErrorCode.InvalidSettings && result.ExitCode == 2 && fake.Calls.Count == 0, "GEM-AC-002");
         }
-        foreach (var value in new[] { " a ", "0", "gemini-3.5-flash-lite", "a_b.c-1", new string('a', 128) })
+        foreach (var value in new[] { " gemini-3.6-flash ", "gemini-3.5-flash-lite" })
         {
             var json = System.Text.Json.JsonSerializer.Serialize(new { Gemini = new { Model = value } });
             Assert.IsTrue(new SettingsLoader("/application", _ => Json(json)).Load().Model == value.Trim(), "GEM-AC-002");

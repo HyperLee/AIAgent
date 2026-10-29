@@ -1,5 +1,11 @@
 # 03：CLI 與 Context 子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+新增 /model、/model list、/model use PROVIDER MODEL。本機明確切換須完整預覽、新確認及新隱藏 Key；清除後重驗根與根規則，成功進 Plan。確認前取消保留舊 session，確認後取消／EOF 退出 130／0，釋放故障退出 1。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
+MODEL-036 的新政策預檢涵蓋固定文字與工具 Schema；CLI-AC-003 的合成短 Key `e` 若與固定欄名碰撞，現在須在聊天輸入前安全退出 1，零生成、零輸入歷史，不豁免敏感欄位。
+
 ## 第 18 份產品實作接續（2026-10-28）
 
 新增五個 /mcp 本機命令及 AwaitingMcpApproval，沿唯一隱藏單行讀取者、新確認與 busy 排空。命令不進輸入歷史／Context、不生成；clear／換 Key／退出等待外部工作關閉，續接預設斷線。 詳見[第 18 份](18-mcp-external-tools.md)及其固定交接；實際驗證與未驗層級見 [README](../README.md#mcp-validation)。

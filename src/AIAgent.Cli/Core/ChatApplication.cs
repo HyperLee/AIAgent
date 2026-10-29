@@ -46,11 +46,14 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             {
                 interaction.SetPolicy(initialSession.Policy);
                 policyReady = true;
-                _plans = new(initialSession.Policy, _gate);
+                _models = ModelCatalog.Find(initialSession.Settings) is { } profile ? new(_gate, profile) : null;
+                initialSession.ModelSession = _models?.Capture();
+                _plans = new(initialSession.Policy, _gate) { ModelSession = _models };
                 _contexts = new(context, _plans, initialSession.Policy);
                 _executionPolicy = new(_plans);
                 _client = runtimeFactory.CreateClient(initialSession);
                 _workspace = workspaceFilesFactory.Create(initialSession, _executionPolicy);
+                _modelRoot = await CaptureModelRootAsync(_workspace, _stop.Token);
                 _rules = _executionPolicy.Rules;
                 _skills = _executionPolicy.Skills ??= new(_workspace.SkillsWorkspace, initialSession.Policy, _executionPolicy);
                 _mcp = new(_executionPolicy, initialSession.Policy, AgentRunner.CreateMcpGuard(initialSession.Policy, systemInstruction), ConfirmMcpAsync, () => _workspace?.Snapshots.Clear(), mcpClientFactory);
@@ -66,9 +69,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (!Stopping)
                 {
                     (_registry, _runner) = CreateAgent(initialSession, _client, _workspace);
+                    RequireSafeModelRuntime(initialSession, _client, _registry);
                     _work?.BindRunner(_runner, runtimeFactory.CreateContextInspector(_client));
                     interaction.Show(new(ChatEventKind.Ready, text: "聊天已就緒；輸入 /help 查看操作。一般輸入隱藏，F2 可安全預覽。\n" +
-                        "本機累計不是正式帳單；傳輸嘗試不證明 Google 已收到或計費。"));
+                        "本機累計不是正式帳單；傳輸嘗試不證明 供應商已收到或計費。"));
                 }
             }
             while (!Stopping)
@@ -92,9 +96,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command.Length == 0) continue;
                 if (text.Contains('\n') && text.TrimStart().StartsWith('/'))
                 {
-                    interaction.Show(new(ChatEventKind.InputRejected, text: text.TrimStart().StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) ? "invalid_mcp_command：本機指令只接受單行；本次未執行。" : "本機指令只接受單行；本次未執行。"));
+                    interaction.Show(new(ChatEventKind.InputRejected, text: text.TrimStart().StartsWith("/model", StringComparison.OrdinalIgnoreCase) ? "invalid_model_command：本機指令只接受單行；本次未執行。" : text.TrimStart().StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) ? "invalid_mcp_command：本機指令只接受單行；本次未執行。" : "本機指令只接受單行；本次未執行。"));
                     continue;
                 }
+                if (await HandleModelCommandAsync(text)) continue;
                 if (await HandleMcpCommandAsync(text)) continue;
                 if (await HandleSkillsCommandAsync(text)) continue;
                 if (await HandleCheckpointCommandAsync(text)) continue;
@@ -105,16 +110,17 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/mcp、/mcp tools：零網路狀態／目錄；/mcp connect learn：固定公開 Microsoft Learn；/mcp reload：明確重載；/mcp disconnect：停用。每次外送完整預覽及新隱藏確認；Stale 須重載或斷線，clear／換 Key／續接不自動連線。\n" +
+                    ShowContextBlock("/model：目前 Provider／Model／官方目的地／能力與代次；/model list：產品固定支援清單，零網路；/model use PROVIDER MODEL：完整清除預覽、新確認及隱藏新 Key，切換後進 Plan。切換不復原檔案、不刪存檔、程序消耗保留。\n" +
+                        "/mcp、/mcp tools：零網路狀態／目錄；/mcp connect learn：固定公開 Microsoft Learn；/mcp reload：明確重載；/mcp disconnect：停用。每次外送完整預覽及新隱藏確認；Stale 須重載或斷線，clear／換 Key／續接不自動連線。\n" +
                         "/skills：上次觀察狀態；/skills list：目前 Scope 的 skills/<id>/SKILL.md；/skills show ID：完整磁碟檢視；/skills use ID：手動單一選用；/skills reload：明確重載；/skills off：停用。\n" +
-                        "技能可能送至 Gemini，只能指導既有能力，不代表執行或核准；檢視不會啟用，來源過時須重載或停用，再重新確認計畫並給新指示。clear／換 Key／退出會丟棄技能，續接不恢復；每筆操作仍逐次核准。\n" +
+                        "技能可能送至目前供應商，只能指導既有能力，不代表執行或核准；檢視不會啟用，來源過時須重載或停用，再重新確認計畫並給新指示。clear／換 Key／退出會丟棄技能，續接不恢復；每筆操作仍逐次核准。\n" +
                         "/checkpoint list：程序內修改歷史；/checkpoint show cN：原始修改差異；/checkpoint restore cN：Execute 下逐筆新確認復原；/checkpoint forget cN：新確認後丟棄單筆記憶體。\n" +
                         "檢查點只在本程序記憶體保留，clear／換 Key／退出會丟棄；容量滿停止新寫入，新建檔須人工核對及刪除。復原不復原 Git index、建置副作用、owner、ACL、xattr 或硬連結關係，仍須重新確認計畫並給新指示。\n" +
                         "/work save TITLE：完整預覽後確認保存安全摘要；/work list、/work show ID：歷史查詢；/work delete ID：新確認後只刪單一存檔。\n" +
                         "存檔是私人目錄中的明文，摘要可能有損；只有保存可能消耗一次摘要生成及 API 用量。--resume ID 重啟時重新確認工作區、輸入 Key 並載入目前規則，續接後進入 Plan，不恢復操作核准或完成證據。clear 只清記憶體，delete 只刪指定存檔。\n" +
                         "/rules、/rules show：完整來源與規則；/rules scope DIR：明確切換目錄範圍；/rules reload：手動重載。\n" +
-                        "/review [all|staged|unstaged|untracked]：目前 Scope 的唯讀模型審查；/review show：最近成功報告，零生成。差異可能送至 Gemini，消耗共用生成額度；使用原始 bytes 視角，排除範圍會明示，本回合不執行建置或測試。\n" +
-                        "確認工作區及輸入 Key 後自動載入根規則，來源可能送至 Gemini；越過巢狀規則須先切 Scope，來源變動需重載及重新確認。\n" +
+                        "/review [all|staged|unstaged|untracked]：目前 Scope 的唯讀模型審查；/review show：最近成功報告，零生成。差異可能送至目前供應商，消耗共用生成額度；使用原始 bytes 視角，排除範圍會明示，本回合不執行建置或測試。\n" +
+                        "確認工作區及輸入 Key 後自動載入根規則，來源可能送至目前供應商；越過巢狀規則須先切 Scope，來源變動需重載及重新確認。\n" +
                         "/context、/context show：容量與完整記憶；/context pin TEXT、/context unpin ID：原文備註；/compact：整理既有歷史，消耗生成與 API 用量。\n" +
                         "/budget、/budget set turn N（1～20）、/budget set program N（1～1000）、/budget reset（恢復5／100，不清消耗）；/clear 不解除程序總額度。\n" +
                         "未釘選資訊可能於模型摘要中遺失；模式、計畫、證據及逐次核准仍由本機管理。");
@@ -122,7 +128,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                         "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；SDK 10.0.100 的 test 因私人 IPC 限制不支援。\n" +
                         "計畫最多 20 任務、1 項在途及 256 筆事實；容量不足時請 /clear 後重新規劃。\n" +
                         "/clear：清除對話、快照、檢查點、復原結果、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
-                        "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至 Gemini。空白不送出；EOF／Ctrl+D 正常退出。\n" +
+                        "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至目前供應商。空白不送出；EOF／Ctrl+D 正常退出。\n" +
                         "等待輸入時 Ctrl+C 退出；生成、工具或核准中 Ctrl+C 只取消本回合，Ctrl+D 結束。\n" +
                         "草稿上限 16384 個 UTF-16 單位；輸入不回顯，Enter 送出，F2 安全預覽，F3 貼上收集，F4 換行。\n" +
                         "方向鍵移動文字元素／邏輯行，Home／End 移至行首尾；Backspace／Delete 刪前後文字元素，Tab 保留縮排。Ctrl+P／N 回取安全歷史，Ctrl+U 清空草稿。\n" +
@@ -157,16 +163,16 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (await RunTurnAsync(LlmMessage.FromUserText(text)) && !Stopping) await ReplaceKeyAsync();
             }
         }
-        catch (OperationCanceledException) { RequestStop(applicationCancellation.IsCancellationRequested ? StopReason.Cancelled : StopReason.Failure); }
+        catch (OperationCanceledException) { if (!Stopping) RequestStop(applicationCancellation.IsCancellationRequested ? StopReason.Cancelled : StopReason.Failure); }
         catch (Exception)
         {
             RequestStop(StopReason.Failure);
-            if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "本機流程無法完成；已安全停止。"));
+            if (policyReady && _session is not null) TryShow(new(ChatEventKind.Stopping, text: "本機流程無法完成；已安全停止。"));
         }
         finally
         {
             SetState(ChatState.Stopping);
-            if (policyReady) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
+            if (policyReady && _session is not null) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
             try { await ClearConversationStateAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { if (_workStore is not null) await _workStore.DisposeAsync(); }
@@ -181,11 +187,13 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             catch (Exception) { RequestStop(StopReason.Failure); }
             try { await DisposeClientAsync(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
-            _plans?.Stop(); _executionPolicy = null;
+            try { _plans?.Stop(); } catch (Exception) { RequestStop(StopReason.Failure); }
+            _executionPolicy = null;
             try { _session?.Dispose(); }
             catch (Exception) { RequestStop(StopReason.Failure); }
             _session = null;
             LastOutcome = null;
+            _models?.Stop();
             registration.Dispose();
             lock (_gate) _finalized = true;
             _stop.Dispose();
@@ -231,6 +239,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             var result = maintenance ? await _runner!.RunMaintenanceAsync(cancellation.Token) :
                 await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token, review);
             var status = result.Status;
+            if (result.StopReason == AgentStopReason.WriteUnconfirmed || result.Operations.Any(o => o.WriteState == FileWriteState.Unconfirmed || o.CleanupFailed)) _modelSwitchBlocked = true;
             var reason = result.StopReason;
             var requiresContextReset = result.RequiresContextReset || _mcp?.RequiresContextReset == true;
             var publishAnswer = false;
@@ -311,7 +320,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (requiresContextReset)
                 interaction.Show(new(ChatEventKind.ContextCleared, text: "模型 Context、讀取快照、計畫、確認與證據已清除；模式保留，請開始新的對話。"));
             interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(),
-                generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage, purpose: maintenance ? GenerationPurpose.Compaction : GenerationPurpose.Conversation));
+                generationsStarted: result.GenerationsStarted, turnSummary: result.TurnUsage, purpose: maintenance ? GenerationPurpose.Compaction : review is null ? GenerationPurpose.Conversation : GenerationPurpose.Review,
+                profile: ModelCatalog.Find(_session!.Settings), profileUsage: usage.ProfileSnapshots(), programGenerationsStarted: _generationBudget.Snapshot().ProgramGenerationsStarted));
             if (result.ModelErrorCode == LlmErrorCode.ClientUnavailable ||
                 result.StopReason is AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable || _mcp?.FatalFailure == true) RequestStop(StopReason.Failure);
             lock (_gate)
@@ -400,7 +410,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             new GitStatusTool(_git, session.Policy, _executionPolicy), new GitDiffTool(_git, session.Policy, _executionPolicy),
             new ReadGitFileRangeTool(_git, session.Policy, _executionPolicy)], session.Policy, _executionPolicy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent,
-            _generationBudget, _contexts, runtimeFactory.CreateContextInspector(client)));
+            _generationBudget, _contexts, runtimeFactory.CreateContextInspector(client), ModelCatalog.Find(session.Settings)));
     }
 
     private void HandleAgentEvent(AgentEvent message)
@@ -446,6 +456,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         try
         {
             replacement = runtimeFactory.CreateReplacementSession(_session!.Workspace, _session.Settings, input);
+            replacement.ModelSession = _models?.Capture();
             _plans!.BindPolicy(replacement.Policy);
             _contexts!.BindPolicy(replacement.Policy);
             _executionPolicy = new(_plans) { Rules = _rules, Skills = _skills, Mcp = _mcp };
@@ -455,6 +466,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (_rules is not null && workspace.ProjectRulesWorkspace is { } reader) _rules.BindPolicy(replacement.Policy, reader);
             _skills?.BindPolicy(replacement.Policy, workspace.SkillsWorkspace, _executionPolicy);
             var agent = CreateAgent(replacement, client, workspace);
+            RequireSafeModelRuntime(replacement, client, agent.Registry);
             interaction.SetPolicy(replacement.Policy);
             var old = _session;
             _session = replacement; _client = client; _workspace = workspace;
@@ -523,6 +535,12 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (_finalized) return;
             if (signal == ChatControlSignal.EndOfInput) RequestStop(StopReason.Normal);
             else if (signal == ChatControlSignal.Unavailable) RequestStop(StopReason.Failure);
+            else if (_switchingModel) RequestStop(StopReason.Cancelled);
+            else if (_state == ChatState.AwaitingModelApproval)
+            {
+                try { _modelApprovalCancellation?.Cancel(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+            }
             else if (_state == ChatState.AwaitingPlanApproval)
             {
                 try { _planCancellation?.Cancel(); }

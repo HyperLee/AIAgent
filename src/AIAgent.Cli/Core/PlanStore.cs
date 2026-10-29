@@ -41,6 +41,7 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
     }
     internal CheckpointSequence CheckpointSequence { get; } = new();
     internal object DecisionGate => _gate;
+    internal ModelSessionCoordinator? ModelSession { get; set; }
     internal long CurrentRulesRevision { get; set; }
     internal long CurrentSkillsRevision { get; set; }
     internal SkillsCoordinator? Skills { get; set; }
@@ -84,7 +85,7 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
     internal AgentMode Mode { get { lock (_gate) return _mode; } }
     internal long Generation { get { lock (_gate) return _generation; } }
     internal long ExecutionGeneration { get { lock (_gate) return _borrowedGeneration.Value ?? _generation; } }
-    internal bool IsExecutionCurrent { get { lock (_gate) return _policy is not null && Current; } }
+    internal bool IsExecutionCurrent { get { lock (_gate) return _policy is not null && Current && (ModelSession?.Ready ?? true); } }
     internal PlanSnapshot? Snapshot { get { lock (_gate) return _plan; } }
     internal IReadOnlyList<TaskOperationFact> Facts { get { lock (_gate) return Array.AsReadOnly(_facts.ToArray()); } }
     internal bool HasInProgress { get { lock (_gate) return _plan?.Tasks.Any(t => t.State == PlanTaskState.InProgress) == true; } }

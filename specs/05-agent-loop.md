@@ -1,5 +1,9 @@
 # 05：Agent 工具循環子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+各 profile 共用唯一 Runner／GenerationBudget；模型工作階段代次與各來源版本共同驗證，零自動路由或失敗重送。用量只在原唯一記帳點歸屬請求開始時的 profile／用途；Review、摘要及保存仍走同一生成入口。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 MCP Ready 追加三項 ExternalRead；fetch 的本機 URL 預檢位於該筆來源 I/O 前。web_url_rejected 停止剩餘工具與生成，保留先筆結果及原生配對；整批敏感／結構預檢仍先於任何派送。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

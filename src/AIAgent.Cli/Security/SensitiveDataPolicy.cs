@@ -23,7 +23,7 @@ public sealed class SensitiveDataPolicy : ISensitiveDataPolicy
 
     internal SensitiveDataPolicy(SessionSecrets secrets) => this.secrets = secrets;
     public bool ContainsCurrentKey(string content) => content.AsSpan().IndexOf(secrets.AuthenticationKey, StringComparison.Ordinal) >= 0;
-    public bool CanSendOrUse(string content, ContentBoundary boundary) => Enum.IsDefined(boundary) && !ContainsCurrentKey(content);
+    public bool CanSendOrUse(string content, ContentBoundary boundary) => Enum.IsDefined(boundary) && !ContainsCurrentKey(content) && !OpenAiCredentialShape.Contains(content);
 
     public string RedactForDisplay(string content)
     {
@@ -37,7 +37,7 @@ public sealed class SensitiveDataPolicy : ISensitiveDataPolicy
             result.Append("[REDACTED]");
             remaining = remaining[(index + key.Length)..];
         }
-        return result.Append(remaining).ToString();
+        return OpenAiCredentialShape.Redact(result.Append(remaining).ToString());
     }
 
     internal string RedactDiagnostic(JsonElement element)

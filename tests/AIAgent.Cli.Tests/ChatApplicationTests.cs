@@ -79,14 +79,14 @@ public sealed class ChatApplicationTests
     }
 
     [TestMethod]
-    public async Task CLIAC003_KeyInputIsRejectedBeforeDisplayOrRequestAndShortKeyAllowsCommands()
+    public async Task CLIAC003_KeyInputIsRejectedBeforeDisplayAndFixedMetadataCollisionStopsRuntime()
     {
         var fixture = new ChatFixture("prefix" + GeminiFixtures.Key, "/exit");
         Assert.AreEqual(0, await fixture.Run());
         Assert.AreEqual(0, fixture.Client.Requests.Count);
         Assert.IsFalse(fixture.Interaction.Events.Any(e => e.Kind == ChatEventKind.UserMessage));
         var shortKey = new ChatFixture("/clear", "/exit");
-        Assert.AreEqual(0, await shortKey.Run(new(new("/unused"), new("gemini-3.5-flash-lite"), new Security.SessionSecrets("e".ToCharArray()))));
+        Assert.AreEqual(1, await shortKey.Run(new(new("/unused"), new("gemini-3.5-flash-lite"), new Security.SessionSecrets("e".ToCharArray()))));
         Assert.AreEqual(0, shortKey.Client.Requests.Count);
     }
 
@@ -405,6 +405,19 @@ internal sealed class ChatFixture
 
 internal sealed class ScriptInteraction : IChatInteraction
 {
+    internal Queue<ModelApprovalDecision> ModelDecisions { get; } = new();
+    internal List<ModelApprovalPreview> ModelPreviews { get; } = [];
+    internal Action? OnModelApproval { get; set; }
+    internal List<WorkApprovalPreview> WorkPreviews { get; } = [];
+    internal Queue<WorkApprovalDecision> WorkDecisions { get; } = new();
+    internal Queue<McpApprovalDecision> McpDecisions { get; } = new();
+    internal List<McpApprovalPreview> McpPreviews { get; } = [];
+    public ValueTask<McpApprovalDecision> ConfirmMcpAsync(McpApprovalPreview preview, CancellationToken token)
+    { McpPreviews.Add(preview); return new(McpDecisions.Count > 0 ? McpDecisions.Dequeue() : McpApprovalDecision.Unavailable); }
+    public ValueTask<WorkApprovalDecision> ConfirmWorkAsync(WorkApprovalPreview preview, CancellationToken token)
+    { WorkPreviews.Add(preview); return new(WorkDecisions.Count > 0 ? WorkDecisions.Dequeue() : WorkApprovalDecision.Unavailable); }
+    public ValueTask<ModelApprovalDecision> ConfirmModelAsync(ModelApprovalPreview preview, CancellationToken token)
+    { ModelPreviews.Add(preview); OnModelApproval?.Invoke(); return new(ModelDecisions.Count > 0 ? ModelDecisions.Dequeue() : ModelApprovalDecision.Declined); }
     internal List<string> Remembered { get; } = [];
     internal int InputClears { get; private set; }
     internal Action<string>? OnRemember { get; set; }

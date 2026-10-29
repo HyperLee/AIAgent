@@ -6,6 +6,21 @@ internal sealed record UsageSnapshot(long DispatchedRequests, bool CounterOverfl
 
 internal sealed class UsageAccumulator
 {
+    private readonly Dictionary<ModelProfile, ProfileUsage> _profiles = [];
+    internal void BeginGeneration(ModelProfile? profile, GenerationPurpose purpose)
+    {
+        if (profile is null || !ModelCatalog.Profiles.Contains(profile)) return;
+        if (!_profiles.TryGetValue(profile, out var value)) _profiles.Add(profile, value = new());
+        value.Begin(purpose);
+    }
+    internal void RecordAttributed(LlmResult result, ModelProfile? profile, GenerationPurpose purpose)
+    {
+        Record(result);
+        if (profile is not null && _profiles.TryGetValue(profile, out var value)) value.Record(result, purpose);
+    }
+    internal IReadOnlyList<ProfileUsageSnapshot> ProfileSnapshots() => Array.AsReadOnly(ModelCatalog.Profiles.Where(_profiles.ContainsKey)
+        .Select(p => _profiles[p].Snapshot(p)).ToArray());
+
     private long _dispatchedRequests;
     private bool _counterOverflowed;
     private readonly Field _prompt = new();
@@ -51,4 +66,39 @@ internal sealed class UsageAccumulator
         }
         internal UsageFieldSnapshot Snapshot() => new(_knownTotal, _hasKnownValue, Missing, _totalOverflowed || _missingOverflowed);
     }
+
+    private sealed class ProfileUsage
+    {
+        private long _started;
+        private bool _overflow;
+        private readonly UsageAccumulator _usage = new();
+        private readonly Dictionary<GenerationPurpose, PurposeUsage> _purposes = [];
+        internal void Begin(GenerationPurpose purpose)
+        {
+            Increment(ref _started, ref _overflow);
+            if (!_purposes.TryGetValue(purpose, out var value)) _purposes.Add(purpose, value = new());
+            value.Begin();
+        }
+        internal void Record(LlmResult result, GenerationPurpose purpose) { _usage.Record(result); _purposes[purpose].Usage.Record(result); }
+        internal ProfileUsageSnapshot Snapshot(ModelProfile profile) => new(profile, _started, _overflow, _usage.Snapshot(),
+            Array.AsReadOnly(_purposes.Select(p => new PurposeUsageSnapshot(p.Key, p.Value.Started, p.Value.Overflow, p.Value.Usage.Snapshot())).ToArray()));
+    }
+    private sealed class PurposeUsage
+    {
+        internal long Started;
+        internal bool Overflow;
+        internal UsageAccumulator Usage { get; } = new();
+        internal void Begin() => Increment(ref Started, ref Overflow);
+    }
 }
+
+internal sealed class ProfileUsageSnapshot(ModelProfile profile, long generationsStarted, bool overflowed, UsageSnapshot usage, IReadOnlyList<PurposeUsageSnapshot> purposes)
+{
+    internal ModelProfile Profile { get; } = profile;
+    internal long GenerationsStarted { get; } = generationsStarted;
+    internal bool Overflowed { get; } = overflowed;
+    internal UsageSnapshot Usage { get; } = usage;
+    internal IReadOnlyList<PurposeUsageSnapshot> Purposes { get; } = purposes;
+    public override string ToString() => "[ProfileUsageSnapshot]";
+}
+internal sealed record PurposeUsageSnapshot(GenerationPurpose Purpose, long GenerationsStarted, bool Overflowed, UsageSnapshot Usage);

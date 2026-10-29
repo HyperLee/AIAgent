@@ -1,7 +1,15 @@
 namespace AIAgent.Cli.Core;
 
 public sealed record BootstrapOptions(string StartupDirectory, string? WorkspaceArgument);
-public sealed record PublicSettings(string? Model);
+public sealed record PublicSettings
+{
+    public string Provider { get; }
+    public string? Model { get; }
+    public PublicSettings(string? Model) : this("gemini", Model) { }
+    public PublicSettings(string Provider, string? Model) { this.Provider = Provider; this.Model = Model; }
+    public void Deconstruct(out string? Model) => Model = this.Model;
+    public override string ToString() => "[PublicSettings]";
+}
 public sealed record ConfirmedWorkspace(string RootPath);
 
 public enum BootstrapStatus { Ready, Help, Declined, EndOfInput, Cancelled, Failed }

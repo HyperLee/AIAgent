@@ -14,8 +14,9 @@ SUFFIXES = (b".secrets.json", b".pem", b".key", b".p12", b".pfx", b".ppk",
 ARCHIVES = (b".zip", b".tar", b".gz", b".tgz", b".7z", b".rar", b".dmg", b".pkg")
 TEMP = re.compile(br"\.aiagent-(?:edit|work)-[0-9a-f]{32}\.tmp\Z")
 KEY = re.compile(br"AIza[A-Za-z0-9_-]{35}")
+OPENAI = re.compile(b"s" + br"k-[A-Za-z0-9_-]{16,}")
 PRIVATE = re.compile(br"-{5}BEGIN (?:RSA |DSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY-{5}")
-PLACEHOLDERS = frozenset(("", "YOUR_GEMINI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN",
+PLACEHOLDERS = frozenset(("", "YOUR_GEMINI_API_KEY", "YOUR_OPENAI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN",
                           "YOUR_CLIENT_SECRET", "EXAMPLE_ONLY_NOT_A_SECRET", "[REDACTED]"))
 
 
@@ -45,6 +46,9 @@ def encoded_patterns(encoding):
 
 
 ENCODED = (encoded_patterns("utf-16le"), encoded_patterns("utf-16be"))
+OPENAI_ENCODED = tuple(re.compile(re.escape(("s" + "k-").encode(encoding)) +
+    b"(?:" + (br"\x00[A-Za-z0-9_-]" if encoding == "utf-16be" else br"[A-Za-z0-9_-]\x00") + b"){16,}")
+    for encoding in ("utf-16le", "utf-16be"))
 
 
 class ExampleParser:
@@ -131,6 +135,8 @@ class ContentMatcher:
                 self.report.add(self.item, "BUD-S002")
             if private.search(block):
                 self.report.add(self.item, "BUD-S003")
+        if any(pattern.search(block) for pattern in (OPENAI,) + OPENAI_ENCODED):
+            self.report.add(self.item, "BUD-S006")
         self.tail = block[-Limits.ScanOverlapBytes:]
         if self.example:
             self.example.update(data)

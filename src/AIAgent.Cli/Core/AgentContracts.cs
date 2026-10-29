@@ -12,7 +12,7 @@ internal enum AgentStopReason
     WorkspaceUnavailable, RunnerUnavailable, LocalFailure, ApprovalDeclined, FileConflict, FileWriteFailed, WriteUnconfirmed,
     ModeRestricted, PlanRequired, PlanNotApproved, TaskBlocked, TaskResourceLimit, ProcessFailed, ProcessUnconfirmed, ProcessResourceLimit,
     ProgramGenerationLimit, ContextCapacity, ContextCompactionFailed, RulesUnavailable, RulesChanged, RulesScopeMismatch, RulesLimit,
-    GitStopped, ReviewInvalid, SkillsUnavailable, SkillsChanged, SkillsLimit, McpStopped, McpChanged
+    GitStopped, ReviewInvalid, SkillsUnavailable, SkillsChanged, SkillsLimit, McpStopped, McpChanged, ModelCapabilityUnavailable
 }
 internal enum AgentEventKind { Generating, ExecutingTool, ToolCompleted }
 

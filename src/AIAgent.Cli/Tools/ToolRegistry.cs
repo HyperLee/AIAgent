@@ -14,6 +14,7 @@ internal sealed class ToolRegistry
     private readonly IReadOnlyList<LlmToolDefinition> _definitions;
     internal AgentExecutionPolicy ExecutionPolicy { get; }
     internal IReadOnlyList<LlmToolDefinition> Definitions => CaptureSnapshot().Definitions;
+    internal IReadOnlyList<LlmToolDefinition> AllDefinitions => _definitions;
     internal ToolRegistrySnapshot CaptureSnapshot()
     {
         lock (ExecutionPolicy.Plans.DecisionGate) return new(_definitions.Where(d => !IsModeRestricted(d.Name)).Concat(ExecutionPolicy.Mcp?.GetTools().Where(t => !IsModeRestricted(t.LocalName)).Select(t => t.Definition) ?? []).ToArray(), ExecutionPolicy.Mcp?.Capture());

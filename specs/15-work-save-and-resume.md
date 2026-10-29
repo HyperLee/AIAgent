@@ -1,5 +1,9 @@
 # 15：工作保存與續接開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 SAVE-HO-011：SAVE v1 不增加 provider／model／Key／原生歷史或預算。重啟續接由當前設定選模，預覽目前 Provider／Model／目的地並取得新確認；舊存檔依當前政策整份重驗，拒絕不改寫或刪除。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 SAVE-HO-010：SAVE v1 不增欄位，fetch 來源、URL／時間／hash／view 不直接進工具摘要或 file_refs；自然語言仍可能轉述。續接預設 Disconnected，連結只作歷史，不恢復連線、來源資格、Permit 或外送同意。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

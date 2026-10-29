@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+每個活動 profile 使用同 client 的安全歷史投影、容量 inspector 與數值 telemetry；切換丟摘要、pins 與完整回合，舊量測不可准入。唯一程序預算、維護用途、摘要白名單及公開 LLM 簽章保持。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 fetch 完整結果與 document_source 留在既有原生工具配對，計入原容量；狀態附錄只追加第三工具名稱。compact／WorkSaveSummary 僅追加准許 fetch 名稱，仍只投影來源、名稱、目錄版本、status／error_code，不直接納正文、URL、時間、hash 或 view。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

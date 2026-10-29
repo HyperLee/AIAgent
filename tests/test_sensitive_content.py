@@ -83,6 +83,29 @@ class ScannerTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "scripts"))
         return importlib.import_module("_sensitive_scan")
 
+    def test_MODELAC020_openai_shape_raw_encodings_and_chunk_boundary(self):
+        value = b"s" + b"k-" + b"a" * 16
+        for encoding in ("ascii", "utf-16le", "utf-16be"):
+            for offset in (0, 1):
+                root = self.repository()
+                payload = b"x" * (65536 - 5 + offset) + value.decode().encode(encoding)
+                (root / "ordinary.bin").write_bytes(payload)
+                self.git(root, "add", "--", "ordinary.bin")
+                self.outcome(self.scan(root, "staged"), 1, "blocked", "BUD-S006")
+                artifacts = self.publish_tree()
+                (artifacts / "ordinary.bin").write_bytes(payload)
+                self.outcome(self.scan(artifacts, "artifacts", "--path", str(artifacts)), 1, "blocked", "BUD-S006")
+
+    def test_MODELAC020_openai_threshold_and_exact_placeholder(self):
+        root = self.repository()
+        (root / "text.txt").write_bytes(b"s" + b"k-" + b"a" * 15 + b" ")
+        (root / ".env.example").write_text("OPENAI_API_KEY=YOUR_OPENAI_API_KEY\n", encoding="utf-8")
+        self.git(root, "add", "--", "text.txt", ".env.example")
+        self.outcome(self.scan(root, "staged"), 0, "passed")
+        (root / "text.txt").write_bytes(b"prefix" + b"s" + b"k-" + b"a" * 16 + b"suffix")
+        self.git(root, "add", "--", "text.txt")
+        self.outcome(self.scan(root, "staged"), 1, "blocked", "BUD-S006")
+
     def test_BUDAC021_help_and_strict_arguments_do_not_read_sources(self):
         root = new_directory()
         help_result = self.scan(root, "--help")

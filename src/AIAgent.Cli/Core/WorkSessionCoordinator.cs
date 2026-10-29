@@ -39,7 +39,7 @@ internal sealed class WorkOperationResult(string errorCode, string? displayBlock
 
 internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanStore plans, ProjectRulesCoordinator rules,
     IWorkReferenceWorkspace references, IWorkSaveStore store, ISensitiveDataPolicy sensitivePolicy, AgentRunner? runner,
-    ILlmContextInspector? inspector, GenerationBudget budget, Func<DateTimeOffset>? clock = null, Func<string>? newId = null)
+    ILlmContextInspector? inspector, GenerationBudget budget, Func<DateTimeOffset>? clock = null, Func<string>? newId = null, ModelProfile? modelProfile = null)
 {
     private readonly WorkPersistencePolicy _policy = new(sensitivePolicy);
     private int _running;
@@ -99,7 +99,7 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
                 var bytes = WorkSaveCodec.Write(document, _policy);
                 var preview = Preview(document, bytes, WorkApprovalKind.Save,
                     "明文存檔受本機權限保護；同 UID、管理員、備份或實體磁碟仍可能取得。SHA-256 只供變動比較，不是認證。\n" +
-                    "模型摘要可能遺失資訊；必留原文請使用 pin。摘要來源可能已送至 Gemini；本次生成：" + (generation?.GenerationsStarted ?? 0) +
+                    "模型摘要可能遺失資訊；必留原文請使用 pin。摘要來源可能已送至目前供應商；本次生成：" + (generation?.GenerationsStarted ?? 0) +
                     "。\n" + UsageText(generation) + "尚未保存；保存不恢復授權、快照或驗證。\n");
                 var decision = await confirm(preview, token);
                 if (decision != WorkApprovalDecision.Approved) return DecisionResult(decision, generation);
@@ -248,7 +248,8 @@ internal sealed class WorkSessionCoordinator(ContextCoordinator contexts, PlanSt
         RequireSafe(text); return text;
     }
     private WorkApprovalPreview Preview(WorkSaveDocument document, byte[] bytes, WorkApprovalKind kind, string explanation) =>
-        new(kind, SafeDisplay("[" + (kind == WorkApprovalKind.Save ? "尚未保存的候選" : "待續接的未驗證歷史工作") + "]\n" + explanation +
+        new(kind, SafeDisplay("[" + (kind == WorkApprovalKind.Save ? "尚未保存的候選" : "待續接的未驗證歷史工作") + "]\n" +
+            (modelProfile is null ? "" : "目前 " + ModelCommands.Describe(modelProfile) + "\n用途：" + (kind == WorkApprovalKind.Resume ? "載入歷史背景；零生成" : "保存摘要") + "\n") + explanation +
             "完整保存資料：\n" + Encoding.UTF8.GetString(bytes) + "\n" + Prompt(kind)));
     internal static string Prompt(WorkApprovalKind kind) => kind switch
     {

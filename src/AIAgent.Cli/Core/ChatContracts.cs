@@ -14,6 +14,9 @@ internal interface IChatInteraction
     void RememberAcceptedInput(string text);
     void ClearInputState();
     void Show(ChatEvent message);
+    ValueTask<ModelApprovalDecision> ConfirmModelAsync(ModelApprovalPreview preview, CancellationToken cancellationToken) => new(ModelApprovalDecision.Unavailable);
+    bool PrepareModelKeyInput() => true;
+    void DetachPolicy() { }
     ValueTask<McpApprovalDecision> ConfirmMcpAsync(McpApprovalPreview preview, CancellationToken cancellationToken) => new(McpApprovalDecision.Unavailable);
     ValueTask<FileApprovalDecision> ConfirmAsync(FileChangePreview preview, CancellationToken cancellationToken) => new(FileApprovalDecision.Unavailable);
     ValueTask<ProcessApprovalDecision> ConfirmProcessAsync(ProcessApprovalPreview preview, CancellationToken cancellationToken) => new(ProcessApprovalDecision.Unavailable);
@@ -29,7 +32,7 @@ internal interface IChatRuntimeFactory
     ILlmContextInspector? CreateContextInspector(ILlmClient client) => null;
 }
 
-internal enum ChatState { AwaitingInput, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, AwaitingMcpApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
+internal enum ChatState { AwaitingInput, AwaitingModelApproval, SwitchingModel, ReadingModelKey, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, AwaitingMcpApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }
 internal enum ChatInputStatus { Submitted, Invalid, EndOfInput, Cancelled, Unavailable }
 internal enum KeyReplacementChoice { Reenter, Exit, EndOfInput, Cancelled, Unavailable }
 internal enum ChatControlSignal { CancelTurn, EndOfInput, Unavailable }
@@ -50,7 +53,8 @@ internal sealed class ChatEvent(ChatEventKind kind, string? text = null, LlmStat
     LlmErrorCode? errorCode = null, LlmUsage? turnUsage = null, UsageSnapshot? sessionUsage = null, bool requestDispatched = false,
     AgentEvent? agentEvent = null, AgentTurnStatus? turnStatus = null, AgentStopReason? stopReason = null,
     int generationsStarted = 0, UsageSnapshot? turnSummary = null, PlanSnapshot? planSummary = null,
-    GenerationPurpose purpose = GenerationPurpose.Conversation)
+    GenerationPurpose purpose = GenerationPurpose.Conversation, ModelProfile? profile = null,
+    IReadOnlyList<ProfileUsageSnapshot>? profileUsage = null, int programGenerationsStarted = 0)
 {
     internal ChatEventKind Kind { get; } = kind;
     internal string? Text { get; } = text;
@@ -66,6 +70,9 @@ internal sealed class ChatEvent(ChatEventKind kind, string? text = null, LlmStat
     internal UsageSnapshot? TurnSummary { get; } = turnSummary;
     internal PlanSnapshot? PlanSummary { get; } = planSummary;
     internal GenerationPurpose Purpose { get; } = purpose;
+    internal ModelProfile? Profile { get; } = profile;
+    internal IReadOnlyList<ProfileUsageSnapshot>? ProfileUsage { get; } = profileUsage;
+    internal int ProgramGenerationsStarted { get; } = programGenerationsStarted;
     public override string ToString() => "[ChatEvent]";
 }
 

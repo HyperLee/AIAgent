@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace AIAgent.Cli.Core;
 
-internal enum GenerationPurpose { Conversation, Compaction, WorkSaveSummary }
+internal enum GenerationPurpose { Conversation, Compaction, WorkSaveSummary, Review }
 internal enum CompactionTrigger { Automatic, Manual }
 internal enum ContextMeasureStatus { Measured, Unavailable }
 
@@ -20,6 +20,16 @@ internal interface ILlmRequestCapacityInspector
 internal interface ILlmContextTelemetry
 {
     IDisposable ObserveRequest(Action<long, bool> report);
+}
+
+internal interface ILlmToolCapabilityInspector
+{
+    bool CanRepresentTools(IReadOnlyList<LlmToolDefinition> tools);
+}
+
+internal interface ILlmRuntimePolicyValidator
+{
+    bool ValidatePolicy(string instruction, IReadOnlyList<LlmToolDefinition> tools);
 }
 
 internal sealed class ContextRequestMeasure(ContextMeasureStatus status, long? estimatedJsonBytes = null,

@@ -1,5 +1,9 @@
 # 19：網頁查詢與文件擷取開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 WEB-HO-012：新模型不復用舊 Permit 或隱式重送 fetch；三工具、URL 准入、來源及逐筆外送預覽／新確認保持。各 profile 摘要僅沿原白名單，不攜正文或來源物件。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 產品實作接續（2026-10-28）
 
 依使用者後續指示接入產品；WEB-001、078～080 與 WEB-AC-032 的「本次文件」限制保留為原規格編製階段歷史，不是本輪產品變更清單。三工具准入、fetch 專用 Schema／原樣 URL 政策、完整新確認、單次 Permit、來源 metadata、安全結果投影與一般 Markdown 引用指引已接入原正式流程。公開 LLM、兩搜尋結果格式、SAVE v1、原生能力及固定套件／協定保持。

@@ -1,5 +1,9 @@
 # 16：修改檢查點與復原開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 CKPT-HO-012：切換預覽明示檢查點喪失；確認後丟 bytes、anchor、候選與復原歷史，不移交原資格。RecoveryRevision／EvidenceEpoch 及已寫檔案／Git index 的擁有者不變，不以切換復原副作用。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 CKPT-HO-011：文件正文與來源資料不成為 before、anchor、路徑映射或復原資格；fetch 候選沿 RecoveryRevision 失效，既有本機發布與事實先入帳，不聲稱遠端 rollback。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

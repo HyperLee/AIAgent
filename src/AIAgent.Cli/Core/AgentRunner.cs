@@ -9,7 +9,7 @@ namespace AIAgent.Cli.Core;
 /// <summary>單一回合的依序協調器；不擁有借用資源，也不提交對話。</summary>
 internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry registry, ISensitiveDataPolicy policy,
     string systemInstruction, UsageAccumulator programUsage, Action<AgentEvent> onEvent,
-    GenerationBudget? generationBudget = null, ContextCoordinator? contextCoordinator = null, ILlmContextInspector? contextInspector = null)
+    GenerationBudget? generationBudget = null, ContextCoordinator? contextCoordinator = null, ILlmContextInspector? contextInspector = null, ModelProfile? modelProfile = null)
 {
     internal const int MaxGenerationRequestsPerTurn = 5;
     private int _running;
@@ -28,7 +28,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 initialMessages[^1] is not { Kind: LlmMessageKind.User } user || string.IsNullOrWhiteSpace(user.UserText))
                 return Unavailable(AgentStopReason.LocalFailure);
             var turn = new Turn(client, registry, policy, systemInstruction, programUsage, onEvent,
-                initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector, review: review);
+                initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector, review: review, profile: modelProfile);
             _budget.BeginConversation();
             if (review is null) registry.ExecutionPolicy.Mcp?.BeginTurn();
             return await turn.RunAsync();
@@ -48,7 +48,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
         {
             using var generation = registry.ExecutionPolicy.Plans.BorrowGeneration();
             return await new Turn(client, registry, policy, systemInstruction, programUsage, onEvent, [], token,
-                _budget, contextCoordinator, _inspector, true).RunMaintenanceAsync();
+                _budget, contextCoordinator, _inspector, true, profile: modelProfile).RunMaintenanceAsync();
         }
         finally { Volatile.Write(ref _running, 0); }
     }
@@ -56,7 +56,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
     private sealed partial class Turn(ILlmClient client, ToolRegistry registry, ISensitiveDataPolicy policy,
         string instruction, UsageAccumulator programUsage, Action<AgentEvent> onEvent,
         IReadOnlyList<LlmMessage> initial, CancellationToken token, GenerationBudget budget,
-        ContextCoordinator? coordinator, ILlmContextInspector? inspector, bool maintenance = false, CodeReviewCoordinator? review = null)
+        ContextCoordinator? coordinator, ILlmContextInspector? inspector, bool maintenance = false, CodeReviewCoordinator? review = null, ModelProfile? profile = null)
     {
         private readonly object _gate = coordinator?.DecisionGate ?? new();
         private readonly List<LlmMessage> _messages = initial.ToList();
@@ -85,7 +85,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 while (true)
                 {
                     if (Cancelled) return Finish(AgentTurnStatus.Cancelled, AgentStopReason.TurnCancelled);
-                    var result = await GenerateAsync(Request(), GenerationPurpose.Conversation);
+                    var result = await GenerateAsync(Request(), review is null ? GenerationPurpose.Conversation : GenerationPurpose.Review);
                     if (result is null) return Invalid();
                     _reset |= result.RequiresContextReset;
                     if (!ValidResult(result)) return Invalid();
@@ -93,7 +93,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                     RequireMcpCurrent();
                     _modelStatus = result.Status; _modelError = result.ErrorCode;
                     _reset |= result.ErrorCode is LlmErrorCode.SensitiveOutput or LlmErrorCode.InvalidResponse or LlmErrorCode.UnexpectedToolCall;
-                    if (policy.ContainsCurrentKey(result.SafeText))
+                    if (!policy.CanSendOrUse(result.SafeText, ContentBoundary.ModelInput))
                     {
                         _reset = true;
                         if (result.Status == LlmStatus.ToolCalls) AddRemaining(result.ToolCalls, 0, "turn_stopped");

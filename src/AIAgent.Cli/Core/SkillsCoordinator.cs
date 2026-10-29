@@ -16,6 +16,7 @@ internal sealed class SkillsCoordinator : IAsyncDisposable
     private long _revision;
     private long _generation;
     private long _sessionGeneration;
+    private long SessionGeneration => _plans.ModelSession?.Generation ?? _sessionGeneration;
     private bool _pendingInvalidation;
     private bool _disposed;
     private bool _fatalFailure;
@@ -29,14 +30,14 @@ internal sealed class SkillsCoordinator : IAsyncDisposable
     internal SkillsCoordinator(ISkillsWorkspace? reader, ISensitiveDataPolicy policy, AgentExecutionPolicy execution)
     { _reader = reader; _policy = policy; _execution = execution; _plans = execution.Plans; _gate = _plans.DecisionGate; _plans.Skills = this; }
     internal SkillsOperationStamp Capture()
-    { lock (_gate) return new(_sessionGeneration, _generation, _revision, _status, _snapshot, _execution.Rules?.Capture()); }
+    { lock (_gate) return new(SessionGeneration, _generation, _revision, _status, _snapshot, _execution.Rules?.Capture()); }
     internal bool IsCurrent(SkillsOperationStamp stamp)
     {
         lock (_gate)
         {
             var rules = _execution.Rules?.Capture();
             return !_disposed && !_fatalFailure && _policy is not null && _status != SkillsStatus.Stale && stamp.Status == _status &&
-                stamp.SessionGeneration == _sessionGeneration && stamp.SkillsGeneration == _generation && stamp.SkillsRevision == _revision && ReferenceEquals(stamp.Snapshot, _snapshot) &&
+                stamp.SessionGeneration == SessionGeneration && stamp.SkillsGeneration == _generation && stamp.SkillsRevision == _revision && ReferenceEquals(stamp.Snapshot, _snapshot) &&
                 stamp.RulesGeneration == (rules?.RulesGeneration ?? 0) && stamp.RulesRevision == (rules?.RulesRevision ?? 0) && stamp.Scope == (rules?.Scope ?? ".");
         }
     }
@@ -71,7 +72,7 @@ internal sealed class SkillsCoordinator : IAsyncDisposable
             // Initial lazy rule loading is independent of skill selection.
             lock (_gate)
             {
-                if (_disposed || stamp.SessionGeneration != _sessionGeneration || stamp.SkillsGeneration != _generation) return new("skills_changed");
+                if (_disposed || stamp.SessionGeneration != SessionGeneration || stamp.SkillsGeneration != _generation) return new("skills_changed");
                 stamp = Capture();
             }
             var first = id is null ? await reader.ReadSkillCatalogAsync(stamp.Scope, lease!, linked.Token) : await reader.ReadSkillAsync(stamp.Scope, id, lease!, linked.Token);
@@ -110,7 +111,7 @@ internal sealed class SkillsCoordinator : IAsyncDisposable
             }
             var projection = SkillsDocuments.Projection(next, stamp.Scope, source, policy);
             var candidate = projection is null ? null : new ActiveSkillSnapshot(next, source, projection);
-            var resultDisplay = candidate is null ? null : SkillsDocuments.Display(new(_sessionGeneration, _generation, next, SkillsStatus.Valid, candidate, _execution.Rules.Capture()), policy);
+            var resultDisplay = candidate is null ? null : SkillsDocuments.Display(new(SessionGeneration, _generation, next, SkillsStatus.Valid, candidate, _execution.Rules.Capture()), policy);
             resultDisplay = resultDisplay is null ? null : SkillsDocuments.DisplayBlock(resultDisplay + "已選用；需要重新確認計畫並等待新指示，每筆操作仍須逐次核准。\n", policy);
             if (candidate is null || resultDisplay is null) return await FailedAsync("skills_limit");
             lock (_gate)
@@ -278,6 +279,7 @@ internal sealed class SkillsCoordinator : IAsyncDisposable
     }
     internal void BindPolicy(ISensitiveDataPolicy policy, ISkillsWorkspace? reader, AgentExecutionPolicy execution)
     { lock (_gate) { Clear(); _policy = policy; _reader = reader; _execution = execution; } }
+    internal void DetachPolicy() { lock (_gate) { _policy = null; _reader = null; } }
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource completion; Task[] wait;

@@ -1,5 +1,9 @@
 # 12：專案規則載入開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 RULE-HO-011：新模型／Key 政策重讀根規則並重新投影，Scope 回根，不移交原 Valid 或核准。共同模型代次與既有規則來源版本一起驗證，規則文字不授權選模。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 RULE-HO-010：文件 URL 與遠端正文不是 project_rule，也不觸發規則連結擷取。Scope 切換斷線，同 Scope 規則換版使 MCP Stale；新 URL 政策不放寬原來源重驗或敏感硬政策。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

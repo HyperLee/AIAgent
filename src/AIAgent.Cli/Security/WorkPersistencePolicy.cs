@@ -16,7 +16,7 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
     private static readonly Regex Assignment = new("(?:^|[^A-Za-z0-9_])(?:" + string.Join('|', CredentialNames.Select(AsciiPattern)) + ")[\"']?[ \\t]*[:=]([^\\r\\n]*)",
         RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.NonBacktracking);
     private static readonly HashSet<string> Placeholders = new(StringComparer.Ordinal)
-    { "", "YOUR_GEMINI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN", "YOUR_CLIENT_SECRET", "EXAMPLE_ONLY_NOT_A_SECRET", "[REDACTED]" };
+    { "", "YOUR_GEMINI_API_KEY", "YOUR_OPENAI_API_KEY", "YOUR_API_KEY", "YOUR_ACCESS_TOKEN", "YOUR_CLIENT_SECRET", "EXAMPLE_ONLY_NOT_A_SECRET", "[REDACTED]" };
 
     internal ISensitiveDataPolicy CurrentPolicy { get; } = policy;
 
@@ -37,7 +37,7 @@ internal sealed class WorkPersistencePolicy(ISensitiveDataPolicy policy)
     }
 
     private bool SafeCharacters(string value) => CurrentPolicy.CanSendOrUse(value, ContentBoundary.WriteCandidate) &&
-        !GoogleShape.IsMatch(value) && !PrivateShape.IsMatch(value);
+        !GoogleShape.IsMatch(value) && !PrivateShape.IsMatch(value) && !OpenAiCredentialShape.Contains(value);
 
     internal bool IsSafe(ReadOnlySpan<byte> bytes)
     {

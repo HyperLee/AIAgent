@@ -1,5 +1,9 @@
 # 02：Gemini 用戶端子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+Gemini 固定支援 Flash-Lite 與 3.6 Flash，沿原 SDK／Generate Content、原生 owner、parts／簽章與請求限制。PublicSettings 增加唯讀 Provider 與雙參數建構入口，公開 LLM 契約保持；B 已以內建 HttpClient／System.Text.Json 加入獨立 OpenAiClient，固定 Responses／Bearer；不重用 Gemini 原生紀錄或 SDK 認證，零新 NuGet。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 > 文件版本：0.1｜建立日期：2026-10-20｜狀態：待實作規格
 >
 > 上位文件：[入門 AI Agent 開發總規格書](../SPEC.md)，主要依據第 5～7、14～15 章，並遵循第 9～10、16 章的協定與階段約定。前置規格：[01：專案啟動與 API Key](01-bootstrap-and-key.md)。第 01 份已有產品及測試程式；本文件定義下一步的 Gemini 模組，不表示 Gemini 呼叫或第一階段「可以聊天」已完成。

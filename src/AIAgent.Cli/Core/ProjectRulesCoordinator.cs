@@ -17,6 +17,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
     private long _revision;
     private long _generation;
     private long _sessionGeneration;
+    private long SessionGeneration => _plans.ModelSession?.Generation ?? _sessionGeneration;
     private bool _attempted;
     private bool _pendingInvalidation;
     private bool _disposed;
@@ -31,11 +32,11 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
     internal ProjectRulesCoordinator(IProjectRulesWorkspace reader, ISensitiveDataPolicy policy, AgentExecutionPolicy execution)
     { _reader = reader; _policy = policy; _execution = execution; _plans = execution.Plans; _gate = _plans.DecisionGate; }
     internal ProjectRulesStamp Capture()
-    { lock (_gate) return new(_sessionGeneration, _generation, _revision, _scope, _status, _snapshot); }
+    { lock (_gate) return new(SessionGeneration, _generation, _revision, _scope, _status, _snapshot); }
     internal bool IsCurrent(ProjectRulesStamp stamp)
     {
         lock (_gate) return !_disposed && _status == ProjectRulesStatus.Valid && stamp.Status == ProjectRulesStatus.Valid &&
-            stamp.SessionGeneration == _sessionGeneration && stamp.RulesGeneration == _generation &&
+            stamp.SessionGeneration == SessionGeneration && stamp.RulesGeneration == _generation &&
             stamp.RulesRevision == _revision && ReferenceEquals(stamp.Snapshot, _snapshot);
     }
     internal async Task<string> EnsureInitializedAsync(CancellationToken token, WorkspaceOperationLease? lease = null)
@@ -87,7 +88,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
             lock (_gate)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                if (_disposed || stamp.SessionGeneration != _sessionGeneration || stamp.RulesGeneration != _generation) return "rules_changed";
+                if (_disposed || stamp.SessionGeneration != SessionGeneration || stamp.RulesGeneration != _generation) return "rules_changed";
                 if (_status == ProjectRulesStatus.Valid && _snapshot is { } current && current.Chain.Same(candidate.Chain)) return "no_change";
             }
             var next = checked(stamp.RulesRevision + 1);
@@ -97,7 +98,7 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
             lock (_gate)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                if (_disposed || stamp.SessionGeneration != _sessionGeneration || stamp.RulesGeneration != _generation) return "rules_changed";
+                if (_disposed || stamp.SessionGeneration != SessionGeneration || stamp.RulesGeneration != _generation) return "rules_changed";
                 var nextGeneration = checked(_generation + 1);
                 _snapshot = new(next, candidate.Chain, projection); _scope = candidate.Chain.Scope;
                 _revision = next; _generation = nextGeneration; _status = ProjectRulesStatus.Valid;
@@ -209,13 +210,14 @@ internal sealed class ProjectRulesCoordinator : IAsyncDisposable
     { lock (_gate) return _policy is null ? null : ProjectRulesDocuments.Display(Capture(), show, _policy); }
     internal void InvalidateCandidates()
     { lock (_gate) { if (_generation == long.MaxValue) MarkFatalFailure(); else _generation++; } }
-    internal void BindPolicy(ISensitiveDataPolicy policy, IProjectRulesWorkspace reader)
+    internal void BindPolicy(ISensitiveDataPolicy policy, IProjectRulesWorkspace reader, bool resetScope = false)
     {
         lock (_gate)
         {
             if (!ReferenceEquals(_plans, reader.ExecutionPolicy.Plans)) throw new InvalidOperationException("規則來源與計畫不一致");
             _execution = reader.ExecutionPolicy;
             _snapshot = null; _reader = reader; _policy = policy; _status = ProjectRulesStatus.Unavailable; _attempted = false;
+            if (resetScope) _scope = ".";
             _sessionGeneration = checked(_sessionGeneration + 1); _generation = checked(_generation + 1);
         }
     }

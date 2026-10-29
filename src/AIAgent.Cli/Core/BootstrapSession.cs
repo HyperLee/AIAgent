@@ -11,6 +11,8 @@ public sealed class BootstrapSession : IDisposable
     [JsonIgnore] public ISensitiveDataPolicy Policy { get; }
     internal SessionSecrets Secrets { get; }
     internal string? ResumeWorkId { get; }
+    internal ModelSessionLease? ModelSession { get; set; }
+    internal bool IsModelSessionCurrent => ModelSession?.IsCurrent ?? true;
 
     internal BootstrapSession(ConfirmedWorkspace workspace, PublicSettings settings, SessionSecrets secrets, string? resumeWorkId = null)
     {

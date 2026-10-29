@@ -1,5 +1,9 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+[多模型與供應商支援](specs/20-multi-model-and-provider-support.md)是單 Gemini 初版的限定增量。A 提供兩個 Gemini profile、固定目錄、新舊非機密設定、明確本機選模、共同代次及用量歸屬；B 加入固定 openai／gpt-6.1-terra 原生 Responses、供應商認證隔離與 BUD-S006；目錄共三組，端點不可配置。只有一個活動 client 與共用 Runner／預算；切換清資料、重新輸入 Key、重驗實體根與根規則，成功進 Plan。公開 LLM、工具、SAVE v1 與既有權限不變，分層證據見 [README](README.md#model-validation)。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 [19：網頁查詢與文件擷取](specs/19-web-search-and-document-fetch.md)限定延伸第 18 份：兩項 Learn 搜尋後追加一項文件 fetch，Ready 全登錄／Plan／Execute／Review 為 16／12／15／3，斷線仍為 13／9／12／3。URL 嚴格本機准入、逐次新確認及來源資料沿同一 MCP／Runner；文件不取得本機讀寫、測試或復原資格。搜尋與 fetch 共用原兩次機會與容量，SAVE v1 不增欄位，不新增套件、設定或一般網路 client。

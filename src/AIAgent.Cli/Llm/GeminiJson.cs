@@ -40,7 +40,7 @@ internal static class GeminiJson
         {
             if (candidate.ValueKind != JsonValueKind.Object || !candidate.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Object || !content.TryGetProperty("parts", out var parts) || parts.ValueKind != JsonValueKind.Array) continue;
             var text = string.Concat(parts.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Object && (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True) && p.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String).Select(p => p.GetProperty("text").GetString()));
-            if (policy.ContainsCurrentKey(text)) return true;
+            if (!policy.CanSendOrUse(text, ContentBoundary.ModelInput)) return true;
         }
         return false;
     }

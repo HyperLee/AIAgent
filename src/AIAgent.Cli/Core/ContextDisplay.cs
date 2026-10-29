@@ -50,7 +50,7 @@ internal static class ContextDisplay
     }
     internal static bool Safe(string text, ISensitiveDataPolicy policy) =>
         new UTF8Encoding(false, true).GetByteCount(text) <= ContextDocuments.MaxDisplayBytes && policy.CanSendOrUse(text, ContentBoundary.WriteCandidate);
-    internal static string Purpose(GenerationPurpose purpose) => purpose switch { GenerationPurpose.Compaction => "摘要", GenerationPurpose.WorkSaveSummary => "保存摘要", _ => "一般" };
+    internal static string Purpose(GenerationPurpose purpose) => purpose switch { GenerationPurpose.Review => "Review", GenerationPurpose.Compaction => "摘要", GenerationPurpose.WorkSaveSummary => "保存摘要", _ => "一般" };
     private static string N(long number) => number.ToString(CultureInfo.InvariantCulture);
 }
 internal sealed class LastMaintenanceOutcome(AgentTurnResult result)

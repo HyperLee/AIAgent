@@ -35,6 +35,8 @@ internal sealed partial class AgentRunner
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
         {
+            if (profile is not null && inspector is null || inspector is ILlmToolCapabilityInspector capabilities && !capabilities.CanRepresentTools(request.Tools))
+                throw new ContextFlowException(AgentStopReason.ModelCapabilityUnavailable);
             var measured = inspector?.Measure(request) ?? new(ContextMeasureStatus.Unavailable);
             if (stamp is not null) coordinator!.RecordMeasure(stamp, purpose, measured);
             if (measured.Status != ContextMeasureStatus.Measured || measured.EstimatedJsonBytes is not >= 0)
@@ -80,9 +82,10 @@ internal sealed partial class AgentRunner
                 throw new ContextFlowException(LimitReason() ?? AgentStopReason.ProgramGenerationLimit);
             }
             _generations++;
+            programUsage.BeginGeneration(profile, purpose);
             var result = await client.GenerateAsync(request, token);
-            if (result is not null) { programUsage.Record(result); _usage.Record(result); }
-            if (purpose == GenerationPurpose.Conversation && result?.RequestDispatched == true) review?.Snapshots.MarkDispatched();
+            if (result is not null) { programUsage.RecordAttributed(result, profile, purpose); _usage.Record(result); }
+            if (purpose is GenerationPurpose.Conversation or GenerationPurpose.Review && result?.RequestDispatched == true) review?.Snapshots.MarkDispatched();
             return result!;
         }
         private AgentStopReason? LimitReason()

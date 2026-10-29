@@ -8,6 +8,7 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
 {
     private ISensitiveDataPolicy _policy = policy;
     private long _sessionGeneration;
+    private long SessionGeneration => plans.ModelSession?.Generation ?? _sessionGeneration;
     private ProjectRulesCoordinator? _rules;
     private SkillsCoordinator? _skills;
     private McpCoordinator? _mcp;
@@ -20,11 +21,11 @@ internal sealed partial class ContextCoordinator(ConversationContext context, Pl
     internal ContextBodyMeasurement? LastBodyMeasurement { get; private set; }
     internal ContextOperationStamp Capture()
     {
-        lock (context.DecisionGate) return new(_sessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0, plans.Recovery.Revision, _skills?.Capture(), _mcp?.Capture());
+        lock (context.DecisionGate) return new(SessionGeneration, context.Capture(), plans.Generation, plans.Mode, plans.Snapshot, _rules?.Capture().RulesRevision ?? 0, _rules?.Capture().RulesGeneration ?? 0, plans.Recovery.Revision, _skills?.Capture(), _mcp?.Capture());
     }
     internal bool IsCurrent(ContextOperationStamp stamp)
     {
-        lock (context.DecisionGate) return stamp.SessionGeneration == _sessionGeneration && stamp.RecoveryRevision == plans.Recovery.Revision &&
+        lock (context.DecisionGate) return stamp.SessionGeneration == SessionGeneration && stamp.RecoveryRevision == plans.Recovery.Revision &&
             stamp.SkillsMatches(_skills?.Capture()) && stamp.McpMatches(_mcp?.Capture()) &&
             stamp.RulesRevision == (_rules?.Capture().RulesRevision ?? 0) && stamp.RulesGeneration == (_rules?.Capture().RulesGeneration ?? 0) &&
             stamp.ContextRevision == context.Revision && stamp.PinsRevision == context.PinsRevision &&

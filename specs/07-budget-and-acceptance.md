@@ -1,5 +1,9 @@
 # 07：預算控制與整體驗收子規格
 
+## 第 20 份產品實作接續（2026-10-29）
+
+多 profile 共用程序生成上限與消耗，clear／換 Key／切模型均不退款。程序共同顯示生成及傳輸次數，token 分模型／用途列出已知值、缺值與溢位，不換算跨模型費用；B 已加入 BUD-S006：小寫 sk 加連字號後連續至少 16 個 ASCII 字母／數字／底線／連字號，不要求尾界。與原規則同掃 ASCII／UTF-16LE／BE、雙位移及跨塊，無目錄豁免；placeholder 精確追加 YOUR_OPENAI_API_KEY。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 15 份產品實作接續（2026-10-26）
 
 [工作保存與續接](15-work-save-and-resume.md)的限定增量：保存摘要也消耗共用程序生成額度與 API 可得用量；拒絕確認、取消或未傳輸不退已開始次數。掃描及忽略新增 `.aiagent`／工作暫存／鎖的路徑保護；保留原 BUD-S003 Release 阻擋，離線／原生／PTY／真人／服務／發布證據分列。 本節保留舊階段歷史，實際分層驗證見 [README](../README.md#work-save-validation)。

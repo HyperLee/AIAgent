@@ -1,5 +1,9 @@
 # 17：可重用工作流程（Skills）開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 SKILL-HO-012：切換後 Disabled，重新讀目前 Scope／規則／政策後才可明確啟用。技能不能選模型、取得 Key 或提供核准；共同模型代次與技能版本均須目前有效。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 SKILL-HO-011：技能與網頁連結保持惰性；遠端描述、文件及假 yes 不安裝／啟用技能，不改規則、來源或工具權限。技能換版撤銷舊 fetch 候選，沿原共同戳記重驗。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

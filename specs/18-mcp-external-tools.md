@@ -1,5 +1,9 @@
 # 18：MCP 外部工具整合開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 MCP-HO-012：切換斷線並撤銷目錄、Permit 與候選，不自動重連；三項 Schema 能力仍須各 profile 驗證。供應商認證與 MCP 分離，舊 Permit 不跨代次或 client，Review 保持零 MCP。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 依第 19 份 WEB-069～072，限定覆蓋本份 MCP-003～004、025～026、032～034、053～056、061、077、086～087 及相關案例的兩工具／fetch 排除敘述：目前三項准入為 docs_search、code_sample_search、docs_fetch；Ready 16／12／15／3。只有 fetch 成功 data 追加 document_source，兩搜尋資料格式保持；三項定義及 metadata 仍守原容量，摘要白名單僅追加名稱。其餘固定協定、Permit、逐次確認、傳輸、取消、來源／版本與獨立預算契約繼續有效。以下第 18 份產品接續與原規格保留為階段歷史；廣泛擷取仍不支援。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

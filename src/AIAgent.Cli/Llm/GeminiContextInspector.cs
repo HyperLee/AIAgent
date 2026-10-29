@@ -7,6 +7,27 @@ namespace AIAgent.Cli.Llm;
 
 public sealed partial class GeminiClient
 {
+    bool ILlmRuntimePolicyValidator.ValidatePolicy(string instruction, IReadOnlyList<LlmToolDefinition> tools)
+    {
+        lock (gate)
+        {
+            if (disposal is not null || sdk is null || policy is null) return false;
+            try
+            {
+                var request = new LlmRequest(instruction, [LlmMessage.FromUserText("本機驗證")], tools);
+                var contents = GeminiProtocol.Convert(request, owner, policy);
+                var config = GeminiProtocol.Config(request);
+                var inspected = JsonSerializer.SerializeToElement(new
+                {
+                    contents,
+                    config,
+                    wireFields = new[] { "systemInstruction", "generationConfig", "candidateCount", "maxOutputTokens", "functionDeclarations" }
+                });
+                return !GeminiJson.IsSensitive(inspected, policy, ContentBoundary.ModelInput);
+            }
+            catch (Exception) { return false; }
+        }
+    }
     private Action<long, bool>? _requestReport;
     internal ILlmContextInspector CreateContextInspector() => new Inspector(this);
     ContextRequestMeasure ILlmContextInspector.Measure(LlmRequest request) => CreateContextInspector().Measure(request);
@@ -22,7 +43,7 @@ public sealed partial class GeminiClient
         {
             lock (client.gate)
             {
-                if (client.disposal is not null || client.sdk is null || client.policy is null) return new(ContextMeasureStatus.Unavailable);
+                if (client.disposal is not null || client.sdk is null || client.policy is null || !client.session.IsModelSessionCurrent) return new(ContextMeasureStatus.Unavailable);
                 try
                 {
                     var contents = GeminiProtocol.Convert(request, client.owner, client.policy);
@@ -39,7 +60,7 @@ public sealed partial class GeminiClient
         {
             lock (client.gate)
             {
-                if (client.disposal is not null || client.sdk is null || client.policy is null) throw new ContextInspectionException();
+                if (client.disposal is not null || client.sdk is null || client.policy is null || !client.session.IsModelSessionCurrent) throw new ContextInspectionException();
                 try
                 {
                     var contents = GeminiProtocol.Convert(new("", messages, []), client.owner, client.policy, true);

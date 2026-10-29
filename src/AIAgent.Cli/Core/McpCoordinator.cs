@@ -53,7 +53,7 @@ internal sealed class McpCoordinator : IAsyncDisposable
     }
     internal bool RequiresContextReset { get { lock (_gate) return _sensitive; } }
     internal bool FatalFailure { get { lock (_gate) return _fatal; } }
-    internal McpOperationStamp Capture() { lock (_gate) return new(_session, _generation, _revision, _status, _snapshot); }
+    internal McpOperationStamp Capture() { lock (_gate) return new(_plans.ModelSession?.Generation ?? _session, _generation, _revision, _status, _snapshot); }
     internal bool IsCurrent(McpOperationStamp stamp) { lock (_gate) return !_disposed && !_fatal && stamp.Same(Capture()); }
     internal string StatusCode { get { lock (_gate) return _fatal || _disposed ? "unavailable" : _sensitive ? "sensitive_content" : _status == McpStatus.Stale ? "mcp_catalog_stale" : "none"; } }
     internal void RequireReadyForGeneration()
@@ -400,6 +400,8 @@ internal sealed class McpCoordinator : IAsyncDisposable
     }
     internal void BindPolicy(AgentExecutionPolicy execution, ISensitiveDataPolicy policy, IMcpContentGuard guard)
     { lock (_gate) { _execution = execution; _policy = policy; _guard = guard; execution.Mcp = this; } }
+    internal void DetachPolicy()
+    { lock (_gate) { _policy = null; _guard = new Security.McpContentGuard(UnavailableSensitivePolicy.Instance, []); } }
     private async ValueTask CloseAsync(IMcpReadClient client)
     { try { await client.DisposeAsync(); } catch { lock (_gate) _fatal = true; throw new InvalidOperationException("MCP 資源無法安全關閉"); } }
     internal async Task DrainDisconnectedAsync()

@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+不同模型沿用同一受控程序准入與逐次核准，每回合兩次／300 秒及 test 不支援保持。已開始發布／查核的操作先安全收尾，切模型不能解除 Unconfirmed 或 cleanup 故障。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 Learn 搜尋與 fetch 共用原 MCP 兩次／30 秒額度，與 .NET 兩次／300 秒分列；外部範例不執行、不授予程序或網路 recipe，也不完成 Validation。原 MTP test 不支援及原生門檻不變。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

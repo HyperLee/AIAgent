@@ -16,7 +16,7 @@ internal sealed partial class ChatApplication
         _workStore ??= (workSaveStoreFactory ?? (() => new MacWorkSaveStore()))();
         return _work ??= new(_contexts!, _plans!, _rules ?? throw new WorkDocumentException("rules_unavailable"),
             _workspace!.WorkReferences ?? new UnavailableWorkReferences(), _workStore, _session!.Policy, _runner,
-            _client is null ? null : runtimeFactory.CreateContextInspector(_client), _generationBudget);
+            _client is null ? null : runtimeFactory.CreateContextInspector(_client), _generationBudget, modelProfile: ModelCatalog.Find(_session.Settings));
     }
 
     private async Task<bool> HandleWorkCommandAsync(string raw)
@@ -85,6 +85,10 @@ internal sealed partial class ChatApplication
         if (new UTF8Encoding(false, true).GetByteCount(text) > 65536 || !new WorkPersistencePolicy(_session!.Policy).IsSafe(text))
         { interaction.Show(new(ChatEventKind.InputRejected, text: "無法安全完整顯示工作操作結果。")); return; }
         interaction.Show(new(result.ErrorCode == "none" ? ChatEventKind.Ready : ChatEventKind.InputRejected, text: text));
+        if (result.GenerationsStarted > 0 && result.Usage is { } summary)
+            interaction.Show(new(ChatEventKind.Usage, sessionUsage: usage.Snapshot(), generationsStarted: result.GenerationsStarted, turnSummary: summary,
+                purpose: GenerationPurpose.WorkSaveSummary, profile: ModelCatalog.Find(_session.Settings), profileUsage: usage.ProfileSnapshots(),
+                programGenerationsStarted: _generationBudget.Snapshot().ProgramGenerationsStarted));
     }
 
     private async ValueTask<WorkApprovalDecision> ConfirmWorkAsync(WorkApprovalPreview preview, CancellationToken token)

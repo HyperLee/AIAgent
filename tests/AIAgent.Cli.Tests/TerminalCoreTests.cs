@@ -79,14 +79,15 @@ public sealed class TerminalCoreTests
         Assert.IsTrue(fixture.Interaction.InputClears >= 2, "TERM-AC-018");
     }
     [TestMethod]
-    public async Task TERMAC017_ShortKeyDoesNotBlockClearOrExitOrEnterHistory()
+    public async Task TERMAC017_FixedMetadataCollisionStopsBeforeInputAndNeverEntersHistory()
     {
         var fixture = new ChatFixture("/clear", "/exit");
         var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         using var session = new BootstrapSession(new("/unused-workspace"), new("gemini-3.5-flash-lite"), new AIAgent.Cli.Security.SessionSecrets("e".ToCharArray()));
         fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
-        Assert.AreEqual(0, await app.RunAsync(session, default)); Assert.AreEqual(0, fixture.Client.Requests.Count);
-        Assert.AreEqual(0, fixture.Interaction.Remembered.Count); Assert.IsTrue(fixture.Interaction.InputClears >= 2);
+        Assert.AreEqual(1, await app.RunAsync(session, default)); Assert.AreEqual(0, fixture.Client.Requests.Count);
+        Assert.AreEqual(0, fixture.Interaction.Remembered.Count); Assert.IsTrue(fixture.Interaction.InputClears >= 1);
+        Assert.AreEqual(2, fixture.Interaction.Inputs.Count);
     }
 
     [TestMethod]

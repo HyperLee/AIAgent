@@ -1,5 +1,9 @@
 # 08：程式碼搜尋與局部讀檔開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+不同模型沿用相同搜尋與局部讀檔契約；切換撤銷舊來源、快照與候選，局部讀取仍不能建立修改快照，不擴充掃描範圍或權限。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 Learn 文件來源不屬本機搜尋結果或修改快照；一般本機搜尋不連網。三工具目錄與 fetch URL 拒絕不變更既有檔案／搜尋來源及容量。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

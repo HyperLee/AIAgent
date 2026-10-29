@@ -32,6 +32,41 @@
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，登錄總數斷線為十三項、MCP Ready 為十六項；Plan／Execute 分別為九／十二項及十二／十五項，Review 保持三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
+<a id="model-validation"></a>
+
+## 第 20 份多模型與供應商支援
+
+依[第 20 份規格](specs/20-multi-model-and-provider-support.md)分 A、B 交付。A 加入 Gemini Flash-Lite 與 3.6 Flash 固定 profile、新 `Llm` 設定及舊 `Gemini` 格式相容、`/model`／`/model list`／`/model use PROVIDER MODEL`。清單是產品准入，不代表帳戶授權。B 已加入 OpenAI 原生 Responses（openai／gpt-6.1-terra）、第三 profile、同 client 的 inspector 與新增敏感外形政策。兩階段實作與離線證據分列，真實帳戶可用性仍待驗。
+
+不同 tuple 必須完整預覽、新隱藏確認並重新輸入 Key；同 tuple 不變更狀態。確認前取消保留舊工作階段；確認後先清除來源、核准、檢查點、草稿／歷史、技能與 MCP，再釋放舊 client／Key。新政策重驗實體根、載入根規則後才就緒，回到 Plan 等新指示。檔案與私人存檔不刪除、不復原；程序生成消耗與預算不退款。
+
+非機密設定採 `{"Llm":{"Provider":"gemini","Model":"gemini-3.5-flash-lite"}}`。不接受目錄外模型、端點設定或認證欄位；沒有模型／供應商啟動參數。模型切換不寫回設定，沒有自動路由、失敗備援或跨模型重送。用量按請求開始時的模型與用途歸屬，跨模型 token 不換算費用。
+
+OpenAI 僅呼叫固定 `POST https://api.openai.com/v1/responses`，採 `store=false`、非串流、`reasoning.effort="none"`、自訂 function calling 的明確 `strict=false`。不使用 Chat Completions、hosted tools、遠端 MCP、server-side conversation、重試或備援。請求 262144 bytes、成功回應 1048576 bytes、錯誤回應 65536 bytes、JSON 深度 64，整體期限 120 秒。必要原生 items／encrypted reasoning 只在同 client 記憶體保留，不顯示、摘要或保存。store=false 是本機策略，不宣稱供應商完全零留存。
+
+BUD-S006 是保守啟發式：任意位置小寫 sk 加連字號後，連續至少 16 個 ASCII 字母／數字／底線／連字號即拒絕。不是官方 Key 格式或真偽保證，也可能拒絕普通文字；Gemini 與 OpenAI 同時適用，不能用目錄豁免。存檔另驗 JSON 解碼及原始 bytes；掃描維持 ASCII／UTF-16LE／BE、雙位移與跨塊。佔位值精確追加 `YOUR_OPENAI_API_KEY`。舊存檔命中新政策時整份拒絕，原檔不改寫或自動刪除。
+
+新政策會重新驗固定 profile、指示與工具 Schema；短 Key 若碰撞固定欄名亦可能無法安全建立工作階段，受控退出，不豁免欄位或偷偷修改 Key。
+
+### 第 20 份驗證紀錄（2026-10-29）
+
+基線為乾淨 main@e95f7c9，SDK 10.0.100；變更保留於目前工作區，未提交、推送或發布。A 階段完成時目錄只有兩 Gemini，完整離線 1249／1249、Python 36／36、macOS PTY 142 組通過，restore／build／help／format／空白檢查通過。B 完成後三個 profile 的驗證如下。
+
+| 驗證 | B 階段結果 |
+|---|---|
+| 依序 restore → build → MTP 全量測試 | 退出 0；建置零警告／錯誤；1295／1295、零失敗／略過，4 分 11.902 秒。外層允許既有原生 sandbox 初始化，產品隔離保持啟用。 |
+| help | 退出 0；含三個 `/model` 形式，零互動／模型請求。 |
+| format | 產品完整 `dotnet format --verify-no-changes` 通過；修改的測試檔與 TerminalHost whitespace verify 通過。58 個 C# 檔符合 CRLF／無末尾換行。最後整理逐檔確認非空白內容一致，重建零警告／錯誤，模型／OpenAI／TerminalCore 選測 75／75。 |
+| Python 掃描回歸 | `python3 -m unittest discover -s tests -p test_sensitive_content.py`：38／38。 |
+| macOS PTY | `python3 tests/terminal_smoke.py`：142 組 PASS、零 FAIL，包含六組模型流程與雙向跨供應商切換。 |
+| 來源／文件／空白 | 隔離來源快照的 staged 掃描 378 檔、零發現，原索引不動；23 份修改文件的 703 個本機連結／錨點、JSON 與 MODEL 80／AC 38／HO 13 連續性檢查通過；`git diff --check` 通過。 |
+
+初始受限外層的基線測試 1217／1234；17 個既有案例因 macOS sandbox 初始化被拒失敗，允許初始化後基線 1234／1234。產品隔離保持啟用。A 首輪只剩舊供應商提示斷言失敗，更新明示契約；取消新規則載入及未發布候選清理的回歸先重現，再修正收尾與退出優先序。
+
+B 的舊短 Key `e` 斷言依 MODEL-036 改為啟動時安全退出；CLI-AC-003、TERM-AC-017 的增量已同步第 03／14 份。獨立全差異審查指出的 Gemini 跨文字片段外形缺口已先重現，再改為整份候選拒絕、零工具／原生訊息且要求重設；兩 Gemini profile 的真 SDK／假 handler 回歸通過。確認後重驗 Rules／Skills 磁碟來源的兩項回歸也確認改版時不讀新 Key、不切換。八筆上游承接與正式路徑證據見[第 20 份第 11.1 節](specs/20-multi-model-and-provider-support.md#111-八筆上游必讀交接逐項承接)。
+
+真人終端機（MODEL-AC-035）、真 Gemini／OpenAI／Learn（036）、其他平台及本輪 Release／人工分發未驗；第 07 份 BUD-S003 與第 10 份 MTP test 不支援／未結原生門檻保留。
+
 <a id="latest-validation"></a>
 <a id="web-validation"></a>
 

@@ -21,10 +21,12 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
     public void SetPolicy(ISensitiveDataPolicy policy)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_modelKeyOnly && ModelKeyPrompts.Any(p => !policy.CanSendOrUse(p, ContentBoundary.ToolResult))) throw new InvalidOperationException("認證提示無法安全顯示");
         _editor.SetPolicy(policy);
         if (!terminal.IsInteractive) throw new IOException("終端機無法使用");
         _inputScope ??= terminal.BeginInput();
         _policy = policy;
+        _modelKeyOnly = false;
     }
 
     private T Read<T>(CancellationToken cancellationToken, Func<CancellationToken, T> action)
@@ -193,7 +195,12 @@ internal sealed partial class ConsoleChatInteraction(ITerminal terminal) : IChat
     public void ClearInputState() => _editor.Clear();
 
     public void Show(ChatEvent message) => Write(ChatDisplay.Format(message));
-    private void Write(string block) => ChatDisplay.Write(terminal, _policy ?? throw new InvalidOperationException("顯示政策尚未設定"), block);
+    private void Write(string block)
+    {
+        if (_policy is { } policy) ChatDisplay.Write(terminal, policy, block);
+        else if (_modelKeyOnly && ModelKeyPrompts.Contains(block, StringComparer.Ordinal)) terminal.Write(block);
+        else throw new InvalidOperationException("顯示政策尚未設定");
+    }
 
     public void Dispose()
     {

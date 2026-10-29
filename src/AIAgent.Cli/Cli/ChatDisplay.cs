@@ -37,6 +37,15 @@ internal static class ChatDisplay
 
     private static string Usage(ChatEvent message)
     {
+        if (message.ProfileUsage is { Count: > 0 } profiles)
+            return "Provider：" + message.Profile?.Provider + "；Model：" + message.Profile?.Model + "；用途：" + ContextDisplay.Purpose(message.Purpose) +
+                "\n本次用量：" + Fields(message.TurnSummary!) + "\n[回合] 生成 " + Number(message.GenerationsStarted) +
+                " 次；傳輸嘗試 " + Number(message.TurnSummary!.DispatchedRequests) + " 次\n程序生成次數：" + Number(message.ProgramGenerationsStarted) +
+                "；程序傳輸嘗試數：" + Number(message.SessionUsage!.DispatchedRequests) + "\n" +
+                string.Join("\n", profiles.Select(p => "Provider：" + p.Profile.Provider + "；Model：" + p.Profile.Model +
+                    "；生成 " + Number(p.GenerationsStarted) + (p.Overflowed ? "／溢位" : "") + "；傳輸 " + Number(p.Usage.DispatchedRequests) + "；" + Fields(p.Usage) +
+                    "\n" + string.Join("；", p.Purposes.Select(v => ContextDisplay.Purpose(v.Purpose) + "：生成 " + Number(v.GenerationsStarted) + "／傳輸 " + Number(v.Usage.DispatchedRequests))))) +
+                "\n不同模型 token 不代表相同價格或能力；本機統計不是正式帳單。\n";
         if (message.TurnSummary is { } turn)
             return (message.Purpose == GenerationPurpose.Compaction ? "[摘要維護] " : "") + "本次用量：" + Fields(turn) + "\n程序累計：" + Fields(message.SessionUsage!) +
                 "\n[回合] 生成 " + Number(message.GenerationsStarted) + " 次；傳輸嘗試 " + Number(turn.DispatchedRequests) +
@@ -98,6 +107,7 @@ internal static class ChatDisplay
 
     private static string TurnText(ChatEvent message) => message.StopReason switch
     {
+        AgentStopReason.ModelCapabilityUnavailable => "model_capability_unavailable：目前模型無法完整表示工具或檢視能力；本次未傳輸。",
         AgentStopReason.McpStopped => "MCP 流程已停止；本回合不重試，請核對本機固定原因與外送觀察。",
         AgentStopReason.McpChanged => "mcp_changed：外部目錄或版本已變動；請明確重載或斷線、重新確認並給新指示。",
         AgentStopReason.ReviewInvalid => "review_invalid：審查報告格式或來源位置無法驗證；本次未發布新報告。",
@@ -146,20 +156,20 @@ internal static class ChatDisplay
 
     private static string ResultText(LlmStatus? status, LlmErrorCode? error) => error switch
     {
-        LlmErrorCode.AuthenticationFailed => "Gemini 認證失敗；請重新輸入 Key 或退出。",
+        LlmErrorCode.AuthenticationFailed => "目前供應商認證失敗；請重新輸入 Key 或退出。",
         LlmErrorCode.ModelUnavailable => "模型或 API 路徑不可用；請檢查模型設定與授權。",
-        LlmErrorCode.PermissionDenied => "Gemini 存取遭拒；請檢查服務與模型權限。",
-        LlmErrorCode.QuotaOrRateLimited => "Gemini 配額不足或請求受限；本次未自動重試。",
-        LlmErrorCode.NetworkFailure => "無法連線至 Gemini；請檢查網路。",
-        LlmErrorCode.Timeout => "Gemini 請求逾時；本次未自動重試。",
-        LlmErrorCode.ServiceUnavailable => "Gemini 服務暫時無法完成請求；本次未自動重試。",
-        LlmErrorCode.InvalidRequest => "Gemini 請求不被接受；請檢查模型設定或縮小輸入。",
+        LlmErrorCode.PermissionDenied => "目前供應商存取遭拒；請檢查服務與模型權限。",
+        LlmErrorCode.QuotaOrRateLimited => "目前供應商配額不足或請求受限；本次未自動重試。",
+        LlmErrorCode.NetworkFailure => "無法連線至目前供應商；請檢查網路。",
+        LlmErrorCode.Timeout => "目前供應商請求逾時；本次未自動重試。",
+        LlmErrorCode.ServiceUnavailable => "目前供應商服務暫時無法完成請求；本次未自動重試。",
+        LlmErrorCode.InvalidRequest => "目前供應商請求不被接受；請檢查模型設定或縮小輸入。",
         LlmErrorCode.InputTooLarge => "模型輸入超出本機上限；請縮小內容或輸入 /clear。",
         LlmErrorCode.SensitiveInput => "模型輸入含當前 Key；已阻擋本次傳送。",
         LlmErrorCode.SensitiveOutput => "模型回應含敏感資訊；已阻擋後續使用。",
         LlmErrorCode.UnexpectedToolCall => "模型回傳未授權的工具資料；本次未執行操作。",
         LlmErrorCode.ClientUnavailable => "模型用戶端已結束；未送出請求。",
-        LlmErrorCode.InvalidResponse => "Gemini 回應無法處理；本次流程已停止。",
+        LlmErrorCode.InvalidResponse => "目前供應商回應無法處理；本次流程已停止。",
         _ => status switch
         {
             LlmStatus.Cancelled => "已取消本次請求。",

@@ -28,7 +28,7 @@ internal sealed class GeminiRequestMeasuredException : Exception
     public override string ToString() => "[GeminiRequestMeasuredException]";
 }
 
-internal sealed class GeminiTransport(HttpMessageHandler inner, string model, ISensitiveDataPolicy policy) : DelegatingHandler(inner)
+internal sealed class GeminiTransport(HttpMessageHandler inner, string model, ISensitiveDataPolicy policy, Func<bool>? isCurrent = null) : DelegatingHandler(inner)
 {
     internal GeminiOperation? Operation { get; set; }
     private ISensitiveDataPolicy? currentPolicy = policy;
@@ -45,6 +45,7 @@ internal sealed class GeminiTransport(HttpMessageHandler inner, string model, IS
             if (GeminiJson.IsSensitive(document.RootElement, currentPolicy!, ContentBoundary.ModelInput)) throw new GeminiBoundaryException(LlmErrorCode.SensitiveInput);
         cancellationToken.ThrowIfCancellationRequested();
         if (state.MeasureOnly) throw new GeminiRequestMeasuredException();
+        if (isCurrent?.Invoke() == false) throw new GeminiBoundaryException(LlmErrorCode.ClientUnavailable);
         state.RequestDispatched = true;
         var response = await base.SendAsync(request, cancellationToken);
         state.Response = response;

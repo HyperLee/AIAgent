@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+明確模型切換清除 Plan、任務、證據與核准，成功回 Plan 等新指示；既有來源與完成事實仍由本機帳本擁有，不由新模型或歷史摘要恢復。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 MCP Ready 全登錄／Plan／Execute／Review 為 16／12／15／3；Disconnected 為 13／9／12／3。fetch 為 ExternalRead，來源資料不滿足 Read／Write／Validation，不建立本機 facts；Analysis 仍只可沿 ModelAssessment 參考。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

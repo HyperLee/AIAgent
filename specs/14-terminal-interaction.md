@@ -1,5 +1,11 @@
 # 14：終端機操作改善開發規格書
 
+## 第 20 份產品實作接續（2026-10-29）
+
+承接 TERM-HO-010：模型切換確認與 Key 輸入維持唯一讀取者、完整預覽與排空；確認前後取消語意分開。舊來源／政策先解除，新認證空窗只顯示預先核可固定提示，不保留舊 Key 遮蔽。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。
+
+MODEL-036 要求固定模型文字與完整工具 Schema 也通過目前 Key 政策；因此 TERM-AC-017 的合成短 Key `e` 若碰撞固定欄名，改為讀取聊天輸入前安全退出 1、零生成及零歷史。這項新啟動閘門取代該案例原本可進入 `/clear`／`/exit` 的期待；已安全建立的工作階段仍沿原本機命令路由。
+
 ## 第 19 份產品實作接續（2026-10-28）
 
 承接 TERM-HO-009：fetch 完整外送預覽後取得本筆新隱藏 y／yes，沿唯一讀取者及預輸入排空；URL 拒絕零 RPC／確認，確認後過時、Ctrl+C 與 EOF 等待原有安全收尾。 詳見[第 19 份](19-web-search-and-document-fetch.md)及其固定交接；當次分層證據與未驗項目見 [README](../README.md#web-validation)。

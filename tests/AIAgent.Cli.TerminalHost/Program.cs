@@ -285,6 +285,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     private bool _workApprovalPrinted;
     private bool _checkpointApprovalPrinted;
     private bool _mcpApprovalPrinted;
+    private bool _modelApprovalPrinted;
     private bool _previewWaited;
     public bool IsInteractive => source.IsInteractive;
     public IDisposable BeginInput() => source.BeginInput();
@@ -319,6 +320,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
             _processApprovalPrinted = false; Console.WriteLine("OFFLINE_PROCESS_APPROVAL_READY");
         }
         if (key is null && _checkpointApprovalPrinted) { _checkpointApprovalPrinted = false; Console.WriteLine("OFFLINE_CHECKPOINT_APPROVAL_READY"); }
+        if (key is null && _modelApprovalPrinted) { _modelApprovalPrinted = false; Console.WriteLine("OFFLINE_MODEL_APPROVAL_READY"); }
         if (key is null && _mcpApprovalPrinted) { _mcpApprovalPrinted = false; Console.WriteLine("OFFLINE_MCP_APPROVAL_READY"); }
         if (key is null && _workApprovalPrinted) { _workApprovalPrinted = false; Console.WriteLine("OFFLINE_WORK_APPROVAL_READY"); }
         return key;
@@ -326,6 +328,7 @@ internal sealed class OfflineTerminal(ITerminal source, string scenario, FileStr
     public void Write(string text)
     {
         source.Write(text);
+        if (text.EndsWith("確認切換？[y/N] ", StringComparison.Ordinal)) _modelApprovalPrinted = true;
         if (text.EndsWith("確認本次外送？[y/N] ", StringComparison.Ordinal))
         {
             _mcpApprovalPrinted = true;
