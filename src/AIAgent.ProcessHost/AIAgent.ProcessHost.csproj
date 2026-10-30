@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="UseAppHost">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <DefineConstants>$(DefineConstants);GIT_PROCESS_HOST</DefineConstants>

@@ -1,5 +1,11 @@
 # 07：預算控制與整體驗收子規格
 
+## 第 22 份產品實作接續（2026-10-30）
+
+[第 22 份](22-release-publish-and-processhost.md)限定接續 BUD-054、056、070 及 BUD-AC-043：CLI 維持全域 `UseAppHost=false` 的 framework-dependent、非單檔 DLL 發布；ProcessHost 以專案本機屬性固定產生 apphost。最低產物另包含 `ProcessHost/` 四件套，須非空普通檔、非連結、apphost 可執行，且與當次來源建置輸出雜湊相同。這些結構檢查由新增發布回歸執行，不修改既有掃描器規則或掃描範圍。
+
+發布／結構檢查失敗即停止；完整產物掃描非零時不啟動同產物 CLI／ProcessHost，僅掃描 0 後執行 DLL `--help`。BUD-S003 阻擋、停止流程符合要求及 REVIEW-01 修正分開記錄，不能用測試通過解除 BUD-AC-043 或人工／服務／分發門檻。當次結果見 [README](../README.md#release-publish-validation)；以下歷史結果保留。
+
 ## 第 21 份產品接續（2026-10-30）
 
 [唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：父子生成共用唯一程序／回合預算與用量事件；預留不等於開始，已開始不退款。離線、PTY、真人、三組真實模型服務及 Release／人工分發分列；BUD-S003 門檻保留。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。

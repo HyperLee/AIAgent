@@ -1,5 +1,11 @@
 # 10：受控建置與測試開發規格書
 
+## 第 22 份產品實作接續（2026-10-30）
+
+[第 22 份](22-release-publish-and-processhost.md)修正產品發佈時的 ProcessHost apphost 缺失：僅 ProcessHost 專案以 `TreatAsLocalProperty="UseAppHost"` 保留無條件 true，外部指定 false 亦須生成；CLI 可繼續以 DLL 發布。直接／參照建置與乾淨／增量發布由真 SDK 離線回歸驗證，必要四件套位置、權限及內容雜湊保持。
+
+不改受控建置或唯讀 Git 的執行路徑、控制管道／固定協定、身分檢查及 runtime 唯讀／原生隔離，不提供 DLL 回退或缺檔略過。產物完整性不證明原生執行已驗收；MTP test 不支援與第 10 份其餘未結門檻保持。完整掃描非零時禁止啟動同一 Release 探針；分層結果見 [README](../README.md#release-publish-validation)。
+
 ## 第 21 份產品接續（2026-10-30）
 
 [唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子不取得 build／test 或一般程序能力；原程序兩次／300 秒與 MTP test 不支援保留。Git 唯讀 recipe 仍走原用途限定原生執行器及收尾政策。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。

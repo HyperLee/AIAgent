@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 22 份產品實作接續（2026-10-30）
+
+[Release 發布與 ProcessHost apphost](specs/22-release-publish-and-processhost.md)限定修正 REVIEW-01：CLI 保持 framework-dependent、非單檔 DLL 發布，僅 ProcessHost 以本機 `UseAppHost` 屬性固定產生必要 apphost。既有固定路徑、複製流程、程序協定及隔離准入保持，沒有 DLL 回退或新產品入口。真 SDK 回歸涵蓋屬性／建置矩陣、乾淨與增量發布、必要檔權限／雜湊及失敗停止。
+
+完整產物掃描退出 0 才可執行同產物的 `--help`；停止流程通過與實際 Release blocked 分列。當次證據見 [README](README.md#release-publish-validation)，REVIEW-02～04、原生、真人／真實服務及分發門檻保留。以下舊階段敘述與歷史結果不改寫。
+
 ## 第 21 份產品實作接續（2026-10-30）
 
 [唯讀多 Agent 分工](specs/21-multi-agent-delegation.md)接續第 5～10、13～15 章：明確 `/agents on` 後，父一般 Plan／Execute 回合最後追加 `delegate_readonly`，每回合最多接受一批一至兩個同 profile 唯讀子任務。子模型可並行，工作區／規則／技能／Git 本機操作經原 FIFO 排他租約；每子 client／owner／訊息鏈與來源 ledger 獨立。父子共用唯一生成預算及用量，整批收尾後父最多一次空工具彙整。
@@ -846,6 +852,7 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/13-git-diff-and-code-review.md` | 5、8～15 的後續擴充 | 專用唯讀 Git、三層原始來源快照、受限審查回合、位置／覆蓋驗證與固定交接；證據見 README。 |
 | `specs/14-terminal-interaction.md` | 5、6、8～15 的後續擴充 | 隱藏多行／文字元素編輯、完整安全預覽、明確貼上、程序內歷史、唯一讀取者交接與事實進度；分層證據見README。 |
 | `specs/15-work-save-and-resume.md` | 5、6、8～15 的後續擴充 | 私人目錄安全摘要／未確認計畫、完整確認、排他發布、啟動續接與來源重驗；分層證據見 README。 |
+| `specs/22-release-publish-and-processhost.md` | 13、15～16 的發布驗收及第 10 份接續 | CLI DLL／ProcessHost apphost 建置政策、乾淨與增量發布、必要產物及掃描停止邊界；分層證據見 README。 |
 
 
 ### 16.3 主要流程

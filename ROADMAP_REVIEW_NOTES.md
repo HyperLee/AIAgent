@@ -12,14 +12,22 @@
 
 | 編號 | 分類 | 項目 | 狀態 |
 |---|---|---|---|
-| REVIEW-01 | 新發現缺陷 | Release 發布命令連帶停用 ProcessHost apphost，造成發布失敗。 | 待另立規格處理 |
+| REVIEW-01 | 新發現缺陷 | Release 發布命令連帶停用 ProcessHost apphost，造成發布失敗。 | 第 22 份修正已驗證；Release 掃描仍受阻。 |
 | REVIEW-02 | 新發現缺陷 | PTY 取消案例缺少假模型開始執行的同步條件，可能卡住後續回合。 | 待另立規格處理 |
 | REVIEW-03 | 既有限制 | FUT-02 產品內受控 `test` 不支援，第 10 階段未完整驗收。 | 待另立規格處理 |
 | REVIEW-04 | 未結驗收 | Release 掃描阻擋，真人、真實服務及部分原生／平台驗收未完成。 | 待另立規格處理 |
 
 ## REVIEW-01：Release 發布失敗
 
-**狀態：待另立規格處理。**
+**狀態：第 22 份修正已驗證；完整 Release 掃描及人工／服務門檻仍未結。**
+
+### 第 22 份產品實作接續（2026-10-30）
+
+依[第 22 份規格](specs/22-release-publish-and-processhost.md)，僅在 ProcessHost 根 `Project` 加入 `TreatAsLocalProperty="UseAppHost"`，保留原無條件 true。新增真 SDK 離線回歸，修正前實際抓到 Debug／Release false 屬性錯值及乾淨發布 `MSB3030`；修正後屬性矩陣、12 組直接／參照建置，以及乾淨／增量發布與八檔結構、執行權限、四件套雜湊均通過。CLI 仍以全域 false 發布 DLL，既有複製流程與程序隔離未改。
+
+兩份新產物的完整掃描各退出 1／blocked，25 檔、1 項 BUD-S003；同產物 help 均未執行。這是既定掃描規則下的阻擋，不斷言是真實私鑰。停止流程符合要求與發布生成缺陷修正分開記錄，不解除 REVIEW-04 或宣告完整 Release 通過。原儲存庫回歸、實際命令及來源／產物位置見 [README 當次紀錄](README.md#release-publish-validation)；REVIEW-02～04 各自保留，未提交或對外分發。
+
+以下是原 `1724e36` 查核的歷史命令與失敗結果，未改寫成修正後成功：
 
 來源：[README 發布與人工驗收](README.md#發布與人工驗收)、[CLI 專案](src/AIAgent.Cli/AIAgent.Cli.csproj)及 [ProcessHost 專案](src/AIAgent.ProcessHost/AIAgent.ProcessHost.csproj)。查核基準的相關位置為 README 第 1132 行、CLI 專案第 10／13 行及 ProcessHost 專案第 9 行。
 
@@ -128,6 +136,6 @@ python3 -B scripts/check_sensitive_content.py artifacts --path "/private/tmp/aia
 
 ## 後續使用與紀錄範圍
 
-後續以 REVIEW-01～04 分別追蹤，於個別開發規格書中定義修正範圍、權限邊界與驗收條件。修正或補驗完成前，各項均維持「待另立規格處理」，不先選定實作方案或宣告問題解除。
+後續以 REVIEW-01～04 分別追蹤，於個別開發規格書中定義修正範圍、權限邊界與驗收條件。REVIEW-01 已依第 22 份產品接續記錄本次修正與分層證據；其他項目維持「待另立規格處理」，不因發布生成修正解除掃描或人工／服務門檻。
 
 本次文件交付只新增此根目錄紀錄，不修改程式、README、ROADMAP、SPEC 或既有子規格，不提交、推送或發布。查核使用的隔離產物與暫存目錄保留，未執行批次或遞迴刪除。

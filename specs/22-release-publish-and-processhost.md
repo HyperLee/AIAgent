@@ -1,8 +1,25 @@
 # 22：Release 發布與 ProcessHost apphost 開發規格書
 
-> 文件版本：0.1｜建立日期：2026-10-30｜文件狀態：待實作
+> 文件版本：0.1｜建立日期：2026-10-30｜文件狀態：已實作；完整 Release 驗收未通過
 >
 > 選題依據：[ROADMAP 開發完成度檢查紀錄](../ROADMAP_REVIEW_NOTES.md)的 REVIEW-01。22 是子規格編號，REVIEW-01 是缺陷追蹤編號。本次僅新增本檔；以下專案修改、測試與發布驗收均為後續開發要求，尚未因本文件交付而執行。
+
+## 產品實作接續（2026-10-30）
+
+本節記錄後續依使用者要求執行的產品開發；下方第 1～8 節及前述「本次僅新增本檔」保留規格撰寫當時的交付與歷史證據，不能用作本次產品通過紀錄。本次來源為乾淨的 `main@50c9157326568113349e01090fcbd871c1e97c3c`，macOS 26.7.1 arm64、SDK 10.0.100、Python 3.9.6；變更留在原工作目錄，沒有另建工作樹、提交、推送或對外分發。
+
+ProcessHost 根 `Project` 已加入 `TreatAsLocalProperty="UseAppHost"`，保留原無條件 true；CLI 專案及其參照／複製邏輯沒有修改。新增 [Python 發布回歸](../tests/test_release_publish.py)，以真 SDK、空本機 NuGet 來源與既有快取在新來源副本驗證。產品執行器、公開契約、套件及設定未變。
+
+| 案例 | 本次產品證據與邊界 |
+|---|---|
+| PUB-AC-001 | 修正前屬性測試退出 1，Debug／Release 明確 false 各失敗；修正後兩個 Configuration × 三個 ProcessHost 輸入及兩筆 CLI false 查詢符合要求。直接／參照 × Debug／Release × 未指定／true／false，共 12 組乾淨來源真 SDK 建置產生 apphost。 |
+| PUB-AC-002～004 | 修正前乾淨發布退出 1／MSB3030；修正後獨立新來源離線 restore 後直接發布，再從同來源增量發布至另一新目錄，兩次均退出 0。八個必要檔的種類、非空、非連結與 apphost 執行權限通過；ProcessHost 四件套 SHA-256 與當次來源 Release 建置輸出一致，CLI 根無自己的 apphost。 |
+| PUB-AC-005 | 原儲存庫 Debug 與各回歸實際命令、退出碼及平台分列於 [README 當次驗證紀錄](../README.md#release-publish-validation)，不沿用歷史數量。REVIEW-02 另行追蹤，沒有修改 PTY 或產品取消行為。 |
+| PUB-AC-006 | 兩次新發布的完整產物掃描各退出 1／blocked，25 檔、1 項 BUD-S003；同產物 help 均未執行。可控案例另驗證發布／結構／掃描失敗即停止，以及掃描 0 後才以同一輸出 help；停止流程符合要求不等於實際 Release 通過。 |
+
+上述發布來源保留於 `/private/tmp/aiagent-pub-qr2p78r_/source`，兩個輸出為同根的 `first publish with spaces` 與 `second-publish`。來源起始沒有 bin／obj；直接發布前沒有預建置 Release apphost。測試以引數陣列呼叫 README 原發布命令，掃描器使用原儲存庫絕對路徑；沒有清理、略過相依 DLL、變更掃描器或啟動受阻產物。
+
+REVIEW-01 的發布生成證據與掃描阻擋分列；BUD-AC-043、REVIEW-04 及完整 Release 仍未通過。REVIEW-02～03、真人、真實模型／Learn、其他 OS／架構及原生／分發待辦保持原狀。當次完整命令及未驗證項目統一見 [README](../README.md#release-publish-validation)，不保存命中正文、應用指示或原始診斷。
 
 ## 1. 目的與本次交付邊界
 

@@ -7,6 +7,51 @@
 開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。[17：可重用工作流程](specs/17-reusable-workflows-and-skills.md)定義目前 Scope 的手動單一技能、來源版本及跨模組失效閘門。[18：MCP 外部工具](specs/18-mcp-external-tools.md)定義固定公開搜尋、外送確認、受限傳輸及外部資料與本機證據的界線。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 <a id="latest-validation"></a>
+<a id="release-publish-validation"></a>
+
+## 第 22 份 Release 發布與 ProcessHost apphost
+
+依[第 22 份規格](specs/22-release-publish-and-processhost.md)修正 REVIEW-01：只有 ProcessHost 專案宣告 `TreatAsLocalProperty="UseAppHost"`，保留無條件 `UseAppHost=true`。README 原有全域 `UseAppHost=false` 命令維持 CLI 的 framework-dependent、非單檔 DLL 發布；內部 `ProcessHost/AIAgent.ProcessHost` 仍必須產生。既有複製流程、受控建置／唯讀 Git 的固定路徑與隔離政策均保持。
+
+新增 `tests/test_release_publish.py`，使用 Python 標準函式庫及真 SDK。每個建置案例只複製兩專案必要普通來源、專案、非機密設定與 `global.json`，排除 `bin/obj`、隱藏／敏感目錄及連結；以空本機 NuGet 來源、現有快取及測試限定 `NuGetAudit=false` 離線還原。缺 SDK／依賴即非零失敗，不略過或回退下載。隔離來源與所有輸出保留於 `/private/tmp`，不清理原工作目錄。
+
+測試驗證 Debug／Release、未指定／true／false 的屬性與直接／參照建置；另外從沒有舊 `bin/obj` 的副本直接發布，再從同來源增量發布至另一全新目錄。必要八檔須非空、普通、非連結，apphost 可執行，ProcessHost 四件套 SHA-256 須與當次來源建置輸出相同。發布、結構檢查或掃描失敗即停止該次後續驗收；只有完整掃描退出 0 才啟動同一產物的 DLL `--help`。測試的停止流程通過不代表 Release 已通過。
+
+當次來源基線、命令與分層結果見下方驗證紀錄；REVIEW-02～04、產品 MTP test 不支援、真人／真實服務及其他平台門檻分別保留。
+
+### 第 22 份驗證紀錄（2026-10-30）
+
+來源為乾淨的 `main@50c9157326568113349e01090fcbd871c1e97c3c` 加本次未提交變更；環境為 macOS 26.7.1 arm64、.NET SDK 10.0.100、Python 3.9.6。以下為本次實測，沒有以過往總數替代。產品變更僅 ProcessHost 專案一個屬性；沒有新增套件、產品參數、認證來源、DLL 回退或缺檔略過。
+
+| 實際命令／範圍 | 當次結果 |
+|---|---|
+| 修正前 `python3 -B -m unittest discover -s tests -p test_release_publish.py -k property_matrix -v` | 退出 1；Debug／Release 的明確 false 各失敗，證明測試能暴露全域覆蓋。 |
+| 修正前 `python3 -B -m unittest discover -s tests -p test_release_publish.py -k clean_and_incremental_publish -v` | 退出 1；新來源副本離線還原後直接發布，安全分類 `MSB3030`。後續結構／掃描／help 未執行，原工作目錄的舊 apphost 未刪除。 |
+| 修正後 `python3 -B -m unittest discover -s tests -p test_release_publish.py -v` | 退出 0；12／12 測試，27.354 秒。含 8 筆屬性查詢、12 組乾淨來源直接／參照建置、冷／增量發布及 9 項來源／產物／停止邊界測試。停止測試成功不等於實際產物掃描通過。 |
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --source /private/tmp/aiagent-pub-session-9x3q8386/empty-local-source -p:NuGetAudit=false` | 退出 0；使用空本機來源及現有快取。先前該空來源目錄尚未建立時命令亦退出 0；建立目錄後重跑取得本列結果，沒有回退網路。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 退出 0；零警告、零錯誤。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 退出 0；1341／1341 通過、零失敗／略過，4 分 10.942 秒。在外層沙箱之外執行以初始化產品自己的原生隔離，產品隔離保持啟用。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 退出 0，stdin 關閉，無互動。這是 Debug 入口，不替代受阻 Release 的 help。 |
+| `python3 -B -m unittest discover -s tests -p test_sensitive_content.py` | 退出 0；既有 38／38，7.158 秒。與新增發布回歸合計 50 項 Python 測試，不將矩陣子案例計為 unittest 方法數。 |
+| `python3 -B tests/terminal_smoke.py` | 首次完整執行退出 0，未重跑；自動 macOS PTY，不是真人驗收。既有 REVIEW-02 競態未修改，也未因本次通過解除。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes`；ProcessHost 專案同命令 | 各退出 0；只驗證，未套用格式修改。 |
+| `python3 -B scripts/check_sensitive_content.py staged` | 退出 0；403 檔、零命中，只涵蓋未變動的實際 index，不包含本次未暫存變更。變更工作檔另沿用掃描器的路徑／ASCII／UTF-16 規則檢查。 |
+| 變更工作檔／Python AST／專案 XML／Markdown 連結與 fences | 8 檔、零敏感規則命中；語法、XML、區塊及本機檔案連結檢查通過。這不是 Release 掃描或真正提交前的 index 驗收。 |
+| `git diff --check`；`git diff --no-index --check -- /dev/null tests/test_release_publish.py` | 前者退出 0；新檔 no-index 退出 1 表示與空檔不同，無空白診斷。HEAD 保持 `50c9157`，cached diff 為空，未暫存。 |
+
+冷／增量驗收來源為 `/private/tmp/aiagent-pub-qr2p78r_/source`，離線還原命令為 `dotnet restore src/AIAgent.Cli/AIAgent.Cli.csproj --source /private/tmp/aiagent-pub-qr2p78r_/empty-local-source -p:NuGetAudit=false`，退出 0。來源起始沒有 bin／obj；還原後直接發布前沒有 Release apphost，未預建置或補檔。
+
+| 從該來源根目錄執行的實際發布命令 | 結果及後續門檻 |
+|---|---|
+| `dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-self-contained -p:UseAppHost=false -o "/private/tmp/aiagent-pub-qr2p78r_/first publish with spaces"` | 退出 0；八檔結構／權限及四件套 SHA-256 通過，CLI 根沒有自己的 apphost。完整掃描退出 1／blocked，25 檔、1 項 BUD-S003；help 未執行。 |
+| `dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-self-contained -p:UseAppHost=false -o /private/tmp/aiagent-pub-qr2p78r_/second-publish` | 同來源保留當次建置輸出，第二個全新目錄發布退出 0；相同結構／權限／雜湊檢查通過。完整掃描退出 1／blocked，25 檔、1 項 BUD-S003；help 未執行。 |
+
+兩次掃描均使用 `python3 -B /Users/qiuzili/AIAgent/scripts/check_sensitive_content.py artifacts --path OUTPUT`，其中 OUTPUT 分別為表內兩個原樣輸出路徑，以獨立引數傳遞。所有來源與產物保留；沒有掃描後變更產物、啟動受阻 CLI／ProcessHost 或忽略廠商 DLL。BUD-S003 不等於已確認真實私鑰；REVIEW-01 的生成修正與 REVIEW-04 的掃描阻擋分開追蹤，BUD-AC-043 及完整 Release 仍未通過。
+
+真人終端機、真實 Gemini／OpenAI／Learn、其他 OS／架構、原生邊界與人工分發均未驗證；沒有提交、推送、封裝、簽章、上傳、對外分享或批次清理。
+
+一次獨立唯讀審查已涵蓋追蹤差異及未追蹤的發布回歸，沒有發現需修正的 Critical／Important／Minor 問題；未進行第二輪審查。審查結論限定 REVIEW-01 修正，不解除上述 Release 或其他未結驗收。
+
 <a id="delegation-validation"></a>
 
 ## 第 21 份唯讀多 Agent 分工
@@ -66,6 +111,7 @@ PTY 驗證啟停、busy 輸入丟棄、來源標籤、Ctrl+C／EOF、收尾及�
 | 19：文件擷取與來源 | Learn 三工具、嚴格 URL、逐次新確認及來源投影。 | 已接入正式 MCP／聊天流程。 | 分層證據見[第 19 份紀錄](#web-validation)。 | 真人、真 Learn／Gemini 與既有發布門檻另列。 |
 | 18：MCP 外部工具 | 固定 Microsoft Learn 的兩項公開搜尋、逐次新確認與版本失效。 | 已接入正式聊天與安全傳輸。 | 分層證據見[第 18 份紀錄](#mcp-validation)。 | 真人終端機、真實 Learn／Gemini 與既有發布門檻另列。 |
 | 21：唯讀多 Agent 分工 | 明確啟停、同模型最多兩子、共同預算、獨立來源及有界收尾。 | 已接入正式聊天。 | 見[第 21 份紀錄](#delegation-validation)。 | 真人、三組真實模型及既有原生／發布門檻。 |
+| 22：Release／ProcessHost apphost | CLI DLL 發布與 ProcessHost 必要 apphost 的建置契約。 | 已加入最小專案修正與發布回歸。 | 見[第 22 份紀錄](#release-publish-validation)。 | Release 掃描受阻；REVIEW-02～04 與人工／平台門檻另列。 |
 
 子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，停用委派時登錄總數斷線為十三項、MCP Ready 為十六項；Plan／Execute 分別為九／十二項及十二／十五項，Review 保持三項；啟用委派時於末端追加一項，總數為十四／十七、Plan 十／十三、Execute 十三／十六，正式 Review 仍三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
@@ -1126,11 +1172,23 @@ git config --local core.hooksPath .githooks
 
 ### 發布與人工驗收
 
-每次使用全新隔離目錄，將下列佔位路徑換成實際位置；每一步成功才執行下一步：
+每次使用全新隔離目錄，將下列佔位路徑換成實際位置。先發布；非零時停止並保留產物：
 
 ```sh
 dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-self-contained -p:UseAppHost=false -o "/example/new-publish-directory"
-python3 scripts/check_sensitive_content.py artifacts --path "/example/new-publish-directory"
+```
+
+CLI 以 DLL 啟動，輸出根不應產生 `AIAgent.Cli` apphost；ProcessHost 固定產生內部 apphost，即使外部明確指定 false 亦相同。發布成功後先核對[第 22 份必要產物契約](specs/22-release-publish-and-processhost.md#41-必要產物契約)：根四檔及 ProcessHost 四件套為非空普通檔、非連結，apphost 有執行權限，四件套雜湊與當次來源對應 Configuration 的建置輸出相同。缺漏或不符即停止；不能只看 CLI DLL。乾淨／增量與缺檔停止回歸可執行 `python3 -B -m unittest discover -s tests -p 'test_release_publish.py'`，該測試自建隔離來源及新輸出，另行回報實際掃描阻擋。
+
+結構檢查通過後掃描完整目錄，包含所有相依 DLL、PDB 與設定：
+
+```sh
+python3 -B scripts/check_sensitive_content.py artifacts --path "/example/new-publish-directory"
+```
+
+**只有掃描退出 0 才執行以下命令。** 掃描非零時保留產物，記錄安全分類及數量，將同產物 help 標為未執行；不得啟動 CLI／ProcessHost 探針、豁免相依檔或刪除 DLL 取得通過。
+
+```sh
 dotnet "/example/new-publish-directory/AIAgent.Cli.dll" --help
 ```
 
