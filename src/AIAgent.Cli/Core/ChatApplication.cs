@@ -96,9 +96,10 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command.Length == 0) continue;
                 if (text.Contains('\n') && text.TrimStart().StartsWith('/'))
                 {
-                    interaction.Show(new(ChatEventKind.InputRejected, text: text.TrimStart().StartsWith("/model", StringComparison.OrdinalIgnoreCase) ? "invalid_model_command：本機指令只接受單行；本次未執行。" : text.TrimStart().StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) ? "invalid_mcp_command：本機指令只接受單行；本次未執行。" : "本機指令只接受單行；本次未執行。"));
+                    interaction.Show(new(ChatEventKind.InputRejected, text: text.TrimStart().StartsWith("/agents", StringComparison.OrdinalIgnoreCase) ? "invalid_agents_command：本機指令只接受單行；本次未執行。" : text.TrimStart().StartsWith("/model", StringComparison.OrdinalIgnoreCase) ? "invalid_model_command：本機指令只接受單行；本次未執行。" : text.TrimStart().StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) ? "invalid_mcp_command：本機指令只接受單行；本次未執行。" : "本機指令只接受單行；本次未執行。"));
                     continue;
                 }
+                if (await HandleAgentsCommandAsync(text)) continue;
                 if (await HandleModelCommandAsync(text)) continue;
                 if (await HandleMcpCommandAsync(text)) continue;
                 if (await HandleSkillsCommandAsync(text)) continue;
@@ -110,7 +111,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                 if (command == "/exit") { RequestStop(StopReason.Normal); continue; }
                 if (command == "/help")
                 {
-                    ShowContextBlock("/model：目前 Provider／Model／官方目的地／能力與代次；/model list：產品固定支援清單，零網路；/model use PROVIDER MODEL：完整清除預覽、新確認及隱藏新 Key，切換後進 Plan。切換不復原檔案、不刪存檔、程序消耗保留。\n" +
+                    ShowContextBlock("/agents、/agents on、/agents off：明確啟用同模型唯讀分工；最多兩子、共同成本、Ctrl+C 取消整批，清除或來源失效停用。\n/model：目前 Provider／Model／官方目的地／能力與代次；/model list：產品固定支援清單，零網路；/model use PROVIDER MODEL：完整清除預覽、新確認及隱藏新 Key，切換後進 Plan。切換不復原檔案、不刪存檔、程序消耗保留。\n" +
                         "/mcp、/mcp tools：零網路狀態／目錄；/mcp connect learn：固定公開 Microsoft Learn；/mcp reload：明確重載；/mcp disconnect：停用。每次外送完整預覽及新隱藏確認；Stale 須重載或斷線，clear／換 Key／續接不自動連線。\n" +
                         "/skills：上次觀察狀態；/skills list：目前 Scope 的 skills/<id>/SKILL.md；/skills show ID：完整磁碟檢視；/skills use ID：手動單一選用；/skills reload：明確重載；/skills off：停用。\n" +
                         "技能可能送至目前供應商，只能指導既有能力，不代表執行或核准；檢視不會啟用，來源過時須重載或停用，再重新確認計畫並給新指示。clear／換 Key／退出會丟棄技能，續接不恢復；每筆操作仍逐次核准。\n" +
@@ -172,28 +173,32 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
         finally
         {
             SetState(ChatState.Stopping);
-            if (policyReady && _session is not null) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
-            try { await ClearConversationStateAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { if (_workStore is not null) await _workStore.DisposeAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { if (_mcp is not null) await _mcp.DisposeAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { if (_skills is not null) await _skills.DisposeAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { if (_rules is not null) await _rules.DisposeAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { await DisposeWorkspaceAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { await DisposeClientAsync(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            try { _plans?.Stop(); } catch (Exception) { RequestStop(StopReason.Failure); }
-            _executionPolicy = null;
-            try { _session?.Dispose(); }
-            catch (Exception) { RequestStop(StopReason.Failure); }
-            _session = null;
-            LastOutcome = null;
-            _models?.Stop();
+            if (!_delegationFatal && policyReady && _session is not null) TryShow(new(ChatEventKind.Stopping, text: "聊天已結束。"));
+            if (!_delegationFatal)
+            {
+                try { await ClearConversationStateAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { if (_workStore is not null) await _workStore.DisposeAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { if (_mcp is not null) await _mcp.DisposeAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { if (_skills is not null) await _skills.DisposeAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { if (_rules is not null) await _rules.DisposeAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { await DisposeWorkspaceAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { await DisposeClientAsync(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                try { _plans?.Stop(); } catch (Exception) { RequestStop(StopReason.Failure); }
+                _executionPolicy = null;
+                try { _session?.Dispose(); }
+                catch (Exception) { RequestStop(StopReason.Failure); }
+                _session = null;
+                LastOutcome = null;
+                _models?.Stop();
+            }
+            else { _models?.Stop(); _plans?.Stop(); }
             registration.Dispose();
             lock (_gate) _finalized = true;
             _stop.Dispose();
@@ -238,6 +243,8 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             if (!maintenance && _processes is IProcessTurnLifecycle lifecycle) lifecycle.BeginTurn();
             var result = maintenance ? await _runner!.RunMaintenanceAsync(cancellation.Token) :
                 await _runner!.RunAsync(context.BuildMessages(user!), cancellation.Token, review);
+            if (result.StopReason == AgentStopReason.DelegationUnconfirmed)
+            { _delegationFatal = true; _models?.Stop(); RequestStop(StopReason.Failure); return false; }
             var status = result.Status;
             if (result.StopReason == AgentStopReason.WriteUnconfirmed || result.Operations.Any(o => o.WriteState == FileWriteState.Unconfirmed || o.CleanupFailed)) _modelSwitchBlocked = true;
             var reason = result.StopReason;
@@ -283,7 +290,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             {
                 // Cancellation and final publication use the same CLI decision point.
                 if ((_cancelTurn || _stopReason != StopReason.None) &&
-                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
+                    reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed or AgentStopReason.DelegationUnconfirmed))
                 { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; }
                 else if (status == AgentTurnStatus.Completed && !requiresContextReset && result.McpStamp is { } finalMcp && _mcp?.IsCurrent(finalMcp) != true)
                 { status = AgentTurnStatus.Stopped; reason = AgentStopReason.McpChanged; }
@@ -402,13 +409,18 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
             ConfirmProcessAsync, text => interaction.Show(new(ChatEventKind.Ready, text: text)));
         _executionPolicy!.ProcessCapabilityAvailable = processFactory.IsAvailable;
         _executionPolicy.ProcessTestCapabilityAvailable = processFactory.Supports(DotnetTaskKind.Test);
+        if (workspace is WorkspaceFiles delegationFiles && _contexts is not null)
+            _delegation = new(_contexts, _executionPolicy, _generationBudget, delegationFiles, session.Policy,
+                runtimeFactory.CreateDelegationFactory(session), () => (gitReadWorkspaceFactory ?? new GitReadWorkspaceFactory()).Create(session, workspace),
+                _delegationIdentities, HandleDelegationEvent, reportGuard: AgentRunner.CreateMcpGuard(session.Policy, systemInstruction));
+        _executionPolicy.Delegation = _delegation;
         var registry = new ToolRegistry([new ListFilesTool(workspace, session.Policy), new ReadFileTool(workspace, session.Policy),
             new CreateFileTool(workspace, session.Policy), new ReplaceTextTool(workspace, session.Policy),
             new SearchFilesTool(workspace, session.Policy), new SearchTextTool(workspace, session.Policy),
             new ReadFileRangeTool(workspace, session.Policy), new SubmitPlanTool(_plans!, session.Policy),
             new UpdateTaskTool(_plans!, session.Policy), new RunDotnetTaskTool(_processes, session.Policy),
             new GitStatusTool(_git, session.Policy, _executionPolicy), new GitDiffTool(_git, session.Policy, _executionPolicy),
-            new ReadGitFileRangeTool(_git, session.Policy, _executionPolicy)], session.Policy, _executionPolicy);
+            new ReadGitFileRangeTool(_git, session.Policy, _executionPolicy), .. (_delegation is null ? Array.Empty<ITool>() : [new DelegateReadonlyTool(_delegation, session.Policy)])], session.Policy, _executionPolicy);
         return (registry, new AgentRunner(client, registry, session.Policy, systemInstruction, usage, HandleAgentEvent,
             _generationBudget, _contexts, runtimeFactory.CreateContextInspector(client), ModelCatalog.Find(session.Settings)));
     }
@@ -489,6 +501,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
 
     private async Task ClearConversationStateAsync()
     {
+        _delegation?.Invalidate();
         if (_mcp is not null) await _mcp.ResetAsync();
         interaction.ClearInputState();
         lock (_gate)

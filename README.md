@@ -6,6 +6,42 @@
 
 開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。[17：可重用工作流程](specs/17-reusable-workflows-and-skills.md)定義目前 Scope 的手動單一技能、來源版本及跨模組失效閘門。[18：MCP 外部工具](specs/18-mcp-external-tools.md)定義固定公開搜尋、外送確認、受限傳輸及外部資料與本機證據的界線。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
+<a id="latest-validation"></a>
+<a id="delegation-validation"></a>
+
+## 第 21 份唯讀多 Agent 分工
+
+依[第 21 份規格](specs/21-multi-agent-delegation.md)新增 `/agents`、`/agents on`、`/agents off`。預設停用；完整說明成功顯示後才啟用，命令本身不生成或派任務。啟用後由父模型提出 `delegate_readonly`，每個一般回合最多接受一批一至兩子，固定使用父目前同一 profile。Explore 有五項檔案唯讀工具，Review 有三項 Git 工具；子沒有寫入、程序、MCP／網頁、讀鍵、核准或父任務修改能力。
+
+父子共用回合／程序額度與唯一用量。分派時剩餘額度須至少 `2N+1`，每子兩至三次、父彙整一次；預設五次且父已用一次時，只容一子，兩子須先由使用者明確調整 `/budget`。預留不算開始、已開始不退款，也不會改派較少子或重試。子模型並行，本機讀取經同一 FIFO 排他租約；全部子 join、來源重驗與 disposal 完成後才回填，父至多一次 `tools=[]` 彙整。
+
+`/agents` 顯示最近一批的安全狀態、來源覆蓋、開始次數、用量及容量數值。Completed 是合法分析或明示的本機零差異分支，不代表父任務完成或測試通過；partial 明示未完成部分。來源只限定最後重驗時點。原生訊息、ledger 與來源 bytes 不跨批次保留；子讀取不建立父修改快照、facts 或 checkpoint。
+
+Ctrl+C 取消父與整批，busy 的普通輸入及 `/agents off` 被丟棄；EOF 收尾後退出。工作共用 120 秒期限，首次整批停止或全子終結後共用十秒收尾；無法確認退出 1。clear、安全重設、換 Key／profile、續接與來源失效均停用，成功一般回合與 compaction 保留啟用。SAVE v1 不保存子能力或啟用狀態，摘要只投影白名單 metadata。
+
+### 第 21 份驗證紀錄（2026-10-30）
+
+原始乾淨基線為 `main@76c007f`，平台為 macOS arm64、.NET SDK 10.0.100；變更保留於目前工作區，未提交、推送或發布。全部自動模型測試使用合成認證及假 HTTP，不呼叫真實模型服務。
+
+| 驗證命令／範圍 | 當次結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 成功。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 成功，0 warning／0 error。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build` | 1341／1341，0 failed／0 skipped；原有 1295 加新增 46 項。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 退出 0，無互動；包含委派命令及成本／取消說明。 |
+| `python3 -m unittest discover -s tests -p 'test_*.py'` | 38／38。 |
+| `python3 tests/terminal_smoke.py` | macOS PTY 145 組通過，包含新增 3 組委派案例。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 成功；測試與 TerminalHost 另以各專案 `--include` 選取變更檔驗證通過。 |
+| 原始碼／文件靜態檢查 | 變更工作檔沿用掃描器的路徑及 ASCII／UTF-16 內容規則，零命中；C# CRLF／無結尾換行、JSON、文件連結／錨點及 `git diff --check` 通過，索引與 HEAD 未變。這不是 Release 產物掃描。 |
+
+基線測試在外層沙箱內有 17 項因 `sandbox_apply: Operation not permitted` 失敗；允許測試程序在外層沙箱之外啟動原生隔離後，基線 1295 與本次 1341 項均全數通過。產品的原生隔離保持啟用，沒有將這項環境限制改為產品豁免。
+
+`DelegationWorkflowTests` 透過三個 profile 的正式工廠、父 Runner 與子工廠，分別驗證兩 Explore 及 Explore＋Review：假 HTTP barrier 證明兩子同時生成、父等待、獨立 client／owner、合成認證只在官方請求標頭，以及一次空工具彙整。可控時鐘與排程覆蓋 FIFO、預算、120／10 秒界線、取消與釋放；來源測試覆蓋 metadata／正文區分、完整雜湊、目錄替換、帳本滿前拒絕，以及不建立父寫入快照。邊界測試涵蓋混合 native batch 零工具、完整配對、原文交接、Unicode／bytes、報告來源、精確 findings 去重及摘要白名單。
+
+獨立唯讀審查指出六項 Important 與一項原列 Minor 的問題；後者因 MULTI-066 明訂解碼後 Ordinal 去重而按 Important 處理，七項均先以回歸重現並修正。修正包含取消不得蓋過致命收尾／來源錯誤、工具內逾時分類、逐次派送結果歸屬、終端機投影不持有決策鎖，以及不保留已壓縮的原生歷史；沒有待處理審查項目，未進行第二輪獨立複審。
+
+PTY 驗證啟停、busy 輸入丟棄、來源標籤、Ctrl+C／EOF、收尾及終端機還原，不代替真實並行 API 或真人輸入。真人 MULTI-AC-037、三組真實模型服務 MULTI-AC-038、其他 OS／架構、真 Learn、Release／人工分發未驗；BUD-S003 與產品受控 MTP test 不支援等未結門檻保持。
+
 ## 開發進度
 
 | 子規格 | 能力 | 功能實作 | 自動驗證 | 整體驗收待辦 |
@@ -29,8 +65,9 @@
 | 17：可重用工作流程 | 目前 Scope 的本機技能、明確單一選用、來源版本及失效閘門。 | 已接入正式聊天、工具與程序。 | 分層證據見[第 17 份紀錄](#skills-validation)。 | SKILL-AC-030 真人、031 真實 Gemini；既有原生／發布門檻保留。 |
 | 19：文件擷取與來源 | Learn 三工具、嚴格 URL、逐次新確認及來源投影。 | 已接入正式 MCP／聊天流程。 | 分層證據見[第 19 份紀錄](#web-validation)。 | 真人、真 Learn／Gemini 與既有發布門檻另列。 |
 | 18：MCP 外部工具 | 固定 Microsoft Learn 的兩項公開搜尋、逐次新確認與版本失效。 | 已接入正式聊天與安全傳輸。 | 分層證據見[第 18 份紀錄](#mcp-validation)。 | 真人終端機、真實 Learn／Gemini 與既有發布門檻另列。 |
+| 21：唯讀多 Agent 分工 | 明確啟停、同模型最多兩子、共同預算、獨立來源及有界收尾。 | 已接入正式聊天。 | 見[第 21 份紀錄](#delegation-validation)。 | 真人、三組真實模型及既有原生／發布門檻。 |
 
-子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，登錄總數斷線為十三項、MCP Ready 為十六項；Plan／Execute 分別為九／十二項及十二／十五項，Review 保持三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
+子規格 01～03 對應總規格第一階段「可以聊天」，04～05 對應第二階段「可以讀檔」，06～07 對應第三階段「可以修改」。正式登錄七項檔案工具（`list_files`、`read_file`、`create_file`、`replace_text`、`search_files`、`search_text`、`read_file_range`），再接 `submit_plan`、`update_task`、`run_dotnet_task`，再追加 `git_status`、`git_diff`、`read_git_file_range`，停用委派時登錄總數斷線為十三項、MCP Ready 為十六項；Plan／Execute 分別為九／十二項及十二／十五項，Review 保持三項；啟用委派時於末端追加一項，總數為十四／十七、Plan 十／十三、Execute 十三／十六，正式 Review 仍三項；每筆寫入及程序須預覽後明確核准，工作區工具不提供刪除；`/work delete ID` 僅是私人單一存檔的本機限定入口。第 07 份不新增模型工具或產品參數；上表的自動驗證不等於各階段所有人工／服務／發布門檻均已通過。
 
 <a id="model-validation"></a>
 
@@ -67,7 +104,6 @@ B 的舊短 Key `e` 斷言依 MODEL-036 改為啟動時安全退出；CLI-AC-003
 
 真人終端機（MODEL-AC-035）、真 Gemini／OpenAI／Learn（036）、其他平台及本輪 Release／人工分發未驗；第 07 份 BUD-S003 與第 10 份 MTP test 不支援／未結原生門檻保留。
 
-<a id="latest-validation"></a>
 <a id="web-validation"></a>
 
 ## 第 19 份網頁查詢與文件擷取

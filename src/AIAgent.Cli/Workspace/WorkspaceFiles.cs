@@ -18,6 +18,8 @@ internal sealed class WorkspaceFilesFactory(FileChangeApprovalBridge? approvalBr
 internal sealed partial class WorkspaceFiles : IWorkspaceFiles
 {
     private readonly object _gate = new();
+    private readonly string? _delegationScope;
+    private readonly DelegationSourceLedger? _delegationLedger;
     private readonly string _root;
     private readonly IWorkspaceReadFileSystem _fileSystem;
     private readonly ReadSnapshotStore _snapshots;
@@ -35,16 +37,16 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     public ICheckpointWorkspace Checkpoints => this;
 
     internal WorkspaceFiles(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy, IWorkspaceReadFileSystem fileSystem,
-        IFileChangeApproval? approval = null, AgentExecutionPolicy? executionPolicy = null, IGitReadAdapter? checkpointGitAdapter = null)
+        IFileChangeApproval? approval = null, AgentExecutionPolicy? executionPolicy = null, IGitReadAdapter? checkpointGitAdapter = null, string? delegationScope = null, DelegationSourceLedger? delegationLedger = null)
     {
-        _root = workspace.RootPath;
+        _root = workspace.RootPath; _delegationScope = delegationScope; _delegationLedger = delegationLedger;
         _policy = policy;
         _fileSystem = fileSystem;
         _approval = approval ?? UnavailableFileChangeApproval.Instance;
         _executionPolicy = executionPolicy ?? new(new PlanStore(policy));
         _checkpoints = new(_gate, _executionPolicy.Plans.CheckpointSequence);
         _checkpointGitAdapter = checkpointGitAdapter;
-        _snapshots = new(_gate, CancelActiveOperation);
+        _snapshots = new(_gate, delegationScope is null ? CancelActiveOperation : null);
         _executionPolicy.Rules ??= new(this, policy, _executionPolicy);
         _executionPolicy.Skills ??= new(this, policy, _executionPolicy);
     }
@@ -54,9 +56,24 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
     public Task<WorkspaceReadResult> ReadFileAsync(string path, CancellationToken cancellationToken) =>
         RunAsync((operation, token) => ReadCoreAsync(path, operation, token), WorkspaceReadResult.End, cancellationToken);
 
+    private async Task<T> RunDelegationAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
+        Func<WorkspaceStatus, WorkspaceErrorCode, T> end, CancellationToken token)
+    {
+        await using var lease = await _executionPolicy.WorkspaceOperations.AcquireAsync(token);
+        TaskCompletionSource completion;
+        lock (_gate)
+        {
+            if (_disposal is not null || _inFlight is not null) return end(WorkspaceStatus.Failed, WorkspaceErrorCode.Unavailable);
+            completion = _inFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;
+        }
+        _delegationLedger!.BeginTool();
+        return await RunCoreAsync(operation, end, new WorkspaceOperation(_snapshots.Generation, _activePlanGeneration) { Lease = lease }, lease);
+    }
     private Task<T> RunAsync<T>(Func<WorkspaceOperation, CancellationToken, Task<T>> operation,
         Func<WorkspaceStatus, WorkspaceErrorCode, T> end, CancellationToken external)
     {
+        if (_delegationScope is not null) return RunDelegationAsync(operation, end, external);
         long generation;
         WorkspaceOperationLease? lease;
         lock (_gate)
@@ -157,6 +174,7 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
                 var state = _fileSystem.Inspect(Path.Combine(_root, relative));
                 if (state.Kind == WorkspaceNodeKind.Missing) throw Rejected(WorkspaceErrorCode.PathChanged);
                 if (state.Kind is not (WorkspaceNodeKind.File or WorkspaceNodeKind.Directory)) continue;
+                _delegationLedger?.Observe(relative, state);
                 retained[relative] = new(relative, state.Kind == WorkspaceNodeKind.File ? WorkspaceEntryKind.File : WorkspaceEntryKind.Directory);
                 if (retained.Count > WorkspaceLimits.MaxListEntries)
                 { retained.Remove(retained.Last().Key); truncated = true; }
@@ -190,11 +208,11 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
         if (_fileSystem is IWorkspaceWriteFileSystem modes && modes.GetMode(Path.Combine(_root, path)) != file.Mode)
             throw Rejected(WorkspaceErrorCode.PathChanged);
         await CheckRulesResultAsync(operation, token);
-        var snapshot = new WorkspaceReadSnapshot(path, file.Bytes, file.HasBom, file.State.Device, file.State.Identity, file.Mode);
+        var snapshot = _delegationScope is null ? new WorkspaceReadSnapshot(path, file.Bytes, file.HasBom, file.State.Device, file.State.Identity, file.Mode) : null;
         lock (_gate)
         {
             CheckActive(operation.Generation, token);
-            _snapshots.Publish(snapshot);
+            if (snapshot is not null) _snapshots.Publish(snapshot);
             return result;
         }
     }
@@ -329,14 +347,14 @@ internal sealed partial class WorkspaceFiles : IWorkspaceFiles
             try { _lifetime.Cancel(); }
             catch (Exception) { failed = true; }
             await wait;
-            await _executionPolicy.WorkspaceOperations.DisposeAsync();
+            if (_delegationScope is null) await _executionPolicy.WorkspaceOperations.DisposeAsync();
         }
         catch (Exception) { failed = true; }
         finally
         {
             try
             {
-                lock (_gate) { _checkpoints.Clear(); _executionPolicy.Recovery.Clear(); _snapshots.Clear(); _policy = null; }
+                lock (_gate) { _checkpoints.Clear(); if (_delegationScope is null) _executionPolicy.Recovery.Clear(); _snapshots.Clear(); _policy = null; }
                 _lifetime.Dispose();
             }
             catch (Exception) { failed = true; }

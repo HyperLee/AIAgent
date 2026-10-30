@@ -1,5 +1,9 @@
 # 16：修改檢查點與復原開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子不擷取、共用或復原父 checkpoint，也不改 EvidenceEpoch 或父寫入基準。Recovery 來源改變使舊子候選失效；父先前本機事實由原擁有者保留，沒有自動 rollback。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 承接 CKPT-HO-012：切換預覽明示檢查點喪失；確認後丟 bytes、anchor、候選與復原歷史，不移交原資格。RecoveryRevision／EvidenceEpoch 及已寫檔案／Git index 的擁有者不變，不以切換復原副作用。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

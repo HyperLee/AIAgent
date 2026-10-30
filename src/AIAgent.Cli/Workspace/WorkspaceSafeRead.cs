@@ -56,6 +56,7 @@ internal sealed partial class WorkspaceFiles
         Revalidate(observations);
         if (_fileSystem is IWorkspaceWriteFileSystem modes && modes.GetMode(observations[^1].Path) != mode) throw Rejected(WorkspaceErrorCode.PathChanged);
         Active();
+        _delegationLedger?.Observe(path, initial, original, mode);
         return new(original, content, hasBom, initial, mode, observations);
     }
     private sealed class VerifiedWorkspaceFile(byte[] bytes, string content, bool hasBom, WorkspaceNodeState state, UnixFileMode mode, List<PathObservation> observations)

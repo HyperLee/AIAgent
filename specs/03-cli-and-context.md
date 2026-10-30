@@ -1,5 +1,9 @@
 # 03：CLI 與 Context 子規格
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：新增精確單行 /agents、/agents on、/agents off；啟動、續接與換認證預設停用。父仍是唯一鍵盤讀取者，busy 普通輸入丟棄，Ctrl+C 取消父及全批，EOF 收尾後退出。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 新增 /model、/model list、/model use PROVIDER MODEL。本機明確切換須完整預覽、新確認及新隱藏 Key；清除後重驗根與根規則，成功進 Plan。確認前取消保留舊 session，確認後取消／EOF 退出 130／0，釋放故障退出 1。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

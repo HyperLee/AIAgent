@@ -38,13 +38,14 @@ internal sealed class ToolExecutionResult
     internal bool ProcessCleanupFailed { get; }
     internal GitSummary? GitSummary { get; }
     internal McpCallOutcome? McpOutcome { get; }
+    internal DelegationBatchResult? DelegationOutcome { get; }
 
     internal ToolExecutionResult(ToolStatus status, string errorCode, JsonElement? response,
         string? relativePath = null, long? byteCount = null, int? returnedEntries = null, bool truncated = false,
         FileWriteState? writeState = null, string? verifiedPath = null, long? verifiedByteCount = null,
         bool? verifiedHasUtf8Bom = null, bool cleanupFailed = false, bool stopAfterOperation = false,
         WorkspaceDiscoverySummary? discoverySummary = null, ProcessExecutionSummary? processSummary = null, bool processCleanupFailed = false,
-        GitSummary? gitSummary = null, McpCallOutcome? mcpOutcome = null)
+        GitSummary? gitSummary = null, McpCallOutcome? mcpOutcome = null, DelegationBatchResult? delegationOutcome = null)
     {
         if (!Enum.IsDefined(status) || !ToolErrorCodes.IsValid(errorCode) ||
             response is { ValueKind: not JsonValueKind.Object }) throw new ArgumentException("工具結果無效");
@@ -59,6 +60,7 @@ internal sealed class ToolExecutionResult
             processCleanupFailed != (processSummary?.CleanupFailed ?? false) ||
             processCleanupFailed && (status != ToolStatus.Failed || errorCode != "process_cleanup_failed"))
             throw new ArgumentException("工具程序事實無效");
+        DelegationOutcome = delegationOutcome;
         McpOutcome = mcpOutcome; ProcessSummary = processSummary; ProcessCleanupFailed = processCleanupFailed; GitSummary = gitSummary;
         WriteState = writeState; VerifiedPath = verifiedPath; VerifiedByteCount = verifiedByteCount;
         VerifiedHasUtf8Bom = verifiedHasUtf8Bom; CleanupFailed = cleanupFailed; StopAfterOperation = stopAfterOperation;
@@ -70,15 +72,15 @@ internal sealed class ToolExecutionResult
     internal ToolExecutionResult WithoutResponse() => new(Status, ErrorCode, null,
         writeState: WriteState, verifiedPath: VerifiedPath, verifiedByteCount: VerifiedByteCount,
         verifiedHasUtf8Bom: VerifiedHasUtf8Bom, cleanupFailed: CleanupFailed, stopAfterOperation: StopAfterOperation,
-        processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed, gitSummary: GitSummary, mcpOutcome: McpOutcome);
+        processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed, gitSummary: GitSummary, mcpOutcome: McpOutcome, delegationOutcome: DelegationOutcome);
     internal ToolExecutionResult WithProcessStop() => new(Status, ErrorCode, Response,
-        stopAfterOperation: true, processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed, gitSummary: GitSummary, mcpOutcome: McpOutcome);
+        stopAfterOperation: true, processSummary: ProcessSummary, processCleanupFailed: ProcessCleanupFailed, gitSummary: GitSummary, mcpOutcome: McpOutcome, delegationOutcome: DelegationOutcome);
     public override string ToString() => "[ToolExecutionResult]";
 }
 
 internal static class ToolErrorCodes
 {
-    internal static bool IsValid(string code) => code is "web_url_rejected" or "invalid_mcp_command" or "mcp_busy" or "mcp_not_connected" or "mcp_already_connected" or "mcp_catalog_stale" or "mcp_changed" or "mcp_protocol_unsupported" or "mcp_schema_unsupported" or "mcp_catalog_invalid" or "mcp_auth_unsupported" or "mcp_destination_rejected" or "mcp_limit" or "mcp_timed_out" or "mcp_transport_failed" or "mcp_unconfirmed" or "mcp_remote_error" or "mcp_result_unsupported" or "mcp_invalid_response" or "not_git_repository" or "git_unavailable" or "unsupported_git_layout" or "git_snapshot_required" or "git_snapshot_stale" or "git_source_unavailable" or "git_limit" or "git_failed" or "git_timed_out" or "ignore_unavailable" or "review_invalid" or "review_incomplete" or "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" or "skills_unavailable" or "skills_changed" or "skills_limit" or "none" or "unknown_tool" or "invalid_arguments" or
+    internal static bool IsValid(string code) => code is "delegation_disabled" or "delegation_batch_invalid" or "delegation_limit" or "delegation_budget_insufficient" or "delegation_source_changed" or "delegation_timed_out" or "delegation_cleanup_failed" or "delegation_model_failed" or "delegation_report_invalid" or "delegation_runtime_failed" or "context_capacity" or "invalid_protocol" or "web_url_rejected" or "invalid_mcp_command" or "mcp_busy" or "mcp_not_connected" or "mcp_already_connected" or "mcp_catalog_stale" or "mcp_changed" or "mcp_protocol_unsupported" or "mcp_schema_unsupported" or "mcp_catalog_invalid" or "mcp_auth_unsupported" or "mcp_destination_rejected" or "mcp_limit" or "mcp_timed_out" or "mcp_transport_failed" or "mcp_unconfirmed" or "mcp_remote_error" or "mcp_result_unsupported" or "mcp_invalid_response" or "not_git_repository" or "git_unavailable" or "unsupported_git_layout" or "git_snapshot_required" or "git_snapshot_stale" or "git_source_unavailable" or "git_limit" or "git_failed" or "git_timed_out" or "ignore_unavailable" or "review_invalid" or "review_incomplete" or "rules_unavailable" or "rules_changed" or "rules_scope_mismatch" or "rules_limit" or "skills_unavailable" or "skills_changed" or "skills_limit" or "none" or "unknown_tool" or "invalid_arguments" or
         "invalid_pattern" or "invalid_query" or "invalid_line_range" or
         "mode_restricted" or "plan_required" or "plan_not_approved" or "plan_revision_conflict" or "task_not_found" or
         "invalid_task_transition" or "task_in_progress" or "task_required" or "task_scope_mismatch" or "evidence_required" or

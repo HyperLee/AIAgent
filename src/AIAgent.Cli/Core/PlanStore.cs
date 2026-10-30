@@ -46,6 +46,7 @@ internal sealed partial class PlanStore(ISensitiveDataPolicy policy, object? dec
     internal long CurrentSkillsRevision { get; set; }
     internal SkillsCoordinator? Skills { get; set; }
     internal McpCoordinator? Mcp { get; set; }
+    internal DelegationCoordinator? Delegation { get; set; }
     internal void RevokeForMcp()
     {
         lock (_gate)
@@ -467,6 +468,7 @@ internal sealed class AgentExecutionPolicy(PlanStore plans)
     internal ProjectRulesCoordinator? Rules { get; set; }
     internal SkillsCoordinator? Skills { get; set; }
     internal McpCoordinator? Mcp { get; set; }
+    internal DelegationCoordinator? Delegation { get; set; }
     internal AgentMode Mode => Plans.Mode;
     internal WorkspaceOperationCoordinator WorkspaceOperations { get; } = new();
     internal bool ProcessTestCapabilityAvailable
@@ -489,6 +491,7 @@ internal sealed class AgentExecutionPolicy(PlanStore plans)
     internal bool Allows(ToolCapability capability) => !ProcessSessionStopped && Plans.IsExecutionCurrent &&
         (!Plans.ReviewTurnActive || capability == ToolCapability.GitRead) && capability switch
         {
+            ToolCapability.DelegationRead => Delegation?.Mode == DelegationMode.Enabled,
             ToolCapability.WorkspaceRead or ToolCapability.GitRead or ToolCapability.ExternalRead => true,
             ToolCapability.WorkspaceWrite or ToolCapability.UpdateTask or ToolCapability.DotnetTask => Mode == AgentMode.Execute,
             ToolCapability.SubmitPlan => Mode == AgentMode.Plan,

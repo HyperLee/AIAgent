@@ -1,5 +1,9 @@
 # 02：Gemini 用戶端子規格
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：每子使用全新 client／原生 owner／同 client inspector；每個 client 仍最多一個在途請求。父等待子批次收尾，原生消息、簽章與配對不跨 client，公開 LLM 契約及供應商目的地不變。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 Gemini 固定支援 Flash-Lite 與 3.6 Flash，沿原 SDK／Generate Content、原生 owner、parts／簽章與請求限制。PublicSettings 增加唯讀 Provider 與雙參數建構入口，公開 LLM 契約保持；B 已以內建 HttpClient／System.Text.Json 加入獨立 OpenAiClient，固定 Responses／Bearer；不重用 Gemini 原生紀錄或 SDK 認證，零新 NuGet。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

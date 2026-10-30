@@ -8,9 +8,11 @@ namespace AIAgent.Cli.Workspace;
 internal sealed partial class WorkspaceFiles
 {
     public Task<WorkspaceWriteResult> CreateFileAsync(string path, string content, CancellationToken cancellationToken) =>
+        _delegationScope is not null ? Task.FromResult(WorkspaceWriteResult.End(WorkspaceStatus.Rejected, WorkspaceErrorCode.ModeRestricted)) :
         RunAsync((operation, token) => WriteCoreAsync(path, content, null, FileChangeKind.Create, operation, token),
             (status, code) => WorkspaceWriteResult.End(status, code), cancellationToken);
     public Task<WorkspaceWriteResult> ReplaceTextAsync(string path, string oldText, string newText, CancellationToken cancellationToken) =>
+        _delegationScope is not null ? Task.FromResult(WorkspaceWriteResult.End(WorkspaceStatus.Rejected, WorkspaceErrorCode.ModeRestricted)) :
         RunAsync((operation, token) => WriteCoreAsync(path, newText, oldText, FileChangeKind.Replace, operation, token),
             (status, code) => WorkspaceWriteResult.End(status, code), cancellationToken);
 

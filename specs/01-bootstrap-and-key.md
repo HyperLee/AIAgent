@@ -1,5 +1,9 @@
 # 01：專案啟動與 API Key 子規格
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：認證仍只來自隱藏輸入；用途限定轉接器可借用目前 session，建立至多兩個同 profile 子 client。子循環不取得 session、Secrets 或認證來源；全部子能力先收尾，父認證最後釋放。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 新增非機密 Llm.Provider／Model，並相容原 Gemini.Model；固定目錄准入在讀 Key 前完成。啟動確認列 Provider、Model 與官方目的地，認證仍只由隱藏終端機輸入取得。--help 不讀設定或工作區。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

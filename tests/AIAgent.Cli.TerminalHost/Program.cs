@@ -44,6 +44,7 @@ internal sealed class FixedSettings : IPublicSettingsLoader
 internal sealed class OfflineRuntime(string scenario, FileStream? gate) : IChatRuntimeFactory
 {
     public ILlmContextInspector? CreateContextInspector(ILlmClient client) => client as ILlmContextInspector;
+    public IDelegationRuntimeFactory? CreateDelegationFactory(BootstrapSession session) => scenario.StartsWith("agents", StringComparison.Ordinal) ? new OfflineDelegationFactory(scenario, gate) : null;
     private int _clients;
     public BootstrapSession CreateReplacementSession(ConfirmedWorkspace workspace, PublicSettings settings, KeyInputResult acceptedInput) => new ChatRuntimeFactory().CreateReplacementSession(workspace, settings, acceptedInput);
     public ILlmClient CreateClient(BootstrapSession session) => new OfflineClient(scenario, gate, ++_clients > 1);
@@ -60,6 +61,11 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         try
         {
             _calls++;
+            if (scenario.StartsWith("agents", StringComparison.Ordinal))
+            {
+                if (_calls == 1) return PlanCalls(("delegate_readonly", new { tasks = new[] { new { role = "explore", objective = "inspect source", scope_path = ".", acceptance = "cite source" } } }));
+                return new(LlmStatus.Completed, LlmErrorCode.None, "離線委派彙整；來源為子 Agent，未執行測試。", [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+            }
             if (scenario.StartsWith("mcp", StringComparison.Ordinal))
             {
                 if (request.Messages[^1].Kind != LlmMessageKind.ToolResults)
@@ -191,7 +197,7 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
         catch (OperationCanceledException) { return new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, true, false); }
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    private static LlmResult PlanCalls(params (string Name, object Args)[] operations)
+    internal static LlmResult PlanCalls(params (string Name, object Args)[] operations)
     {
         var calls = operations.Select((op, index) => new LlmToolCall(index, null, op.Name, JsonSerializer.SerializeToElement(op.Args))).ToArray();
         return new(LlmStatus.ToolCalls, LlmErrorCode.None, "", calls, LlmMessage.FromModel(new object(), calls), new(1, 2, null, 0, 3), true, false);
@@ -533,4 +539,32 @@ internal sealed class GatedRulesFileSystem(FileStream gate, bool skills = false)
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
+}
+
+internal sealed class OfflineDelegationFactory(string scenario, FileStream? gate) : IDelegationRuntimeFactory
+{
+    public Task<DelegationRuntime> CreateAsync(DelegationChildSpec spec, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); var client = new OfflineDelegationClient(scenario, gate);
+        return Task.FromResult(new DelegationRuntime(client, client));
+    }
+}
+internal sealed class OfflineDelegationClient(string scenario, FileStream? gate) : ILlmClient, ILlmContextInspector
+{
+    private int _calls;
+    public ContextRequestMeasure Measure(LlmRequest request) => new(ContextMeasureStatus.Measured, 1024);
+    public ContextTurnProjection ProjectCompletedTurn(long id, IReadOnlyList<LlmMessage> messages) => throw new NotSupportedException();
+    public async Task<LlmResult> GenerateAsync(LlmRequest request, CancellationToken token)
+    {
+        if (scenario == "agents-busy")
+        {
+            using var registration = token.Register(() => Console.WriteLine("OFFLINE_AGENTS_CANCEL_OBSERVED"));
+            Console.WriteLine("OFFLINE_AGENTS_WAITING"); await gate!.ReadExactlyAsync(new byte[1], CancellationToken.None);
+            return new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, true, false);
+        }
+        if (++_calls == 1) return OfflineClient.PlanCalls(("read_file", new { path = "a.txt" }));
+        const string report = """{"version":1,"summary":"Observed source.","observations":[{"path":"a.txt","start_line":1,"end_line":1,"note":"Provided source line."}],"limitations":["No tests run."]}""";
+        return new(LlmStatus.Completed, LlmErrorCode.None, report, [], LlmMessage.FromModel(new object()), new(1, 2, null, 0, 3), true, false);
+    }
+    public ValueTask DisposeAsync() { Console.WriteLine("OFFLINE_AGENTS_DISPOSED"); return ValueTask.CompletedTask; }
 }

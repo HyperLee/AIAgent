@@ -31,10 +31,10 @@ internal sealed partial class ChatApplication
         if (error is not null) ShowContextBlock(error == "none" ? "本機設定已接受；等待下一則指示。" : "本機指令未完成：" + error, error != "none");
         return true;
     }
-    private void ShowContextBlock(string text, bool rejected = false)
+    private bool ShowContextBlock(string text, bool rejected = false)
     {
         if (!ContextDisplay.Safe(text + "\n", _session!.Policy))
-        { interaction.Show(new(ChatEventKind.InputRejected, text: "無法安全完整顯示本機資訊。")); return; }
-        interaction.Show(new(rejected ? ChatEventKind.InputRejected : ChatEventKind.Ready, text: text));
+        { interaction.Show(new(ChatEventKind.InputRejected, text: "無法安全完整顯示本機資訊。")); return false; }
+        interaction.Show(new(rejected ? ChatEventKind.InputRejected : ChatEventKind.Ready, text: text)); return true;
     }
 }

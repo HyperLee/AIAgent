@@ -7,6 +7,7 @@ internal sealed partial class WorkspaceFiles
 {
     private void BeginTaskOperation(WorkspaceOperation operation, string tool, string path, int? start = null, int? end = null, bool write = false)
     {
+        if (_delegationScope is not null) return;
         var error = _executionPolicy.Plans.Reserve(new(tool, path, start, end), write, out var reservation);
         if (error != "none") throw Rejected(error switch
         {

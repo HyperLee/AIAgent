@@ -8,26 +8,36 @@ internal sealed class GitReadWorkspace(WorkspaceFiles files, Func<IGitReadAdapte
     private readonly object _gate = new();
     private Task? _active;
     private bool _disposed;
+    internal bool Delegated { get; set; }
     internal GitReadWorkspace(WorkspaceFiles files, string root) : this(files, () => new GitReadAdapter(root)) { }
     public Task<GitCaptureResult> CaptureAsync(CancellationToken cancellationToken) => RunAsync(null, cancellationToken);
     public Task<string> ValidateAsync(GitSnapshot snapshot, CancellationToken cancellationToken) => ValidateAsync(snapshot.Manifest, cancellationToken);
     public async Task<string> ValidateAsync(GitValidationManifest manifest, CancellationToken cancellationToken) => (await RunAsync(manifest, cancellationToken)).ErrorCode;
     private Task<GitCaptureResult> RunAsync(GitValidationManifest? manifest, CancellationToken cancellationToken)
     {
+        if (Delegated) return RunDelegatedAsync(manifest, cancellationToken);
         lock (_gate)
         {
             if (_disposed || _active is { IsCompleted: false }) return Task.FromResult(new GitCaptureResult("unavailable"));
             var task = ExecuteAsync(manifest, cancellationToken); _active = task; return task;
         }
     }
-    private async Task<GitCaptureResult> ExecuteAsync(GitValidationManifest? manifest, CancellationToken cancellationToken)
+    private async Task<GitCaptureResult> RunDelegatedAsync(GitValidationManifest? manifest, CancellationToken token)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+        await using var lease = await files.ExecutionPolicy.WorkspaceOperations.AcquireAsync(linked.Token);
+        Task<GitCaptureResult> task;
+        lock (_gate) { if (_disposed) return new("unavailable"); task = ExecuteAsync(manifest, linked.Token, lease); _active = task; }
+        return await task;
+    }
+    private async Task<GitCaptureResult> ExecuteAsync(GitValidationManifest? manifest, CancellationToken cancellationToken, WorkspaceOperationLease? suppliedLease = null)
     {
         using var deadline = new CancellationTokenSource(GitLimits.CaptureTimeout - TimeSpan.FromSeconds(5), clock ?? TimeProvider.System);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token, deadline.Token);
         try
         {
             await using var adapter = createAdapter();
-            var result = await files.CaptureGitAsync(adapter, manifest, linked.Token);
+            var result = await files.CaptureGitAsync(adapter, manifest, linked.Token, suppliedLease);
             return result.ErrorCode == "turn_cancelled" && deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested
                 ? new("git_timed_out") : result;
         }

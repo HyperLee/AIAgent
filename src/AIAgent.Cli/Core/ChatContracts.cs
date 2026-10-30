@@ -30,6 +30,7 @@ internal interface IChatRuntimeFactory
     BootstrapSession CreateReplacementSession(ConfirmedWorkspace workspace, PublicSettings settings, KeyInputResult acceptedInput);
     ILlmClient CreateClient(BootstrapSession session);
     ILlmContextInspector? CreateContextInspector(ILlmClient client) => null;
+    IDelegationRuntimeFactory? CreateDelegationFactory(BootstrapSession session) => null;
 }
 
 internal enum ChatState { AwaitingInput, AwaitingModelApproval, SwitchingModel, ReadingModelKey, LoadingRules, LoadingSkills, CapturingReview, Generating, ExecutingTools, AwaitingApproval, AwaitingPlanApproval, AwaitingProcessApproval, AwaitingMcpApproval, Working, AwaitingWorkApproval, CheckpointOperation, AwaitingCheckpointApproval, Cancelling, AwaitingKeyChoice, ReadingReplacementKey, Stopping }

@@ -109,8 +109,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", type=Path, default=Path(__file__).resolve().parents[1] / "src/AIAgent.Cli/bin/Debug/net10.0/AIAgent.Cli.dll")
     parser.add_argument("--host", type=Path, default=Path(__file__).resolve().parents[1] / "tests/AIAgent.Cli.TerminalHost/bin/Debug/net10.0/AIAgent.Cli.TerminalHost.dll")
-    parser.add_argument("--group", choices=("all", "model"), default="all")
+    parser.add_argument("--group", choices=("all", "model", "agents"), default="all")
     args = parser.parse_args()
+    if args.group == "agents":
+        agents_cases(["dotnet", str(args.host.resolve())])
+        return
     if args.group == "model":
         model_cases(["dotnet", str(args.host.resolve())])
         return
@@ -181,6 +184,7 @@ def main():
     mcp_cases(["dotnet", str(args.host.resolve())])
     web_cases(["dotnet", str(args.host.resolve())])
     model_cases(["dotnet", str(args.host.resolve())])
+    agents_cases(["dotnet", str(args.host.resolve())])
 
 
 def chat_cases(host):
@@ -1428,6 +1432,55 @@ def model_cases(host):
             print("MODEL-AC-034-control-" + str(approved) + "-" + str(control[0]) + ": PASS", flush=True)
         finally:
             terminal.close()
+
+
+def agents_cases(host):
+    """MULTI-AC-036: one terminal reader, explicit enable and bounded whole-batch controls."""
+    def start(scenario, fd=None):
+        workspace = tempfile.mkdtemp(prefix="aiagent-agents-pty-")
+        Path(workspace, "a.txt").write_text("source line\n", encoding="utf-8")
+        terminal = TerminalProcess(host + [scenario] + ([str(fd)] if fd is not None else []), workspace, extra_fds=(() if fd is None else (fd,)))
+        terminal.wait_for(CONFIRM); terminal.send(b"yes\r")
+        terminal.wait_for(KEY_PROMPT); terminal.send(FAKE_KEY + b"\r"); terminal.wait_for(HOST_PROMPT)
+        return terminal
+
+    def command(terminal, text):
+        count = terminal.output.count(HOST_PROMPT)
+        terminal.send(text.encode() + b"\r"); terminal.wait_for(HOST_PROMPT, count + 1)
+
+    terminal = start("agents-flow")
+    try:
+        command(terminal, "/agents"); check(b"Disabled" in terminal.output, "MULTI-AC-036-default-disabled")
+        command(terminal, "/AGENTS on"); command(terminal, "/agents on extra")
+        check(terminal.output.count(b"invalid_agents_command") == 2, "MULTI-AC-036-exact-command")
+        command(terminal, "/agents on"); check(b"Enabled" in terminal.output, "MULTI-AC-036-enabled")
+        command(terminal, "inspect source"); command(terminal, "/agents")
+        check(b"d1/a1" in terminal.output and b"completed" in terminal.output, "MULTI-AC-036-source-identity")
+        check(b"OFFLINE_AGENTS_DISPOSED" in terminal.output, "MULTI-AC-036-disposed-before-summary")
+        command(terminal, "/clear"); count = terminal.output.count(b"Disabled"); command(terminal, "/agents")
+        check(terminal.output.count(b"Disabled") > count, "MULTI-AC-036-clear-disabled")
+        terminal.send(b"/exit\r"); terminal.finish(0)
+        print("MULTI-AC-036-commands-and-flow: PASS", flush=True)
+    finally:
+        terminal.close()
+
+    for control in (b"\x03", b"\x04"):
+        read_fd, write_fd = os.pipe(); terminal = start("agents-busy", read_fd); os.close(read_fd)
+        try:
+            command(terminal, "/agents on"); count = terminal.output.count(HOST_PROMPT)
+            terminal.send(b"inspect source\r"); terminal.wait_for(b"OFFLINE_AGENTS_WAITING")
+            terminal.send(b"/agents off\ryes\r" + control); terminal.wait_for(b"OFFLINE_AGENTS_CANCEL_OBSERVED")
+            check(terminal.process.poll() is None, "MULTI-AC-036-waits-for-child")
+            os.write(write_fd, b"x")
+            if control == b"\x03":
+                terminal.wait_for(HOST_PROMPT, count + 1); command(terminal, "/agents")
+                check(b"Enabled" in terminal.output, "MULTI-AC-036-busy-off-discarded")
+                terminal.send(b"/exit\r")
+            terminal.finish(0)
+            check(b"OFFLINE_AGENTS_DISPOSED" in terminal.output, "MULTI-AC-036-child-closed")
+            print("MULTI-AC-036-control-" + str(control[0]) + ": PASS", flush=True)
+        finally:
+            os.close(write_fd); terminal.close()
 
 
 if __name__ == "__main__":

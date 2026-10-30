@@ -33,6 +33,7 @@ internal sealed class GitSnapshotCoordinator(IGitReadWorkspace workspace, ISensi
         if (Bound) return await ValidateAsync(token);
         Clear(); var generation = _generation;
         var result = await workspace.CaptureAsync(token);
+        if (result.ErrorCode is "process_unconfirmed" or "process_cleanup_failed") return result.ErrorCode;
         if (token.IsCancellationRequested || generation != _generation) return "turn_cancelled";
         if (result.ErrorCode != "none" || result.Snapshot is null) return result.ErrorCode;
         string id;
@@ -43,6 +44,7 @@ internal sealed class GitSnapshotCoordinator(IGitReadWorkspace workspace, ISensi
         if (projection.Status != ToolStatus.Success) { Clear(); return projection.ErrorCode; }
         return "none";
     }
+    internal void BindDelegationView(GitSnapshot snapshot) { Clear(); Current = snapshot; Bind(GitSelection.All); }
     internal void Bind(GitSelection selection)
     {
         if (Current is null || Stale || !Enum.IsDefined(selection)) throw new GitFailure("git_snapshot_required");
@@ -53,6 +55,7 @@ internal sealed class GitSnapshotCoordinator(IGitReadWorkspace workspace, ISensi
         if (Current is not { } snapshot) return "git_snapshot_required";
         if (Stale) return "git_snapshot_stale";
         var generation = _generation; var error = await workspace.ValidateAsync(snapshot, token);
+        if (error is "process_unconfirmed" or "process_cleanup_failed") { Stale = true; return error; }
         if (generation != _generation || token.IsCancellationRequested) return "turn_cancelled";
         if (error != "none") Stale = true;
         return error;

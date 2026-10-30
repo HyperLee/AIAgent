@@ -1,5 +1,9 @@
 # 18：MCP 外部工具整合開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子不登錄 ExternalRead、不取得 Permit、不讀鍵或重設父 MCP 額度；父 MCP 版本仍是委派有效性來源。原逐次完整外送預覽與新確認不變。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 承接 MCP-HO-012：切換斷線並撤銷目錄、Permit 與候選，不自動重連；三項 Schema 能力仍須各 profile 驗證。供應商認證與 MCP 分離，舊 Permit 不跨代次或 client，Review 保持零 MCP。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

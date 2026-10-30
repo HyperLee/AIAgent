@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace AIAgent.Cli.Core;
 
-internal enum GenerationPurpose { Conversation, Compaction, WorkSaveSummary, Review }
+internal enum GenerationPurpose { Conversation, Compaction, WorkSaveSummary, Review, DelegatedRead }
 internal enum CompactionTrigger { Automatic, Manual }
 internal enum ContextMeasureStatus { Measured, Unavailable }
 

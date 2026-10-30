@@ -1,5 +1,9 @@
 # 19：網頁查詢與文件擷取開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子不提供 Learn 搜尋／文件擷取，不借外送核准或 URL 資格；父既有 URL 與來源契約不變。外部文件或子分析不成為本機事實、Scope、Permit 或完成授權。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 承接 WEB-HO-012：新模型不復用舊 Permit 或隱式重送 fetch；三工具、URL 准入、來源及逐筆外送預覽／新確認保持。各 profile 摘要僅沿原白名單，不攜正文或來源物件。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

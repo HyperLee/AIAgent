@@ -14,10 +14,10 @@ internal sealed class ToolRegistry
     private readonly IReadOnlyList<LlmToolDefinition> _definitions;
     internal AgentExecutionPolicy ExecutionPolicy { get; }
     internal IReadOnlyList<LlmToolDefinition> Definitions => CaptureSnapshot().Definitions;
-    internal IReadOnlyList<LlmToolDefinition> AllDefinitions => _definitions;
+    internal IReadOnlyList<LlmToolDefinition> AllDefinitions => Array.AsReadOnly(_definitions.Where(d => d.Name != DelegateReadonlyTool.Name || ExecutionPolicy.Delegation?.Mode == DelegationMode.Enabled).ToArray());
     internal ToolRegistrySnapshot CaptureSnapshot()
     {
-        lock (ExecutionPolicy.Plans.DecisionGate) return new(_definitions.Where(d => !IsModeRestricted(d.Name)).Concat(ExecutionPolicy.Mcp?.GetTools().Where(t => !IsModeRestricted(t.LocalName)).Select(t => t.Definition) ?? []).ToArray(), ExecutionPolicy.Mcp?.Capture());
+        lock (ExecutionPolicy.Plans.DecisionGate) return new(_definitions.Where(d => d.Name != DelegateReadonlyTool.Name && !IsModeRestricted(d.Name)).Concat(ExecutionPolicy.Mcp?.GetTools().Where(t => !IsModeRestricted(t.LocalName)).Select(t => t.Definition) ?? []).Concat(_definitions.Where(d => d.Name == DelegateReadonlyTool.Name && !IsModeRestricted(d.Name))).ToArray(), ExecutionPolicy.Mcp?.Capture(), ExecutionPolicy.Delegation?.Revision ?? 0);
     }
     internal bool IsExternalTool(string name) => name is McpProfile.DocsName or McpProfile.CodeName or McpProfile.FetchName;
 
@@ -62,6 +62,8 @@ internal sealed class ToolRegistry
         if (IsSensitive(call)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "sensitive_arguments", _policy));
         if (snapshot.McpStamp is { } mcpStamp && ExecutionPolicy.Mcp?.IsCurrent(mcpStamp) != true)
             return new(ToolStatus.Rejected, "mcp_changed", ToolResponseWriter.Create(ToolStatus.Rejected, "mcp_changed", _policy).Response, stopAfterOperation: true);
+        if (call.Name == DelegateReadonlyTool.Name && (ExecutionPolicy.Delegation?.Mode != DelegationMode.Enabled || snapshot.DelegationRevision != ExecutionPolicy.Delegation.Revision))
+            return DelegationJson.Response(new(ToolStatus.Rejected, "delegation_disabled", null), _policy);
         if (IsExternalTool(call.Name) && ExecutionPolicy.Mcp is { } mcp && snapshot.McpStamp is { } stamp)
             return await mcp.InvokeAsync(call.Name, call.Arguments, stamp, cancellationToken);
         if (!_tools.TryGetValue(call.Name, out var tool)) return PreserveWriteKind(call, ToolResponseWriter.Create(ToolStatus.Rejected, "unknown_tool", _policy));

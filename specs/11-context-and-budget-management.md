@@ -1,5 +1,9 @@
 # 11：Context 與預算管理開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：新增 DelegatedRead 用途、子配額 lease 與共同序列化開始／記帳閘門；父一次 BeginConversation。子 inspector／數值量測各自歸屬，父 /context 保留父請求來源。子不 compact，摘要只投影委派白名單 metadata。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 每個活動 profile 使用同 client 的安全歷史投影、容量 inspector 與數值 telemetry；切換丟摘要、pins 與完整回合，舊量測不可准入。唯一程序預算、維護用途、摘要白名單及公開 LLM 簽章保持。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

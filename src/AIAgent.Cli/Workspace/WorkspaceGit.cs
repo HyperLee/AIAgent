@@ -10,11 +10,12 @@ namespace AIAgent.Cli.Workspace;
 
 internal sealed partial class WorkspaceFiles
 {
-    internal async Task<GitCaptureResult> CaptureGitAsync(IGitReadAdapter adapter, GitValidationManifest? expected, CancellationToken token)
+    internal async Task<GitCaptureResult> CaptureGitAsync(IGitReadAdapter adapter, GitValidationManifest? expected, CancellationToken token, WorkspaceOperationLease? suppliedLease = null)
     {
         if (!_executionPolicy.Allows(ToolCapability.GitRead)) return new("mode_restricted");
-        if (!_executionPolicy.WorkspaceOperations.TryAcquire(token, out var lease)) return new("unavailable");
-        await using var owned = lease!;
+        var lease = suppliedLease;
+        if (lease is null && !_executionPolicy.WorkspaceOperations.TryAcquire(token, out lease)) return new("unavailable");
+        await using var owned = suppliedLease is null ? lease : null;
         using var generation = _executionPolicy.Plans.BorrowGeneration();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, lease!.CancellationToken, _lifetime.Token);
         _activePlanGeneration = _executionPolicy.Plans.ExecutionGeneration;

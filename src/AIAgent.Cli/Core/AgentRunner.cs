@@ -30,11 +30,12 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
             var turn = new Turn(client, registry, policy, systemInstruction, programUsage, onEvent,
                 initialMessages.ToArray(), cancellationToken, _budget, contextCoordinator, _inspector, review: review, profile: modelProfile);
             _budget.BeginConversation();
+            if (review is null) registry.ExecutionPolicy.Delegation?.BeginParentTurn(user.UserText!);
             if (review is null) registry.ExecutionPolicy.Mcp?.BeginTurn();
             return await turn.RunAsync();
         }
         catch (Exception) { return Unavailable(AgentStopReason.LocalFailure); }
-        finally { Volatile.Write(ref _running, 0); }
+        finally { registry.ExecutionPolicy.Delegation?.EndParentTurn(); Volatile.Write(ref _running, 0); }
     }
 
     private static AgentTurnResult Unavailable(AgentStopReason reason) => new(AgentTurnStatus.Failed, reason,
@@ -65,6 +66,11 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
         private McpOperationStamp? _mcpStamp;
         private static AgentStopReason McpReason(string code) => code is "mcp_changed" or "mcp_catalog_stale" ? AgentStopReason.McpChanged : code is "sensitive_content" or "sensitive_arguments" ? AgentStopReason.SensitiveData : AgentStopReason.McpStopped;
         private readonly UsageAccumulator _usage = new();
+        private GenerationGateway? _gateway;
+        private GenerationGateway Gateway => _gateway ??= new(_gate, programUsage, _usage, profile);
+        private DelegationBudgetLease? _aggregationLease;
+        private bool _toolPhaseClosed;
+        private bool _delegationResourceBlocked;
         private bool _cancelled;
         private bool _reset;
         private bool _eventFailed;
@@ -133,6 +139,13 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                         {
                             AddRemaining(result.ToolCalls, 0, LimitCode(limit));
                             return Finish(AgentTurnStatus.Stopped, limit);
+                        }
+                        if (_toolPhaseClosed) return Invalid();
+                        if (result.ToolCalls.Any(call => call.Name == DelegateReadonlyTool.Name))
+                        {
+                            var delegationStopped = await ExecuteDelegationBatchAsync(result);
+                            if (delegationStopped is not null) return delegationStopped;
+                            continue;
                         }
                         if (result.ToolCalls.Any(call => registry.IsModeRestricted(call.Name)))
                         {
@@ -364,10 +377,10 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
         private AgentTurnResult Finish(AgentTurnStatus status, AgentStopReason reason, string text = "",
             IReadOnlyList<LlmMessage>? completed = null)
         {
-            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed))
+            if (Cancelled && reason is not (AgentStopReason.LocalFailure or AgentStopReason.RunnerUnavailable or AgentStopReason.WriteUnconfirmed or AgentStopReason.ProcessUnconfirmed or AgentStopReason.DelegationUnconfirmed))
             { status = AgentTurnStatus.Cancelled; reason = AgentStopReason.TurnCancelled; text = ""; completed = null; }
             if (_eventFailed) { status = AgentTurnStatus.Failed; reason = AgentStopReason.LocalFailure; text = ""; completed = null; }
-            if (!maintenance) registry.ExecutionPolicy.Plans.BlockInProgress(reason switch
+            if (!maintenance) registry.ExecutionPolicy.Plans.BlockInProgress((_delegationResourceBlocked ? AgentStopReason.TaskResourceLimit : reason) switch
             {
                 AgentStopReason.McpChanged => "mcp_changed",
                 AgentStopReason.SkillsChanged or AgentStopReason.SkillsUnavailable or AgentStopReason.SkillsLimit => "skills_changed",
@@ -384,7 +397,8 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 AgentStopReason.WriteUnconfirmed => "write_unconfirmed",
                 AgentStopReason.WorkspaceUnavailable => "workspace_unavailable",
                 AgentStopReason.TaskResourceLimit => "resource_limit",
-                AgentStopReason.TaskBlocked => "operation_failed",
+                AgentStopReason.TaskBlocked or AgentStopReason.DelegationStopped => "operation_failed",
+                AgentStopReason.DelegationUnconfirmed => "local_failure",
                 AgentStopReason.ProcessResourceLimit => "resource_limit",
                 AgentStopReason.ProcessUnconfirmed => "process_unconfirmed",
                 AgentStopReason.ProcessFailed => ProcessBlockReason(),
@@ -392,7 +406,7 @@ internal sealed partial class AgentRunner(ILlmClient client, ToolRegistry regist
                 _ => "model_outcome"
             });
             return new(status, reason, _modelStatus, _modelError, text,
-                status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, _generations, _usage.Snapshot(), _reset, _rulesStamp, _skillsStamp, _mcpStamp);
+                status == AgentTurnStatus.Completed ? completed ?? [] : [], _operations, maintenance ? _generations : budget.Snapshot().TurnGenerationsStarted, Gateway.Snapshot(_usage), _reset, _rulesStamp, _skillsStamp, _mcpStamp);
         }
 
         private string ProcessBlockReason() => _operations.LastOrDefault(o => o.ToolName == "run_dotnet_task")?.ErrorCode switch

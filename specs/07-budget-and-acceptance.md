@@ -1,5 +1,9 @@
 # 07：預算控制與整體驗收子規格
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：父子生成共用唯一程序／回合預算與用量事件；預留不等於開始，已開始不退款。離線、PTY、真人、三組真實模型服務及 Release／人工分發分列；BUD-S003 門檻保留。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 多 profile 共用程序生成上限與消耗，clear／換 Key／切模型均不退款。程序共同顯示生成及傳輸次數，token 分模型／用途列出已知值、缺值與溢位，不換算跨模型費用；B 已加入 BUD-S006：小寫 sk 加連字號後連續至少 16 個 ASCII 字母／數字／底線／連字號，不要求尾界。與原規則同掃 ASCII／UTF-16LE／BE、雙位移及跨塊，無目錄豁免；placeholder 精確追加 YOUR_OPENAI_API_KEY。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

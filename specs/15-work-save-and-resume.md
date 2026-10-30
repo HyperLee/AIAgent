@@ -1,5 +1,9 @@
 # 15：工作保存與續接開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：SAVE v1 不加欄位，不保存子 runtime、啟用或完成資格；續接預設停用。WorkSaveSummary 只新增委派工具、批次／子狀態、固定原因與角色 metadata，不直接保存 report／參數／來源正文。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 承接 SAVE-HO-011：SAVE v1 不增加 provider／model／Key／原生歷史或預算。重啟續接由當前設定選模，預覽目前 Provider／Model／目的地並取得新確認；舊存檔依當前政策整份重驗，拒絕不改寫或刪除。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

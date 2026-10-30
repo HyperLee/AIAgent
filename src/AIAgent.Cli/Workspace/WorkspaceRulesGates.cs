@@ -14,6 +14,8 @@ internal sealed partial class WorkspaceFiles
     }
     private async Task CheckRulesOperationAsync(string path, bool directory, WorkspaceOperation operation, CancellationToken token)
     {
+        RequireDelegationIdentity();
+        if (_delegationScope is not null && !DelegationContains(_delegationScope, path)) throw Rejected(WorkspaceErrorCode.RulesScopeMismatch);
         var rules = _executionPolicy.Rules;
         if (rules is null || operation.Lease is null) throw Rejected(WorkspaceErrorCode.RulesUnavailable);
         var error = await rules.ValidateAsync(token, operation.Lease);

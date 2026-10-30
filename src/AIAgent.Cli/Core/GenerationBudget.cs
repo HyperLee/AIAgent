@@ -1,6 +1,6 @@
 namespace AIAgent.Cli.Core;
 
-internal sealed class GenerationBudget(object? decisionGate = null)
+internal sealed partial class GenerationBudget(object? decisionGate = null)
 {
     private readonly object _gate = decisionGate ?? new();
     private int _turnLimit = 5;
@@ -10,14 +10,14 @@ internal sealed class GenerationBudget(object? decisionGate = null)
     private int _compactions;
     private long _revision;
     private long? _warnedRevision;
-    internal void BeginConversation() { lock (_gate) { _turnStarted = 0; _compactions = 0; } }
+    internal void BeginConversation() { lock (_gate) { _delegation?.Dispose(); _turnStarted = 0; _compactions = 0; } }
     internal GenerationBudgetSnapshot Snapshot()
     { lock (_gate) return new(_turnLimit, _programLimit, _programStarted, _turnStarted, _compactions, _revision); }
     internal bool TryBeginGeneration(GenerationPurpose purpose, bool maintenance, CancellationToken token, Func<bool> current)
     {
         lock (_gate)
         {
-            if (token.IsCancellationRequested || !current() || _programStarted >= _programLimit || !maintenance && _turnStarted >= _turnLimit) return false;
+            if (token.IsCancellationRequested || !current() || _programStarted + Reserved >= _programLimit || !maintenance && _turnStarted + Reserved >= _turnLimit) return false;
             _programStarted++;
             if (!maintenance) { _turnStarted++; if (purpose == GenerationPurpose.Compaction) _compactions++; }
             return true;

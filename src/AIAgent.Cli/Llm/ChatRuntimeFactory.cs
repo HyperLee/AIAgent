@@ -21,5 +21,6 @@ internal sealed class ChatRuntimeFactory(Func<ModelProfile, HttpMessageHandler>?
             _ => throw new InvalidOperationException("模型能力不可用")
         };
     }
+    public IDelegationRuntimeFactory CreateDelegationFactory(BootstrapSession session) => new DelegationRuntimeFactory(this, session);
     public ILlmContextInspector? CreateContextInspector(ILlmClient client) => client is GeminiClient gemini ? gemini.CreateContextInspector() : client as OpenAiClient;
 }

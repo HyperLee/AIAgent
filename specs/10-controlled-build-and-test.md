@@ -1,5 +1,9 @@
 # 10：受控建置與測試開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子不取得 build／test 或一般程序能力；原程序兩次／300 秒與 MTP test 不支援保留。Git 唯讀 recipe 仍走原用途限定原生執行器及收尾政策。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 不同模型沿用同一受控程序准入與逐次核准，每回合兩次／300 秒及 test 不支援保持。已開始發布／查核的操作先安全收尾，切模型不能解除 Unconfirmed 或 cleanup 故障。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

@@ -30,7 +30,8 @@ internal sealed partial class AgentRunner
                 _requestRegistry = registry.CaptureSnapshot();
                 if (appendix is null || !policy.CanSendOrUse(instruction + rules + skills + mcp + memory + appendix + reviewAppendix + recovery, ContentBoundary.ModelInput))
                 { _reset = true; throw new ContextFlowException(AgentStopReason.SensitiveData, AgentTurnStatus.Failed); }
-                return new(instruction + rules + skills + mcp + memory + appendix + reviewAppendix + recovery, _messages, _requestRegistry.Definitions);
+                var finalNotice = _toolPhaseClosed ? "\n最後回答須明示委派分析來源、部分完成與本機零生成分支，以及未執行測試等限制；子分析不代表父任務完成。只彙整已安全回填資料。" : "";
+                return new(instruction + finalNotice + rules + skills + mcp + memory + appendix + reviewAppendix + recovery, _messages, _toolPhaseClosed ? [] : _requestRegistry.Definitions);
             }
         }
         private ContextRequestMeasure Measure(LlmRequest request, GenerationPurpose purpose, ContextOperationStamp? stamp)
@@ -75,16 +76,19 @@ internal sealed partial class AgentRunner
             Emit(new(AgentEventKind.Generating, _generations + 1, purpose: purpose, notice: notice));
             await RequireRulesAsync();
             await RequireReviewAsync();
-            if (!budget.TryBeginGeneration(purpose, maintenance, token, () => !Cancelled && (stamp is null || coordinator!.IsCurrent(stamp))))
+            bool Begin()
             {
-                if (Cancelled) throw new OperationCanceledException(token);
-                if (stamp is not null && !coordinator!.IsCurrent(stamp)) throw new ContextFlowException(AgentStopReason.ContextCompactionFailed);
-                throw new ContextFlowException(LimitReason() ?? AgentStopReason.ProgramGenerationLimit);
+                var current = () => !Cancelled && (stamp is null || coordinator!.IsCurrent(stamp));
+                var allowed = _aggregationLease is null ? budget.TryBeginGeneration(purpose, maintenance, token, current) : _aggregationLease.TryBeginParent(token, current);
+                if (!allowed)
+                {
+                    if (Cancelled) throw new OperationCanceledException(token);
+                    if (stamp is not null && !coordinator!.IsCurrent(stamp)) throw new ContextFlowException(AgentStopReason.ContextCompactionFailed);
+                    throw new ContextFlowException(LimitReason() ?? AgentStopReason.ProgramGenerationLimit);
+                }
+                _generations++; return true;
             }
-            _generations++;
-            programUsage.BeginGeneration(profile, purpose);
-            var result = await client.GenerateAsync(request, token);
-            if (result is not null) { programUsage.RecordAttributed(result, profile, purpose); _usage.Record(result); }
+            var result = await Gateway.GenerateAsync(client, request, purpose, token, Begin);
             if (purpose is GenerationPurpose.Conversation or GenerationPurpose.Review && result?.RequestDispatched == true) review?.Snapshots.MarkDispatched();
             return result!;
         }

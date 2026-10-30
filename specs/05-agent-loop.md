@@ -1,5 +1,9 @@
 # 05：Agent 工具循環子規格
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：父一般回合啟用時最後追加 delegate_readonly。委派必須是 native batch 唯一呼叫；混合或重複整批零工具。提出委派即關閉父工具階段，安全回填後最多一次 tools=[] 彙整；子循環不呼叫會重設回合的頂層入口。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 各 profile 共用唯一 Runner／GenerationBudget；模型工作階段代次與各來源版本共同驗證，零自動路由或失敗重送。用量只在原唯一記帳點歸屬請求開始時的 profile／用途；Review、摘要及保存仍走同一生成入口。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

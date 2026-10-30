@@ -1,5 +1,9 @@
 # 09：Plan 模式與任務清單開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：子狀態與 AgentId 不等於父 TaskId／完成資格；原 PlanStore、20 任務／1 在途／256 facts 與核准維持。父一般回合只初始化一次預算，子成功不自動完成 Read／Write／Validation／Analysis requirement。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 明確模型切換清除 Plan、任務、證據與核准，成功回 Plan 等新指示；既有來源與完成事實仍由本機帳本擁有，不由新模型或歷史摘要恢復。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

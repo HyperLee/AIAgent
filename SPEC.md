@@ -1,5 +1,11 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 21 份產品實作接續（2026-10-30）
+
+[唯讀多 Agent 分工](specs/21-multi-agent-delegation.md)接續第 5～10、13～15 章：明確 `/agents on` 後，父一般 Plan／Execute 回合最後追加 `delegate_readonly`，每回合最多接受一批一至兩個同 profile 唯讀子任務。子模型可並行，工作區／規則／技能／Git 本機操作經原 FIFO 排他租約；每子 client／owner／訊息鏈與來源 ledger 獨立。父子共用唯一生成預算及用量，整批收尾後父最多一次空工具彙整。
+
+這是原單一 client／依序工具循環的限定增量；公開 LLM、SAVE v1、三個 profile、既有套件與設定不變。子不寫入、執行程序、讀鍵、核准、更新父任務、使用 MCP／網頁或保存工作。共同 120 秒工作期限及唯一十秒收尾保持可確認停止；不能確認時退出 1。原真人／真實服務、MTP test 不支援、原生及 Release／分發待辦各自保留。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 [多模型與供應商支援](specs/20-multi-model-and-provider-support.md)是單 Gemini 初版的限定增量。A 提供兩個 Gemini profile、固定目錄、新舊非機密設定、明確本機選模、共同代次及用量歸屬；B 加入固定 openai／gpt-6.1-terra 原生 Responses、供應商認證隔離與 BUD-S006；目錄共三組，端點不可配置。只有一個活動 client 與共用 Runner／預算；切換清資料、重新輸入 Key、重驗實體根與根規則，成功進 Plan。公開 LLM、工具、SAVE v1 與既有權限不變，分層證據見 [README](README.md#model-validation)。

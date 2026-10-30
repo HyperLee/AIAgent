@@ -34,6 +34,7 @@ internal sealed partial class WorkspaceFiles
         await WalkDiscoveryAsync(path, glob, scan, operation, token, (relative, state) =>
         {
             ObserveDiscovery(scan, Path.Combine(_root, relative), state);
+            _delegationLedger?.Observe(relative, state);
             matches[relative] = new(relative);
             if (matches.Count > WorkspaceLimits.MaxSearchResults) { matches.Remove(matches.Last().Key); scan.Truncated = true; }
             return Task.FromResult(true);

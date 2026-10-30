@@ -1,5 +1,9 @@
 # 13：Git 差異與程式碼審查開發規格書
 
+## 第 21 份產品接續（2026-10-30）
+
+[唯讀多 Agent 分工](21-multi-agent-delegation.md)明示接續本份：同批 Review 共享不可變 GitSnapshot 來源，範圍 view、pending／delivered ledger 與候選逐子獨立。正式 /review 不提供委派且報告不覆寫；零可審差異本機零子生成，no_changes 與 review_incomplete 分清。 本段為產品增量；下列撰寫當時的階段邊界與歷史驗證保留，不能視為全部人工／服務／發布驗收完成。
+
 ## 第 20 份產品實作接續（2026-10-29）
 
 承接 GIT-HO-011：各 profile 仍以相同三項 Git 工具及原報告驗證進行 Review；切換清除來源、候選與報告，不能失敗後換模型重送。Git 觀察與模型判斷仍不建立本機完成事實。 詳見[第 20 份規格](20-multi-model-and-provider-support.md)；A、B 分層證據見 [README](../README.md#model-validation)，真實服務／真人與既有 Release 未結門檻另列。

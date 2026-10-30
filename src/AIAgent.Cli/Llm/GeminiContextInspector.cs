@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using AIAgent.Cli.Core;
+using AIAgent.Cli.Tools;
 using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Llm;
@@ -95,7 +96,7 @@ public sealed partial class GeminiClient
 internal static class GeminiContextTools
 {
     private static readonly HashSet<string> Registered = new(StringComparer.Ordinal)
-    { "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range", McpProfile.DocsName, McpProfile.CodeName, McpProfile.FetchName };
+    { "delegate_readonly", "list_files", "read_file", "create_file", "replace_text", "search_files", "search_text", "read_file_range", "submit_plan", "update_task", "run_dotnet_task", "git_status", "git_diff", "read_git_file_range", McpProfile.DocsName, McpProfile.CodeName, McpProfile.FetchName };
     internal static JsonElement? Project(LlmToolResult result)
     {
         if (!Registered.Contains(result.Name)) return null;
@@ -111,7 +112,26 @@ internal static class GeminiContextTools
                 w.WritePropertyName(target ?? name); value.WriteTo(w);
             }
             Copy(root, "status"); Copy(root, "error_code");
-            if (result.Name is McpProfile.DocsName or McpProfile.CodeName or McpProfile.FetchName)
+            if (result.Name == "delegate_readonly")
+            {
+                if (root.TryGetProperty("data", out var batch) && batch.ValueKind == JsonValueKind.Object)
+                {
+                    Copy(batch, "batch_id"); Copy(batch, "state");
+                    if (batch.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+                    {
+                        if (children.GetArrayLength() > 2) throw new ContextInspectionException();
+                        w.WriteStartArray("children");
+                        foreach (var child in children.EnumerateArray())
+                        {
+                            var role = DelegationJson.Text(child, "role"); var state = DelegationJson.Text(child, "state"); var code = DelegationJson.Text(child, "error_code");
+                            if (role is not ("explore" or "review") || state is not ("completed" or "failed" or "cancelled" or "timed_out") || code is null || !ToolErrorCodes.IsValid(code)) throw new ContextInspectionException();
+                            w.WriteStartObject(); foreach (var field in new[] { "agent_id", "role", "state", "error_code" }) Copy(child, field); w.WriteEndObject();
+                        }
+                        w.WriteEndArray();
+                    }
+                }
+            }
+            else if (result.Name is McpProfile.DocsName or McpProfile.CodeName or McpProfile.FetchName)
             {
                 if (root.TryGetProperty("data", out var external) && external.ValueKind == JsonValueKind.Object)
                     foreach (var field in new[] { "source", "server_id", "remote_tool", "catalog_revision" }) Copy(external, field);
