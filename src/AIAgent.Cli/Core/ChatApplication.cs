@@ -126,7 +126,7 @@ internal sealed partial class ChatApplication(IChatInteraction interaction, ICha
                         "/budget、/budget set turn N（1～20）、/budget set program N（1～1000）、/budget reset（恢復5／100，不清消耗）；/clear 不解除程序總額度。\n" +
                         "未釘選資訊可能於模型摘要中遺失；模式、計畫、證據及逐次核准仍由本機管理。");
                     interaction.Show(new(ChatEventKind.Ready, text: "/help：操作說明；/plan：唯讀探索與規劃；/execute：確認目前版本後切換執行；/tasks：本機任務與完成依據。\n" +
-                        "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；SDK 10.0.100 的 test 因私人 IPC 限制不支援。\n" +
+                        "版本確認不直接執行，須等待下一則訊息；每筆寫入與受控 .NET 任務仍逐次核准。分析判斷不等於本機驗證；程序僅支援已驗收 macOS、可信 .csproj 的 Debug 建置；受控 MTP test 因私人 IPC 相容性限制暫不支援。\n" +
                         "計畫最多 20 任務、1 項在途及 256 筆事實；容量不足時請 /clear 後重新規劃。\n" +
                         "/clear：清除對話、快照、檢查點、復原結果、計畫、證據與核准記憶體，保留模式與累計；不復原已寫檔案；/exit：退出。\n" +
                         "支援 list_files、read_file、create_file、replace_text、search_files、search_text、read_file_range、run_dotnet_task；程序固定離線、標準 bin／obj 與私人暫存，產物保留；每回合兩次／300 秒，失敗即停止。文字搜尋與範圍讀取限 128 KiB UTF-8 文字檔，搜尋固定忽略產物與敏感目錄；每筆寫入先預覽並核准，拒絕即停止回合。內容可能送至目前供應商。空白不送出；EOF／Ctrl+D 正常退出。\n" +

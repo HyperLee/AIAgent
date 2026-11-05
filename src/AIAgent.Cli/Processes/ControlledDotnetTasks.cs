@@ -53,7 +53,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
         if (!policy.CanSendOrUse(path, ContentBoundary.ToolArguments)) return Reject("sensitive_arguments");
         if (execution.ProcessSessionStopped) return Reject("process_unconfirmed");
         var permission = execution.Plans.CheckProcess(task, path); if (permission != "none") return Reject(permission);
-        // SDK 10.0.100 hardcodes MTP IPC under /tmp, outside the approved private IPC root.
+        // MTP IPC has not been qualified within the approved private IPC root.
         // Unknown SDK/runner layouts remain unavailable until separately verified; no target probe or fallback.
         if (task == DotnetTaskKind.Test) return Reject("capability_unavailable");
         lock (_gate)

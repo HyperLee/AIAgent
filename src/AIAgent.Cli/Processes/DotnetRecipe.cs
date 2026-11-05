@@ -61,7 +61,7 @@ internal static class DotnetRecipe
 
 internal static class MacSandboxPolicy
 {
-    internal const string Version = "macos-26.7.1-arm64-v1";
+    internal const string Version = "macos-26.7.1-26.7.2-arm64-v2";
     internal static IReadOnlyList<string> SystemReadRoots { get; } = Array.AsReadOnly(new[]
     { "/System/Library", "/usr/lib", "/Library/Apple/System/Library", "/usr/share/locale", "/usr/share/icu", "/private/var/db/dyld", "/private/var/db/timezone" });
     internal static IReadOnlyList<string> SystemReadFiles { get; } = Array.AsReadOnly(new[]

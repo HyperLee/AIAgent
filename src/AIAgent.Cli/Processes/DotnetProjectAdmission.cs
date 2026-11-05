@@ -24,7 +24,7 @@ internal sealed class DotnetInstallation(string root, string sdkVersion, string 
     internal string HostDirectory { get; } = hostDirectory;
     internal string HostExecutable => HostDirectory + "/AIAgent.ProcessHost";
     internal string Packages { get; } = packages;
-    internal static bool PlatformSupported => OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && ProductVersion() == "26.7.1";
+    internal static bool PlatformSupported => OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && ProductVersion() is "26.7.1" or "26.7.2";
     internal static DotnetInstallation? Discover()
     {
         if (!PlatformSupported || !File.Exists("/usr/bin/sandbox-exec")) return null;

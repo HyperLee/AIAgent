@@ -6,7 +6,7 @@
 
 ## Build, Test, and Development Commands
 
-Use .NET SDK 10.0.100 or a compatible patch selected by `global.json`. Run from the repository root, sequentially:
+Use .NET SDK 10.0.403 or a compatible patch selected by `global.json`. The current development environment is macOS 26.7.2 arm64. Run from the repository root, sequentially:
 
 ```sh
 # Restore dependencies; build both projects; run Microsoft.Testing.Platform tests.

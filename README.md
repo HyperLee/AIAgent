@@ -9,6 +9,30 @@
 開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。[17：可重用工作流程](specs/17-reusable-workflows-and-skills.md)定義目前 Scope 的手動單一技能、來源版本及跨模組失效閘門。[18：MCP 外部工具](specs/18-mcp-external-tools.md)定義固定公開搜尋、外送確認、受限傳輸及外部資料與本機證據的界線。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 <a id="latest-validation"></a>
+<a id="macos-sdk-compatibility"></a>
+
+## 目前開發環境相容性（2026-11-05）
+
+目前基線為 **macOS 26.7.2 arm64、.NET SDK 10.0.403**（本機 runtime 10.0.14）。`global.json` 指定 10.0.403／latestPatch，產品與測試仍以 `net10.0` 為目標；VS Code 的既有 build／F5 設定沿用此選版，不需硬編碼 SDK 路徑。後續 SDK patch 仍須重新驗證，不能把 SDK 選版政策視為原生隔離驗收。
+
+受控 Debug 建置的精確 OS 准入新增 26.7.2 arm64，保留原 26.7.1 arm64；原生測試的隔離專案改用實際探測到的可信 SDK，避免要求已移除的 10.0.100。受控程序仍要求單一已安裝的 10.0.x SDK、受信任安裝根、預先 restore 的安全專案及逐次核准，網路／來源寫入／非私人 IPC 權限不變。sandbox 身分更新為 `macos-26.7.1-26.7.2-arm64-v2`，不自動放行其他 OS 或架構。本次只驗證 26.7.2／10.0.403，未重驗舊平台組合。
+
+**產品內的受控 MTP test 仍回報 `capability_unavailable`**；開發者在終端機執行 `dotnet test` 與產品受控 test 是兩個不同入口。第 24 份的私人 IPC 與相容性門檻保持，舊章節中的 10.0.100／26.7.1 為當次歷史環境，不代表目前 SDK 需求。
+
+| 本次驗證 | 結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 通過。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 通過，0 警告／錯誤。 |
+| 原生程序聚焦回歸（BuildNativeTests、MCPAC016、SKILLAC020、RULEAC021） | 14 通過、0 失敗／略過；含真實隔離建置、內建安全探針、取消與後代收尾。修改前 MCPAC016、SKILLAC020 兩項均因原生安裝准入失敗。 |
+| `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build`（完整 MSTest） | 退出 0，1342 通過、0 失敗／略過，4 分 05.563 秒。 |
+| `python3 -B tests/terminal_smoke.py`（完整 macOS PTY） | 退出 0，全部案例通過；使用合成 Key／離線 host。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 通過，顯示更新後的受控 test 限制說明。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 退出 2；新 SDK 對未修改的 `GenerationGateway.cs`、`McpCoordinator.cs`、`DelegationSourceLedger.cs` 回報縮排差異，未改寫檔案，不影響建置；本次修改的產品 C# 檔以 `--include` 限定檢查則退出 0。 |
+
+`git diff --check` 通過；修改的 C# 保留 CRLF 與無末尾換行。獨立唯讀審查未發現需修正項目。
+
+原生 MSTest 在允許 macOS sandbox 初始化的外層環境執行，產品自身隔離維持啟用。全部服務測試使用合成認證與離線替身；不宣稱完成真人終端機、真實服務、Release 發布／掃描或其他平台驗收。
+
 <a id="pty-cancellation-validation"></a>
 
 ## 第 23 份 PTY 取消同步與分層驗收（2026-11-05）

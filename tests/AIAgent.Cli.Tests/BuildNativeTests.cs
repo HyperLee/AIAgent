@@ -266,10 +266,10 @@ internal static class NativeBuildFixture
         await File.WriteAllTextAsync(root + "/Program.cs", tests
             ? "using Microsoft.VisualStudio.TestTools.UnitTesting; [TestClass] public sealed class NativeCases { [TestMethod] public void Pass() { Assert.AreEqual(2, 1 + 1); } [TestMethod, Ignore(\"fixture\")] public void Skip() { } }"
             : BuildSource);
-        await File.WriteAllTextAsync(root + "/global.json", "{\"sdk\":{\"version\":\"10.0.100\"},\"test\":{\"runner\":\"Microsoft.Testing.Platform\"}}");
+        var installation = DotnetInstallation.Discover(); Assert.IsNotNull(installation, "Packaged native host or trusted SDK missing.");
+        await File.WriteAllTextAsync(root + "/global.json", "{\"sdk\":{\"version\":\"" + installation.SdkVersion + "\"},\"test\":{\"runner\":\"Microsoft.Testing.Platform\"}}");
         Directory.CreateDirectory(root + "/empty-packages"); Directory.CreateDirectory(root + "/home"); Directory.CreateDirectory(root + "/tmp");
         await File.WriteAllTextAsync(root + "/home/offline.config", "<configuration><packageSources><clear/><add key=\"offline\" value=\"" + root + "/empty-packages\" /></packageSources></configuration>");
-        var installation = DotnetInstallation.Discover(); Assert.IsNotNull(installation, "Packaged native host or trusted SDK missing.");
         Directory.CreateDirectory(root + "/home/.dotnet");
         foreach (var sentinel in new[] { ".dotnetFirstUseSentinel", ".aspNetCertificateSentinel", ".toolpath.sentinel" })
             using (File.Create(root + "/home/.dotnet/" + installation.SdkVersion + sentinel)) { }

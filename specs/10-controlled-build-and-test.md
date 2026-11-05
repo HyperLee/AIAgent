@@ -265,6 +265,8 @@ PRIVATE_RESULTS 是該次私有暫存下的固定 results 子目錄，不由模�
 
 首版產品驗收平台為 macOS 26.7.1 arm64、.NET SDK 10.0.100 與現有測試套件；同系列修補版本仍須通過真實隔離與 recipe 相容驗收。x64、其他 macOS 版本及未通過平台組合回報 capability_unavailable，不從既有檔案轉接器的支援範圍推定程序支援。
 
+2026-11-05 相容性補充：受控 Build 的精確 OS 准入新增 macOS 26.7.2 arm64；目前開發 SDK 為 global.json 指定的 10.0.403，原生 fixture 固定使用可信安裝探測的 SDK。既有隔離政策、逐次核准、單 SDK 安裝要求及 Test 的 capability_unavailable 保持。26.7.2／10.0.403 的當次原生與回歸證據見 [README 相容性紀錄](../README.md#macos-sdk-compatibility)；不因同屬修補版本而放行其他 OS，不將本次結果外推到其他 SDK 或舊平台。
+
 使用固定 /usr/bin/sandbox-exec 載入產品內建、版本化的 deny-default 政策，隨後執行受保護的 ProcessHost。該工具及 sandbox API 在本機 man page 已標示 DEPRECATED；不是未來 macOS 的相容保證。啟動前以產品內建、無專案程式碼的探針驗證必要拒絕／允許案例，探針也只能在 Execute 並經該次核准後執行；探針與真正任務合計一個啟動嘗試及期限。失敗不嘗試真實任務。
 
 原生監督限同一工作群組及已觀測到的後代。刻意 setsid／double-fork／重新掛接父程序、惡意並行檔案系統變動及超越此信任範圍的程式不屬首版承諾。若觀測到這些行為，或不能完成必要檢查，不能照常標示成功；依 Unconfirmed／不支援處理。此界線必須在核准中顯示，不能只放在開發文件。

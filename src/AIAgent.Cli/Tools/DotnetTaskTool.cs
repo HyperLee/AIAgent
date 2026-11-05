@@ -11,7 +11,7 @@ internal sealed class RunDotnetTaskTool(IControlledDotnetTasks tasks, ISensitive
 {
     public ToolCapability Capability => ToolCapability.DotnetTask;
     public LlmToolDefinition Definition { get; } = DiscoveryToolArguments.Definition("run_dotnet_task",
-        "逐次核准的隔離 Debug 建置；SDK 10.0.100 的 MTP test 因私人 IPC 限制不支援；只限明確單一 csproj",
+        "逐次核准的隔離 Debug 建置；MTP test 因私人 IPC 相容性限制暫不支援；只限明確單一 csproj",
 """
 {"type":"object","properties":{"task":{"type":"string","enum":["build","test"]},"project_path":{"type":"string","minLength":1,"maxLength":4096}},"required":["task","project_path"],"additionalProperties":false}
 """);
