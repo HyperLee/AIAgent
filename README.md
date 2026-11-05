@@ -9,6 +9,71 @@
 開發依據為 [總規格](SPEC.md)、[01：啟動與 API Key](specs/01-bootstrap-and-key.md)、[02：Gemini 用戶端](specs/02-gemini-client.md)、[03：CLI 與 Context](specs/03-cli-and-context.md)、[04：工作區與唯讀工具](specs/04-workspace-and-read-tools.md)、[05：Agent 工具循環](specs/05-agent-loop.md)、[06：檔案編輯與核准](specs/06-file-edit-and-approval.md)、[07：預算與整體驗收](specs/07-budget-and-acceptance.md)、[08：程式碼搜尋與局部讀檔](specs/08-code-search-and-partial-read.md)、[09：Plan 模式與任務清單](specs/09-plan-mode-and-task-list.md) 與 [10：受控建置與測試](specs/10-controlled-build-and-test.md)。[11：Context 與預算管理](specs/11-context-and-budget-management.md) 接續相關Context與生成限制；[12：專案規則載入](specs/12-project-rules-loading.md) 接續來源、Scope 與操作重驗。[13：Git審查](specs/13-git-diff-and-code-review.md)與[14：終端機操作改善](specs/14-terminal-interaction.md)接續來源審查及輸入／讀取交接。[15：工作保存與續接](specs/15-work-save-and-resume.md)定義私人存取、歷史資料、確認與跨次來源。[16：修改檢查點與復原](specs/16-change-checkpoints-and-recovery.md)定義受控寫入捕捉、Git 衝突、單檔復原及證據失效。[17：可重用工作流程](specs/17-reusable-workflows-and-skills.md)定義目前 Scope 的手動單一技能、來源版本及跨模組失效閘門。[18：MCP 外部工具](specs/18-mcp-external-tools.md)定義固定公開搜尋、外送確認、受限傳輸及外部資料與本機證據的界線。規格中的「本次只新增文件」描述撰寫當時的交付；目前已依開發要求實作，後續擴充以各規格的接續契約與目前能力補充為準。
 
 <a id="latest-validation"></a>
+<a id="pty-cancellation-validation"></a>
+
+## 第 23 份 PTY 取消同步與分層驗收（2026-11-05）
+
+依[第 23 份規格](specs/23-pty-cancellation-synchronization.md)實作 REVIEW-02：busy 離線假模型首次進入呼叫後輸出並 flush 固定 `OFFLINE_BUSY_MODEL_STARTED`。三個取消案例先確認進度及此標記，才送忙碌文字、typed Ctrl+C、外部 SIGINT 或 Ctrl+D；進度本身不代表模型已被呼叫。完整模式與定向模式共用案例；取消後的 `next` 須得到離線回答及第三提示，核對沒有文字回顯、排隊或額外回合。每次退出仍檢查 ECHO／ICANON／ISIG 恢復。
+
+新增 Generating 事件回呼取消的零呼叫／零生成／零 dispatched／零操作驗證；補強既有 ChatApplication 呼叫前、呼叫中及延遲 Completed 測試。呼叫中用「已進入／已觀察取消／允許結束」三個同步點驗證先收尾才讀下一輸入，重複取消不提交歷史、不重複記帳、不取消下一 token。產品組件、取消政策、公開 API、設定及套件未修改；標記只在測試 host，不證明真實網路派送。
+
+新增測試入口：`python3 -B tests/terminal_smoke.py --group cancellation --repeat 30`。省略 repeat 為一輪，明確指定 repeat 僅允許 cancellation 組的正整數；非法組合由 parser 退出 2。每輪依 Ctrl+C、SIGINT、EOF 建立三個新 host，首失敗非零停止並記錄輪次、案例及未執行數，不重試。完整模式每案例只跑一次。
+
+### 當次證據與限制
+
+來源為 `09e79d375cfc3fa14205f6f4a7db447ad247d198` 加本次未提交變更；環境 macOS **26.7.2 arm64**、.NET SDK **10.0.100**、Python **3.9.6**。開始時工作目錄乾淨。以下均為離線驗證，沒有以過往總數或成功重跑覆蓋原失敗。
+
+| 命令／範圍 | 當次結果 |
+|---|---|
+| `dotnet restore tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj` | 退出 0；既有依賴已就緒。 |
+| `dotnet build tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-restore` | 退出 0；0 警告、0 錯誤，當次 Debug TerminalHost 已重建。 |
+| 完整 `dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build`（外層沙箱內） | 最終退出 2；1342 項，1316 通過、15 失敗、11 略過，原生 sandbox／Git／平台前置條件受阻。 |
+| 同一完整 MSTest（外層沙箱外，產品隔離仍啟用） | 退出 2；1342 項，1329 通過、2 失敗、11 略過，4 分 01.996 秒；剩餘失敗方法見下文。 |
+| MSTest 聚焦 PTYCAC001、CLIAC014 呼叫前／中及 CLIAC015 延遲 Completed | 退出 0；4 通過、0 失敗、0 略過。PTYC-AC-001～002 及歷史／用量斷言通過；篩選命令見下方。 |
+| Python discovery 排除 `test_release_publish.ReleaseSdkTests` 三個方法 | 退出 0；61 通過、0 失敗、0 略過；另有 3 項明列未執行。包含新增 14 項 PTYC、38 項敏感內容及 9 項發布停止／結構邊界回歸。 |
+| `python3 -B tests/terminal_smoke.py --group cancellation --repeat 30` | 首次退出 0；30 輪、90 新 host 全通過，每輪 Ctrl+C／SIGINT／EOF 各一次，0 失敗／略過，無重試。 |
+| `python3 -B tests/terminal_smoke.py` | 首次退出 0；145 案例通過、0 失敗／略過，包含同一份三個取消案例及 failure 退出 1；無重跑。 |
+| `dotnet format src/AIAgent.Cli/AIAgent.Cli.csproj --no-restore --verify-no-changes` | 退出 0；未改寫格式。 |
+| `dotnet run --project src/AIAgent.Cli/AIAgent.Cli.csproj --no-build -- --help` | 退出 0；Debug 使用說明，無互動。 |
+| `git diff --check`、新增 Python 檔空白／語法、Markdown 與變更工作檔檢查 | `git diff --check` 與工作檔檢查退出 0；9 檔敏感規則零命中，Python AST、C# CRLF／無末尾換行、Markdown fences 與 96 個本機連結通過。新增 Python 檔的 `git diff --no-index --check -- /dev/null tests/test_terminal_smoke.py` 退出 1，表示新增差異，無空白診斷。HEAD／index 未變動。 |
+
+聚焦命令：
+
+```sh
+dotnet test --project tests/AIAgent.Cli.Tests/AIAgent.Cli.Tests.csproj --no-build --filter 'FullyQualifiedName~PTYCAC001|FullyQualifiedName~CLIAC014_InterruptRoutesByStateAndWaitsForCancelledGeneration|FullyQualifiedName~CLIAC014_CancelBeforeGenerationDoesNotCancelApplication|FullyQualifiedName~CLIAC015_LateCompletedAfterCancellationIsCountedButNeverCommitted'
+```
+
+首次 MSTest 為 1313 通過／18 失敗／11 略過：本次新增的三項歷史斷言原放在應用程式退出後，但退出契約會清空 Context；已移至 `/exit` 前檢查成功回合仍在、下一請求前檢查取消回合不在。修正後沙箱內完整重跑為 1316／15／11，本項四個聚焦案例另全部通過；沒有修改產品來迎合測試。Python 新入口實作前的 12 項回歸曾因缺少入口／函式出現 9 項錯誤；實作後通過，再補上重複標記／多餘回合／回顯與例外正文保護，最後 14 項通過。
+
+沙箱內 15 個失敗分組為 CheckpointGitTests 4 項、GitNativeTests 8 項、McpProcessGateTests 1 項、SkillsFlowTests 1 項、WorkPrivateBoundaryTests 1 項；安全分類含 `capability_unavailable`、`GitFailure`、原生隔離初始化拒絕及 fixture 不可用。沙箱外重驗後剩下 `MCPAC016_ProcessFinalSourceAwaitCannotStartUsingRevokedMcpStamp` 與 `SKILLAC020_ProcessConsentRevalidatesSkillBeforeAnyNativeLaunch` 兩個方法，均在原生 fixture 的 installation 前置檢查失敗。另 11 項為 10 個 BuildNativeTests 與 `RULEAC021_ConfirmedProcessResultSurvivesPostExecutionRulesIoFailure` 的 Inconclusive；BuildNative 涵蓋 BUILD-AC-007／008／014／015／022／023。產品原生建置准入固定 macOS 26.7.1，本機為 26.7.2，未放寬該檢查，也未把略過當通過。
+
+完整 Python discovery 會執行 Release SDK 矩陣、發布及產物掃描，與本次不執行 Release 的邊界衝突，因此未執行無篩選命令。以下標準函式庫 runner 明列未執行的 `ReleaseSdkTests` 三個方法（property matrix、direct/reference build matrix、clean/incremental publish），其他 discovery 案例照常執行，不將排除計為通過：
+
+```sh
+python3 -B - <<'PY'
+import sys
+import unittest
+sys.dont_write_bytecode = True
+sys.path.insert(0, 'tests')
+def cases(suite):
+    for case in suite:
+        if isinstance(case, unittest.TestSuite):
+            yield from cases(case)
+        else:
+            yield case
+selected = unittest.TestSuite()
+for case in cases(unittest.defaultTestLoader.discover('tests', pattern='test_*.py')):
+    if case.__class__.__name__ == 'ReleaseSdkTests':
+        print('NOT RUN (Release outside PTYC scope): ' + case.id(), flush=True)
+    else:
+        selected.addTest(case)
+result = unittest.TextTestRunner().run(selected)
+raise SystemExit(0 if result.wasSuccessful() else 1)
+PY
+```
+
+**完成層級：**同步修正、本項確定性測試、30 輪及完整 macOS PTY 已取得證據；整體回歸仍有環境限制與明列未執行項，REVIEW-02 暫不解除。PTYC-AC-009 原為規格撰寫時的文件限定驗收，保留為歷史，不能套用「只新增本檔」描述本次實作。REVIEW-01／03／04、Release、真人操作、真實服務、其他平台及分發均未於本次驗收；未提交、推送或發布。獨立唯讀程式審查未發現需修正的重要缺陷；審查本身不替代測試。
+
 <a id="release-publish-validation"></a>
 
 ## 第 22 份 Release 發布與 ProcessHost apphost

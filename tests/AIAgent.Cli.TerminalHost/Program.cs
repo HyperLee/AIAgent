@@ -178,7 +178,12 @@ internal sealed class OfflineClient(string scenario, FileStream? gate, bool repl
                 return new(LlmStatus.ToolCalls, LlmErrorCode.None, "", editCalls, LlmMessage.FromModel(new object(), editCalls), new(1, 2, null, 0, 3), true, false);
             }
             if (scenario == "failure") throw new IOException("FAKE_LOCAL_FAILURE_ONLY");
-            if (scenario == "busy" && _calls == 1) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            if (scenario == "busy" && _calls == 1)
+            {
+                Console.WriteLine("OFFLINE_BUSY_MODEL_STARTED");
+                Console.Out.Flush();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
             if ((scenario == "tools" && request.Messages[^1].Kind == LlmMessageKind.User) ||
                 (scenario == "tool-busy" || scenario == "tool-auth" && !replaced) && _calls == 1)
             {

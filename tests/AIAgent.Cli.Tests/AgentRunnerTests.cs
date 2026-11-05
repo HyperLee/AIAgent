@@ -90,6 +90,39 @@ public sealed class AgentRunnerTests
     }
 
     [TestMethod]
+    public async Task PTYCAC001_CancelAtGeneratingNeverCallsClientOrConsumesGeneration()
+    {
+        await using var f = new RunnerFixture();
+        using var cancel = new CancellationTokenSource();
+        var generatingEvents = 0;
+        f.OnEvent = e => { if (e.Kind == AgentEventKind.Generating && ++generatingEvents == 1) cancel.Cancel(); };
+        var result = await f.Runner.RunAsync([LlmMessage.FromUserText("cancelled question")], cancel.Token);
+        Assert.AreEqual(1, generatingEvents, "PTYC-AC-001");
+        Assert.AreEqual(AgentTurnStatus.Cancelled, result.Status, "PTYC-AC-001");
+        Assert.AreEqual(AgentStopReason.TurnCancelled, result.StopReason, "PTYC-AC-001");
+        Assert.AreEqual(0, result.GenerationsStarted, "PTYC-AC-001");
+        Assert.AreEqual(0, f.Client.Requests.Count, "PTYC-AC-001");
+        Assert.AreEqual(0, result.CompletedTurn.Count, "PTYC-AC-001");
+        Assert.AreEqual(0, result.Operations.Count, "PTYC-AC-001");
+        Assert.AreEqual(0, f.FileSystem.Opened, "PTYC-AC-001");
+        Assert.AreEqual(0L, result.TurnUsage.DispatchedRequests, "PTYC-AC-001");
+        Assert.AreEqual(0L, f.Usage.Snapshot().DispatchedRequests, "PTYC-AC-001");
+        using var next = new CancellationTokenSource();
+        f.Client.Respond = (_, request, token) =>
+        {
+            Assert.IsFalse(token.IsCancellationRequested, "PTYC-AC-001");
+            Assert.AreEqual(1, request.Messages.Count, "PTYC-AC-001");
+            Assert.AreEqual("next", request.Messages[0].UserText, "PTYC-AC-001");
+            return Task.FromResult(ChatFixture.Completed());
+        };
+        var completed = await f.Runner.RunAsync([LlmMessage.FromUserText("next")], next.Token);
+        Assert.AreEqual(AgentTurnStatus.Completed, completed.Status, "PTYC-AC-001");
+        Assert.AreEqual(1, completed.GenerationsStarted, "PTYC-AC-001");
+        Assert.AreEqual(1, f.Client.Requests.Count, "PTYC-AC-001");
+        Assert.AreEqual(1L, f.Usage.Snapshot().DispatchedRequests, "PTYC-AC-001");
+    }
+
+    [TestMethod]
     public async Task LOOPAC002_ConcurrentInvalidAndPreCancelledTurnsDoNotStartWork()
     {
         await using var f = new RunnerFixture();

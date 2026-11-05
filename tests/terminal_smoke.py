@@ -23,6 +23,7 @@ CONFIRM = "使用此工作區？[y/N]".encode()
 READY = "聊天已就緒".encode()
 CHAT_PROMPT = "你> ".encode()
 HOST_PROMPT = b"OFFLINE_INPUT_READY"
+BUSY_MODEL_STARTED = b"OFFLINE_BUSY_MODEL_STARTED"
 
 
 class CaseFailure(Exception):
@@ -109,8 +110,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", type=Path, default=Path(__file__).resolve().parents[1] / "src/AIAgent.Cli/bin/Debug/net10.0/AIAgent.Cli.dll")
     parser.add_argument("--host", type=Path, default=Path(__file__).resolve().parents[1] / "tests/AIAgent.Cli.TerminalHost/bin/Debug/net10.0/AIAgent.Cli.TerminalHost.dll")
-    parser.add_argument("--group", choices=("all", "model", "agents"), default="all")
+    parser.add_argument("--group", choices=("all", "model", "agents", "cancellation"), default="all")
+    parser.add_argument("--repeat", type=int, default=None)
     args = parser.parse_args()
+    if args.repeat is not None and (args.group != "cancellation" or args.repeat <= 0):
+        parser.error("--repeat requires --group cancellation and a positive integer")
+    if args.group == "cancellation":
+        check(sys.platform == "darwin", "macOS-required")
+        cancellation_cases(["dotnet", str(args.host.resolve())], args.repeat if args.repeat is not None else 1)
+        return
     if args.group == "agents":
         agents_cases(["dotnet", str(args.host.resolve())])
         return
@@ -187,18 +195,73 @@ def main():
     agents_cases(["dotnet", str(args.host.resolve())])
 
 
-def chat_cases(host):
-    def start(scenario, gate_fd=None):
-        workspace = tempfile.mkdtemp(prefix="aiagent-chat-pty-")
-        command = host + [scenario] + ([] if gate_fd is None else [str(gate_fd)])
-        Path(workspace, "notes.md").write_text("Hello\n", encoding="utf-8")
-        terminal = TerminalProcess(command, workspace, () if gate_fd is None else (gate_fd,))
+def start_chat_host(host, scenario, gate_fd=None):
+    workspace = tempfile.mkdtemp(prefix="aiagent-chat-pty-")
+    command = host + [scenario] + ([] if gate_fd is None else [str(gate_fd)])
+    Path(workspace, "notes.md").write_text("Hello\n", encoding="utf-8")
+    terminal = TerminalProcess(command, workspace, () if gate_fd is None else (gate_fd,))
+    try:
         terminal.wait_for(CONFIRM)
         terminal.send(b"y\r")
         terminal.wait_for(KEY_PROMPT)
         terminal.send(FAKE_KEY + b"\r")
         terminal.wait_for(HOST_PROMPT)
         return terminal
+    except BaseException:
+        terminal.close()
+        raise
+
+
+def cancellation_case(host, control):
+    terminal = start_chat_host(host, "busy")
+    try:
+        terminal.send(b"question\r")
+        terminal.wait_for("處理中".encode())
+        terminal.wait_for(BUSY_MODEL_STARTED)
+        terminal.send(b"DISCARDED_BUSY_TEXT/exit")
+        if control == "SIGINT":
+            os.kill(terminal.process.pid, signal.SIGINT)
+        else:
+            terminal.send(b"\x04" if control == "EOF" else b"\x03\x03")
+        if control == "EOF":
+            terminal.finish(0)
+        else:
+            terminal.wait_for(HOST_PROMPT, 2)
+            terminal.send(b"next\r")
+            terminal.wait_for("離線回答".encode())
+            terminal.wait_for(HOST_PROMPT, 3)
+            if control == "SIGINT":
+                os.kill(terminal.process.pid, signal.SIGINT)
+            else:
+                terminal.send(b"\x03")
+            terminal.finish(130)
+        check(terminal.output.count(BUSY_MODEL_STARTED) == 1, "PTYC-model-marker-count")
+        check(b"DISCARDED_BUSY_TEXT" not in terminal.output, "PTYC-no-busy-queue")
+        check(terminal.output.count(HOST_PROMPT) == (1 if control == "EOF" else 3), "PTYC-input-count")
+        check(terminal.output.count("處理中".encode()) == (1 if control == "EOF" else 2), "PTYC-generation-display-count")
+        check(terminal.output.count("離線回答".encode()) == (0 if control == "EOF" else 1), "PTYC-answer-count")
+    finally:
+        terminal.close()
+
+
+def cancellation_cases(host, repeat=1):
+    controls = ("CtrlC", "SIGINT", "EOF")
+    for round_index in range(1, repeat + 1):
+        for case_index, control in enumerate(controls):
+            label = "PTYC round=" + str(round_index) + "/" + str(repeat) + " case=" + control
+            try:
+                cancellation_case(host, control)
+            except Exception as error:
+                # Never forward arbitrary exception text or captured terminal bytes.
+                remaining = (repeat - round_index) * len(controls) + len(controls) - case_index - 1
+                print(label + ": FAIL category=" + type(error).__name__ + " not-run=" + str(remaining), flush=True)
+                raise
+            print(label + ": PASS", flush=True)
+
+
+def chat_cases(host):
+    def start(scenario, gate_fd=None):
+        return start_chat_host(host, scenario, gate_fd)
 
     terminal = start("text")
     try:
@@ -272,40 +335,16 @@ def chat_cases(host):
             os.close(write_fd)
             terminal.close()
 
-    for external in (False, True):
-        terminal = start("busy")
-        try:
-            terminal.send(b"question\r")
-            terminal.wait_for("處理中".encode())
-            terminal.send(b"DISCARDED_BUSY_TEXT/exit")
-            if external:
-                os.kill(terminal.process.pid, signal.SIGINT)
-            else:
-                terminal.send(b"\x03\x03")
-            terminal.wait_for(HOST_PROMPT, 2)
-            check(b"DISCARDED_BUSY_TEXT" not in terminal.output, "CLI-AC-030-no-queue")
-            terminal.send(b"next\r")
-            terminal.wait_for(HOST_PROMPT, 3)
-            if external:
-                os.kill(terminal.process.pid, signal.SIGINT)
-            else:
-                terminal.send(b"\x03")
-            terminal.finish(130)
-            print("CLI-AC-030-busy-" + ("SIGINT" if external else "CtrlC") + ": PASS", flush=True)
-        finally:
-            terminal.close()
+    cancellation_cases(host)
 
-    for scenario, control, expected in (("busy", b"\x04", 0), ("failure", b"", 1)):
-        terminal = start(scenario)
-        try:
-            terminal.send(b"question\r")
-            terminal.wait_for("處理中".encode())
-            if control:
-                terminal.send(control)
-            terminal.finish(expected)
-            print("CLI-AC-030-" + scenario + "-exit-" + str(expected) + ": PASS", flush=True)
-        finally:
-            terminal.close()
+    terminal = start("failure")
+    try:
+        terminal.send(b"question\r")
+        terminal.wait_for("處理中".encode())
+        terminal.finish(1)
+        print("CLI-AC-030-failure-exit-1: PASS", flush=True)
+    finally:
+        terminal.close()
 
     for scenario, control, expected in (("auth", b"\x04", 0), ("auth", b"\x03", 130), ("tool-auth", b"\x04", 0), ("tool-auth", b"\x03", 130)):
         read_fd, write_fd = os.pipe()

@@ -42,28 +42,71 @@ public sealed class ChatApplicationTests
     }
 
     [TestMethod]
-    public async Task CLIAC014_InterruptRoutesByStateAndWaitsForCancelledGeneration()
+    public Task CLIAC014_InterruptRoutesByStateAndWaitsForCancelledGeneration() => VerifyCancelledGenerationAsync(false);
+
+    private static async Task VerifyCancelledGenerationAsync(bool lateCompleted)
     {
-        var fixture = new ChatFixture("one", "two", "/exit");
+        var fixture = new ChatFixture("one", "two");
+        fixture.Interaction.Inputs.Enqueue(() =>
+        {
+            Assert.AreEqual(1, fixture.Context.CompletedTurnCount, "PTYC-AC-002");
+            return ChatInputResult.Submitted("/exit");
+        });
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<LlmResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var app = new ChatApplication(fixture.Interaction, fixture.Factory, fixture.Context, fixture.Usage, "instruction", new TestWorkspaceFilesFactory());
         var session = GeminiFixtures.Session(); fixture.Factory.Sessions.Add(session); fixture.Client.Session = session;
-        fixture.Client.Respond = async (i, _, token) =>
+        fixture.Client.Respond = async (i, request, token) =>
         {
-            if (i != 0) { Assert.IsFalse(token.IsCancellationRequested); return ChatFixture.Completed(); }
-            started.SetResult();
-            return await release.Task;
+            if (i != 0)
+            {
+                Assert.IsFalse(token.IsCancellationRequested, "PTYC-AC-002");
+                Assert.AreEqual(0, fixture.Context.CompletedTurnCount, "PTYC-AC-002");
+                Assert.AreEqual(1, request.Messages.Count, "PTYC-AC-002");
+                Assert.AreEqual("two", request.Messages[0].UserText, "PTYC-AC-002");
+                return ChatFixture.Completed();
+            }
+            using var registration = token.Register(() => observed.TrySetResult());
+            started.TrySetResult();
+            await release.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            return lateCompleted ? ChatFixture.Completed() : new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, true, false);
         };
         var run = app.RunAsync(session, default);
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        fixture.Interaction.Signal!(ChatControlSignal.CancelTurn);
-        Assert.IsTrue(await Task.Run(() => SpinWait.SpinUntil(() => app.State == ChatState.Cancelling, TimeSpan.FromSeconds(5))));
-        Assert.IsFalse(run.IsCompleted);
-        release.SetResult(ChatFixture.Completed());
-        Assert.AreEqual(0, await run.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.AreEqual(1, fixture.Client.Requests[1].Messages.Count);
-        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            fixture.Interaction.Signal!(ChatControlSignal.CancelTurn);
+            fixture.Interaction.Signal!(ChatControlSignal.CancelTurn);
+            await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(ChatState.Cancelling, app.State, "PTYC-AC-002");
+            Assert.IsFalse(run.IsCompleted, "PTYC-AC-002");
+            Assert.AreEqual(1, fixture.Interaction.InputReads, "PTYC-AC-002");
+            Assert.AreEqual(0, fixture.Context.CompletedTurnCount, "PTYC-AC-002");
+            Assert.IsFalse(fixture.Interaction.Events.Any(e => e.Kind is ChatEventKind.Answer or ChatEventKind.Usage or ChatEventKind.TurnEnded), "PTYC-AC-002");
+        }
+        finally
+        {
+            release.TrySetResult();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.AreEqual(0, await run, "PTYC-AC-002");
+        Assert.AreEqual(3, fixture.Interaction.InputReads, "PTYC-AC-002");
+        Assert.AreEqual(2, fixture.Client.Requests.Count, "PTYC-AC-002");
+        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer), "PTYC-AC-002");
+        var ended = fixture.Interaction.Events.Single(e => e.Kind == ChatEventKind.TurnEnded);
+        Assert.AreEqual(AgentTurnStatus.Cancelled, ended.TurnStatus, "PTYC-AC-002");
+        Assert.AreEqual(AgentStopReason.TurnCancelled, ended.StopReason, "PTYC-AC-002");
+        var usage = fixture.Interaction.Events.Where(e => e.Kind == ChatEventKind.Usage).ToArray();
+        Assert.AreEqual(2, usage.Length, "PTYC-AC-002");
+        Assert.AreEqual(1, usage[0].GenerationsStarted, "PTYC-AC-002");
+        Assert.AreEqual(1, usage[0].ProgramGenerationsStarted, "PTYC-AC-002");
+        Assert.AreEqual(1L, usage[0].TurnSummary!.DispatchedRequests, "PTYC-AC-002");
+        Assert.AreEqual(1L, usage[0].SessionUsage!.DispatchedRequests, "PTYC-AC-002");
+        Assert.AreEqual(1, usage[1].GenerationsStarted, "PTYC-AC-002");
+        Assert.AreEqual(2, usage[1].ProgramGenerationsStarted, "PTYC-AC-002");
+        Assert.AreEqual(1L, usage[1].TurnSummary!.DispatchedRequests, "PTYC-AC-002");
+        Assert.AreEqual(2L, fixture.Usage.Snapshot().DispatchedRequests, "PTYC-AC-002");
     }
 
     [TestMethod]
@@ -193,31 +236,41 @@ public sealed class ChatApplicationTests
     [TestMethod]
     public async Task CLIAC014_CancelBeforeGenerationDoesNotCancelApplication()
     {
-        var fixture = new ChatFixture("one", "two", "/exit");
+        var fixture = new ChatFixture("one", "two");
+        fixture.Interaction.Inputs.Enqueue(() =>
+        {
+            Assert.AreEqual(1, fixture.Context.CompletedTurnCount, "PTYC-AC-001");
+            return ChatInputResult.Submitted("/exit");
+        });
         var cancelled = false;
         fixture.Interaction.OnBusy = signal => { if (!cancelled) { cancelled = true; signal(ChatControlSignal.CancelTurn); signal(ChatControlSignal.CancelTurn); } };
-        fixture.Client.Respond = (_, _, token) => Task.FromResult(token.IsCancellationRequested
-            ? new(LlmStatus.Cancelled, LlmErrorCode.None, "", [], null, null, false, false) : ChatFixture.Completed());
+        fixture.Client.Respond = (_, request, token) =>
+        {
+            Assert.IsFalse(token.IsCancellationRequested, "PTYC-AC-001");
+            Assert.AreEqual(1, request.Messages.Count, "PTYC-AC-001");
+            Assert.AreEqual("two", request.Messages[0].UserText, "PTYC-AC-001");
+            Assert.AreEqual(0, fixture.Context.CompletedTurnCount, "PTYC-AC-001");
+            Assert.AreEqual(0L, fixture.Usage.Snapshot().DispatchedRequests, "PTYC-AC-001");
+            return Task.FromResult(ChatFixture.Completed());
+        };
         Assert.AreEqual(0, await fixture.Run());
         Assert.AreEqual(1, fixture.Client.Requests.Count);
         Assert.AreEqual(1, fixture.Client.Requests[0].Messages.Count);
         Assert.AreEqual(1L, fixture.Usage.Snapshot().DispatchedRequests);
+        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer), "PTYC-AC-001");
+        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.TurnEnded && e.TurnStatus == AgentTurnStatus.Cancelled), "PTYC-AC-001");
+        var usage = fixture.Interaction.Events.Where(e => e.Kind == ChatEventKind.Usage).ToArray();
+        Assert.AreEqual(2, usage.Length, "PTYC-AC-001");
+        Assert.AreEqual(0, usage[0].GenerationsStarted, "PTYC-AC-001");
+        Assert.AreEqual(0, usage[0].ProgramGenerationsStarted, "PTYC-AC-001");
+        Assert.AreEqual(0L, usage[0].TurnSummary!.DispatchedRequests, "PTYC-AC-001");
+        Assert.AreEqual(0L, usage[0].SessionUsage!.DispatchedRequests, "PTYC-AC-001");
+        Assert.AreEqual(1, usage[1].GenerationsStarted, "PTYC-AC-001");
+        Assert.AreEqual(1, usage[1].ProgramGenerationsStarted, "PTYC-AC-001");
     }
 
     [TestMethod]
-    public async Task CLIAC015_LateCompletedAfterCancellationIsCountedButNeverCommitted()
-    {
-        var fixture = new ChatFixture("one", "two", "/exit");
-        fixture.Client.Respond = (i, _, _) =>
-        {
-            if (i == 0) fixture.Interaction.Signal!(ChatControlSignal.CancelTurn);
-            return Task.FromResult(ChatFixture.Completed());
-        };
-        Assert.AreEqual(0, await fixture.Run());
-        Assert.AreEqual(1, fixture.Interaction.Events.Count(e => e.Kind == ChatEventKind.Answer));
-        Assert.AreEqual(1, fixture.Client.Requests[1].Messages.Count);
-        Assert.AreEqual(2L, fixture.Usage.Snapshot().DispatchedRequests);
-    }
+    public Task CLIAC015_LateCompletedAfterCancellationIsCountedButNeverCommitted() => VerifyCancelledGenerationAsync(true);
 
     [TestMethod]
     public async Task CLIAC015_PostCommitBusyCancelDoesNotUndoCommitOrCancelNextTurn()
@@ -433,6 +486,7 @@ internal sealed class ScriptInteraction : IChatInteraction
     internal Action<ChatEvent>? OnShow { get; set; }
     internal Action? OnChoice { get; set; }
     internal Action? OnBusyDisposed { get; set; }
+    internal int InputReads { get; private set; }
     internal int KeyReads { get; private set; }
     internal int ChoiceReads { get; private set; }
     internal bool FailPolicyChange { get; set; }
@@ -441,6 +495,7 @@ internal sealed class ScriptInteraction : IChatInteraction
     public ValueTask<ChatInputResult> ReadInputAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        InputReads++;
         return new(Inputs.TryDequeue(out var input) ? input() : ChatInputResult.End(ChatInputStatus.EndOfInput));
     }
     public ValueTask<KeyReplacementChoice> ChooseKeyReplacementAsync(CancellationToken cancellationToken)

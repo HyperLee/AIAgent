@@ -13,7 +13,7 @@
 | 編號 | 分類 | 項目 | 狀態 |
 |---|---|---|---|
 | REVIEW-01 | 新發現缺陷 | Release 發布命令連帶停用 ProcessHost apphost，造成發布失敗。 | 第 22 份修正已驗證；Release 掃描仍受阻。 |
-| REVIEW-02 | 新發現缺陷 | PTY 取消案例缺少假模型開始執行的同步條件，可能卡住後續回合。 | 待另立規格處理 |
+| REVIEW-02 | 新發現缺陷 | PTY 取消案例缺少假模型開始執行的同步條件，可能卡住後續回合。 | 已實作同步修正；整體回歸受環境限制，暫不解除 |
 | REVIEW-03 | 既有限制 | FUT-02 產品內受控 `test` 不支援，第 10 階段未完整驗收。 | 待另立規格處理 |
 | REVIEW-04 | 未結驗收 | Release 掃描阻擋，真人、真實服務及部分原生／平台驗收未完成。 | 待另立規格處理 |
 
@@ -55,7 +55,16 @@ dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-s
 
 ## REVIEW-02：PTY 取消案例競態
 
-**狀態：待另立規格處理。**
+**目前狀態：第 23 份同步修正已實作，本項分層測試通過；整體回歸受環境限制，暫不解除。** 原查核狀態為待另立規格處理，以下歷史證據保留。
+
+### 第 23 份實作接續（2026-11-05）
+
+依[第 23 份規格](specs/23-pty-cancellation-synchronization.md)在測試 host 加入唯一模型開始標記及 flush，三種 busy 取消共用精確同步案例；新增呼叫前事件取消、呼叫中受控收尾／延遲 Completed 與 Python 失敗路徑驗證。當次四項聚焦 MSTest、30 輪 90 新 host 及完整 145 項 macOS PTY 均通過，無 PTY 重跑。產品取消政策與平台准入未改。
+
+完整 MSTest 在沙箱外為 1329 通過／2 失敗／11 略過；兩個失敗涉及原生 fixture 前置檢查。本機 macOS 26.7.2 與產品原生建置限定的 26.7.1 不符，未放寬隔離；Release SDK 矩陣／發布／產物掃描未於本次執行。完整命令、早期失敗及 Python 排除範圍見 [README 當次證據](README.md#pty-cancellation-validation)。未滿足完整回歸條件前不解除 REVIEW-02，亦不解除其他 REVIEW 或真人／真實服務門檻。
+
+### 原查核證據
+
 
 來源：[PTY 測試](tests/terminal_smoke.py)第 275～294 行、[生成流程](src/AIAgent.Cli/Core/AgentContext.cs)第 76～91 行，以及 [TerminalHost 假模型](tests/AIAgent.Cli.TerminalHost/Program.cs)第 63／181 行；行號均以查核基準為準。
 
