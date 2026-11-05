@@ -14,7 +14,7 @@
 |---|---|---|---|
 | REVIEW-01 | 新發現缺陷 | Release 發布命令連帶停用 ProcessHost apphost，造成發布失敗。 | 第 22 份修正已驗證；Release 掃描仍受阻。 |
 | REVIEW-02 | 新發現缺陷 | PTY 取消案例缺少假模型開始執行的同步條件，可能卡住後續回合。 | 已實作同步修正；整體回歸受環境限制，暫不解除 |
-| REVIEW-03 | 既有限制 | FUT-02 產品內受控 `test` 不支援，第 10 階段未完整驗收。 | 待另立規格處理 |
+| REVIEW-03 | 既有限制 | FUT-02 產品內受控 `test` 不支援，第 10 階段未完整驗收。 | 已有第 24 份規格；[候選相容性受阻](specs/24-controlled-mtp-test-support.md#mtp-candidate-check-20261105) |
 | REVIEW-04 | 未結驗收 | Release 掃描阻擋，真人、真實服務及部分原生／平台驗收未完成。 | 待另立規格處理 |
 
 ## REVIEW-01：Release 發布失敗
@@ -83,7 +83,13 @@ dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-s
 
 ## REVIEW-03：FUT-02 產品內測試不支援
 
-**狀態：待另立規格處理。**
+**狀態：已有第 24 份規格；候選相容性受阻，未解除。**
+
+### 第 24 份候選查核接續（2026-11-05）
+
+已依[第 24 份規格](specs/24-controlled-mtp-test-support.md)查核正式 SDK 候選；[當次來源、版本清單與阻擋紀錄](specs/24-controlled-mtp-test-support.md#mtp-candidate-check-20261105)列明 28 個 .NET 10 正式 SDK 中，26 個可取得的固定 tag 仍將 MTP IPC 放在全域 `/tmp`，另外 2 個固定 tag 回傳 HTTP 404、來源未驗證。.NET 11 發行清單未列正式 SDK；主分支的私人 IPC 機制僅作候選線索。
+
+本次只更新候選查核與追蹤文件，未修改或啟用產品能力，未執行產品或開發者 build／test。依第 24 份第 3.2、7 節，保留 `capability_unavailable` 與私人 IPC 隔離邊界；正式版本固定來源、精確組合及原生可行性證據齊備前，不開始產品整合。REVIEW-03、第 10 份真實 MTP 驗收與其他未結門檻均保留。以下為原查核的歷史紀錄。
 
 來源：[ROADMAP 的 FUT-02](ROADMAP.md#fut-02受控建置與測試)、[第 10 份實作接續與驗收限制](specs/10-controlled-build-and-test.md#實作接續與驗收限制2026-10-24)及[受控程序實作](src/AIAgent.Cli/Processes/ControlledDotnetTasks.cs)第 26／58 行。
 

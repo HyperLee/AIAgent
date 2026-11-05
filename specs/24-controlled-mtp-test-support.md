@@ -217,3 +217,42 @@
 - 檢查Markdown表格／程式碼圍欄、相對檔案連結與使用的本機章節錨點，確認未連到不存在的實作或測試空殼。
 - 執行 `git diff --check`；本檔未追蹤時另執行 `git diff --no-index --check -- /dev/null specs/24-controlled-mtp-test-support.md`，核對無空白錯誤。
 - 不執行產品build／test／PTY／publish；不以歷史通過數、本次文件檢查或官方來源查閱替代產品相容性及驗收。
+
+<a id="mtp-candidate-check-20261105"></a>
+
+## 10. 2026-11-05 候選查核
+
+**狀態：候選相容性受阻；未啟用產品 test，REVIEW-03 未解除。**
+
+本節依後續使用者確認的「候選相容性受阻紀錄計畫」追加；第 1、9 節的「本次只新增本檔」保留為原始規格撰寫階段的歷史邊界。本次僅修改本檔及 [REVIEW-03 追蹤紀錄](../ROADMAP_REVIEW_NOTES.md#review-03fut-02-產品內測試不支援)，不修改產品、測試、SDK、套件、global.json 或公開介面。
+
+### 10.1 查核基準與方法
+
+- 日期／時區：2026-11-05，Asia/Taipei。來源 commit：`4ed352e9c688b909adc75e431bb4c017e4f3b678`；查核開始時 `git status --short` 無輸出，工作目錄乾淨。
+- 本機：macOS `26.7.2`、arm64、SDK `10.0.100`；已安裝 `Microsoft.NETCore.App 10.0.0` 與 `Microsoft.AspNetCore.App 10.0.0`。以 `sw_vers -productVersion`、`uname -m`、`dotnet --version`、`dotnet --list-runtimes` 確認，皆退出 0。
+- 以 Python 3 標準函式庫 `urllib.request`／`json` 讀取官方 [10.0 發行清單](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)，取各 release 的 `sdks[].version`，排除含 `-` 的版本並去重；共 28 個正式 SDK 版本。該次清單 bytes 的 SHA-256 為 `8fa7ae2d46b1f94416d5458c7ed68b0c3cafc5efb8e34d89dea3a98bf0a38b33`。
+- 對每個版本讀取官方 `dotnet/sdk` 儲存庫 `vVERSION` 固定 tag 的 `src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs`，檢查 `GetPipeName` 的路徑形成與私人 IPC 變數；同時查詢 [11.0 發行清單](https://builds.dotnet.microsoft.com/dotnet/release-metadata/11.0/releases.json)。來源查核腳本退出 0；下列 HTTP 404 為已分類的來源缺口，不是驗證成功。
+- 本次為開發時網路來源查核，未經產品 `run_dotnet_task` 執行，未準備或執行 fixture。runtime／MTP 候選組合、recipe／parser／sandbox 身分及原生相容性均未取得新驗收證據。
+
+### 10.2 版本與固定來源結果
+
+| 分類 | 確切版本 | 來源結果與判定 |
+|---|---|---|
+| 10.0.1xx：來源已確認不符合私人 IPC 條件 | `10.0.100`、`10.0.101`、`10.0.102`、`10.0.103`、`10.0.104`、`10.0.105`、`10.0.107`、`10.0.108`、`10.0.109`、`10.0.110`、`10.0.111`、`10.0.112`、`10.0.113`、`10.0.114` | 14 個固定 tag 檔案皆 HTTP 200；`GetPipeName` 仍使用 `Path.Combine("/tmp", name)`，未見 `TESTINGPLATFORM_PIPE_DIRECTORY`。 |
+| 10.0.2xx：來源已確認不符合私人 IPC 條件 | `10.0.200`、`10.0.201`、`10.0.203`、`10.0.204` | 4 個固定 tag 檔案皆 HTTP 200；同樣固定全域 `/tmp`，未見私人 IPC 變數。 |
+| 10.0.3xx：來源已確認不符合私人 IPC 條件 | `10.0.300`、`10.0.301`、`10.0.302`、`10.0.303` | 4 個固定 tag 檔案皆 HTTP 200；同樣固定全域 `/tmp`，未見私人 IPC 變數。 |
+| 10.0.4xx：來源已確認不符合私人 IPC 條件 | `10.0.400`、`10.0.401`、`10.0.402`、`10.0.403` | 4 個固定 tag 檔案皆 HTTP 200；同樣固定全域 `/tmp`，未見私人 IPC 變數。 |
+| 來源無法驗證 | `10.0.106`、`10.0.202` | 發行清單有列版本，但固定 tag 原始碼 URL 與 GitHub tag ref API 均回傳 HTTP 404；不推論其 IPC 實作，也不視為合格候選。 |
+| .NET 11 正式候選 | 無 | 當次 11.0 發行清單未列不含 `-` 的正式 SDK；不採用 preview／RC。 |
+
+26 個 HTTP 200 的 `NamedPipeServer.cs` 內容雜湊均為 SHA-256 `614e4c58bb4e506dce5858873c0c539fce176fb57aefd643a0851e143bbee561`。代表性固定來源：[SDK 10.0.100](https://github.com/dotnet/sdk/blob/v10.0.100/src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs#L214-L223)、[SDK 10.0.403](https://github.com/dotnet/sdk/blob/v10.0.403/src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs#L214-L223)。其餘版本依表中確切版本替換同一路徑的 tag；404 的 tag ref 查詢為 [v10.0.106](https://api.github.com/repos/dotnet/sdk/git/ref/tags/v10.0.106)、[v10.0.202](https://api.github.com/repos/dotnet/sdk/git/ref/tags/v10.0.202)。
+
+當次主分支解析至 commit `afea1957a00941a4e83bbb3bbe7231185074a3fe`；其[固定 commit 來源](https://github.com/dotnet/sdk/blob/afea1957a00941a4e83bbb3bbe7231185074a3fe/src/Cli/dotnet/Commands/Test/MTP/IPC/NamedPipeServer.cs)含 `TESTINGPLATFORM_PIPE_DIRECTORY` 與 `ResolvePipeDirectory`，與上述正式 tag 不同。此差異只提供後續候選線索，不證明正式發行包含變更，也不證明固定 argv、runner、摘要或原生隔離可用。
+
+### 10.3 阻擋條件與後續入口
+
+依第 3.2、7 節，目前沒有完成正式來源資格及原生驗證的合格組合，停止產品啟用，保留 `capability_unavailable`、既有拒絕順序與零目標執行政策。不移除 Test 拒絕、不加入支援條目，不放行全域 IPC、網路或未驗證 OS；本機 `26.7.2` 不在現有 build 平台准入內，也不以修改版本字串取代證據。
+
+後續須先取得正式 SDK 固定 tag／commit、精確 SDK／runtime／MTP 組合及可信安裝，在維持既定 sandbox 的條件下證明真正 MTP IPC 位於當次私人 tmp，並完成固定 recipe／launch profile／輸出與必要原生可行性驗證，才能開始產品整合。未查證版本與來源無法取得的版本均不預先判為可用。
+
+本次未執行 restore、build、開發者或產品 test、PTY、真人終端機、真實服務、publish、Release 掃描或原生 fixture；未提交、推送、安裝 SDK 或清理產物。文件檢查不構成 MTP-AC-004～022 的產品驗收，也不代表 MTP-AC-001／023 的所有條件或第 10 階段已完成；REVIEW-03、REVIEW-04 與其他未結門檻保留。
