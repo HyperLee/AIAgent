@@ -1,5 +1,10 @@
 # 入門 AI Agent 開發總規格書
 
+## 第 25 份驗收實作接續（2026-11-06～07）
+
+[Release 與未結驗收](specs/25-release-and-outstanding-acceptance.md)承接既有發布與分層門檻：完整目錄內容／mode 身分、嚴格掃描摘要與同產物啟動閘門，以及有界原生 fixture。測試輔具不進產品發布；LLM、SAVE v1、受控程序協定及平台准入保持。實際分層結果與真人／真服務／MTP 待辦見[安全證據](docs/acceptance/release-outstanding.md)，不以開發完成解除 REVIEW-04。
+
+
 ## 第 23 份測試實作接續（2026-11-05）
 
 [PTY 取消同步與分層驗收](specs/23-pty-cancellation-synchronization.md)接續第 8～10、15 章：測試 host 的固定模型開始標記及 flush，讓 busy Ctrl+C／SIGINT／EOF 在實際進入假模型後才取消；完整與定向 PTY 共用案例。事件回呼與受控替身分別驗證呼叫前零生成、呼叫中先收尾、歷史隔離及單次用量，未修改產品取消政策或公開介面。
@@ -859,6 +864,7 @@ CI、結構化日誌、效能測試與更完整的故障注入可逐步加入。
 | `specs/14-terminal-interaction.md` | 5、6、8～15 的後續擴充 | 隱藏多行／文字元素編輯、完整安全預覽、明確貼上、程序內歷史、唯一讀取者交接與事實進度；分層證據見README。 |
 | `specs/15-work-save-and-resume.md` | 5、6、8～15 的後續擴充 | 私人目錄安全摘要／未確認計畫、完整確認、排他發布、啟動續接與來源重驗；分層證據見 README。 |
 | `specs/22-release-publish-and-processhost.md` | 13、15～16 的發布驗收及第 10 份接續 | CLI DLL／ProcessHost apphost 建置政策、乾淨與增量發布、必要產物及掃描停止邊界；分層證據見 README。 |
+| `specs/25-release-and-outstanding-acceptance.md` | 6、13～16 與各份未結驗收 | 官方候選、完整產物身分及停止閘門、原生 fixture、真人／服務逐項證據；實際狀態見驗收紀錄。 |
 | `specs/23-pty-cancellation-synchronization.md` | 8～10、15 的取消測試及第 03／05／14 份接續 | busy 開始標記、呼叫前／中確定性驗證、共用取消 PTY 與 30 輪定向入口；實測與未結項見 README。 |
 
 

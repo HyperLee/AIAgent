@@ -53,7 +53,7 @@ internal static class DotnetRecipe
         text.Append("禁止 IPv4/IPv6、TCP/UDP/DNS、代理及 loopback；只允許私人 tmp 內的 AF_UNIX IPC。\n期限：")
             .Append((long)timeout.TotalMilliseconds).Append(" ms；合計原始輸出上限 1048576 bytes；每回合最多 2 次／300 秒。\n")
             .Append("先執行內建隔離探針；失敗零目標啟動，不放寬政策。產物與私人目錄保留；整批清理由使用者手動處理。\n")
-            .Append("原生監督只涵蓋工作群組與每 100ms 已觀測的最多 256 個後代；不承諾偵測所有 setsid/double-fork/重新掛接或惡意逃離。觀測遺失／收尾不能確認會鎖定本 session 並退出。\n");
+            .Append("原生監督只涵蓋工作群組與每 100ms 已觀測的最多 256 個程序身分，包含根程序；不承諾偵測所有 setsid/double-fork/重新掛接或惡意逃離。觀測遺失／收尾不能確認會鎖定本 session 並退出。\n");
         if (context is not null) text.Append("PlanId：").Append(context.PlanId).Append(" / Revision：").Append(context.PlanRevision).Append(" / TaskId：").Append(context.TaskId).Append('\n');
         return text.ToString();
     }

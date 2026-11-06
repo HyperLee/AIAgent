@@ -397,3 +397,7 @@ REVIEW-04 可先接續為「分項驗收進行中」，逐項列出已通過範�
 - 執行 `git diff --check`，並以 `git diff --no-index --check -- /dev/null specs/25-release-and-outstanding-acceptance.md` 涵蓋未追蹤新檔。
 - 完整讀回，核對只有本檔新增、既有追蹤內容無修改、HEAD 與 index 指紋保持，不另建 memo／產物或執行清理。
 - 完成回報僅列本次實際文件檢查；restore／build／產品 test／PTY／原生／真人／真實服務／publish／Release scan／分發均明示未執行，REVIEW-04 與其他未結門檻保持。
+
+## 13. 產品開發接續（2026-11-06～07）
+
+後續開發已接續發布閘門、完整產物身分與有界原生 fixture；逐項安全證據、實際失敗／通過及 H／S 操作交接見[驗收紀錄](../docs/acceptance/release-outstanding.md)。上列原文件撰寫範圍與歷史觀察保留；此接續不代表必要各層驗收或 REVIEW-04 已完成。

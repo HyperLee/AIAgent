@@ -17,7 +17,7 @@ internal static class Supervisor
 {
     internal static async Task<SupervisionResult> Run(Descriptor descriptor, CancellationToken stop, Action<int> started, Action cleanupStarted,
         Func<Native.Identity[]?>? snapshotProvider = null, Func<int, Native.Identity?>? initialIdentityProvider = null,
-        Func<int, Native.Identity?>? subsequentIdentityProvider = null)
+        Func<int, Native.Identity?>? subsequentIdentityProvider = null, Action<IReadOnlyList<Native.Identity>>? observed = null)
     {
         Directory.SetCurrentDirectory(descriptor.Root);
         var pid = Native.Spawn(descriptor.Dotnet, descriptor.Arguments, descriptor.Environment);
@@ -80,6 +80,7 @@ internal static class Supervisor
                 if (current.Pid != 0 && current.Group != pid) invalid = true;
                 if (current.Pid == 0) { _ = InspectKnown(item.Pid, out var observationLost); if (observationLost) invalid = true; }
             }
+            observed?.Invoke(Array.AsReadOnly(known.Values.ToArray()));
             return snapshot.Any(item => known.TryGetValue(item.Pid, out var previous) && previous.SameProcess(item) && item.Status != 5);
         }
         void Signal(int signal)

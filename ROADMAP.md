@@ -234,3 +234,7 @@ FUT-01 建議優先改善定位與讀取能力；FUT-05 也可依專案規則的
 - [Claude Code：Project instructions and memory](https://code.claude.com/docs/en/memory)：參考專案規則、適用範圍及規則與強制權限的區別。
 - [Claude Code：Checkpointing](https://code.claude.com/docs/en/checkpointing)：參考修改追蹤、回復與對話狀態的分別處理。
 - [Gemini CLI：Shell tool](https://geminicli.com/docs/tools/shell/)：參考命令執行、狀態與輸出的工具介面。
+
+## 第 25 份開發與驗收接續（2026-11-06～07）
+
+已依[獨立規格](specs/25-release-and-outstanding-acceptance.md)接續發布身分／停止邊界、原生測試輔具與逐案例驗收紀錄；詳細狀態見[當次證據](docs/acceptance/release-outstanding.md)。這是既有功能驗收補強，不新增 FUT。Release 掃描、真人／真服務、原生必要子項及第 24 份 MTP 分別判定；REVIEW-01～04 不連帶解除，沒有對外發布。

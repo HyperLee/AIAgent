@@ -15,7 +15,7 @@
 | REVIEW-01 | 新發現缺陷 | Release 發布命令連帶停用 ProcessHost apphost，造成發布失敗。 | 第 22 份修正已驗證；Release 掃描仍受阻。 |
 | REVIEW-02 | 新發現缺陷 | PTY 取消案例缺少假模型開始執行的同步條件，可能卡住後續回合。 | 已實作同步修正；整體回歸受環境限制，暫不解除 |
 | REVIEW-03 | 既有限制 | FUT-02 產品內受控 `test` 不支援，第 10 階段未完整驗收。 | 已有第 24 份規格；[候選相容性受阻](specs/24-controlled-mtp-test-support.md#mtp-candidate-check-20261105) |
-| REVIEW-04 | 未結驗收 | Release 掃描阻擋，真人、真實服務及部分原生／平台驗收未完成。 | 待另立規格處理 |
+| REVIEW-04 | 未結驗收 | Release 掃描阻擋，真人、真實服務及部分原生／平台驗收未完成。 | 第 25 份開發及分項驗收接續；整項未結。 |
 
 ## REVIEW-01：Release 發布失敗
 
@@ -100,6 +100,13 @@ dotnet publish src/AIAgent.Cli/AIAgent.Cli.csproj -c Release --no-restore --no-s
 ROADMAP 原方向中的建置失敗後自動修正或重試循環亦未提供，現有文件已明示另行定義；不得僅以 FUT-02 已有建置入口推論該延伸能力已交付。
 
 ## REVIEW-04：Release 與人工／真實服務驗收未結
+
+### 第 25 份開發接續（2026-11-06～07）
+
+已補強發布摘要一致性、完整產物內容／mode 身分與掃描後失效閘門，新增測試專用 C helper、PID＋開始身分 watchdog 及 N／H／S 逐項清單。當次命令、失敗、外層環境限制、官方相依候選及實際分層結果見[驗收紀錄](docs/acceptance/release-outstanding.md)。未修改掃描規則或廠商 DLL，正式相依保留；真人／真服務及必要 MTP 仍未結，REVIEW-04 不解除。
+
+2026-11-07 最終回歸為 MSTest 1373 通過／0 失敗／0 略過、Python 77 通過、完整 PTY 145 與取消組 90 通過；本輪範圍格式通過，全專案仍有三份既有差異。正式相依兩份新產物及兩個直接候選的四份新產物，均各掃描 25 檔、1 項 BUD-S003，未執行同產物 help；歷史與兩輪正式相依產物位置保留於證據紀錄，沒有用停止流程成功抵 Release 掃描。
+
 
 **狀態：待另立規格處理。**
 

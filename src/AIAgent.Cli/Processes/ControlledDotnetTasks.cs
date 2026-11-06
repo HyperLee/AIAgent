@@ -13,7 +13,7 @@ using AIAgent.Cli.Workspace;
 
 namespace AIAgent.Cli.Processes;
 
-internal sealed class ControlledDotnetTasksFactory : IControlledDotnetTasksFactory
+internal sealed class ControlledDotnetTasksFactory(Action<int>? observeWrapper = null, Action<ProcessObservation>? observeProcess = null) : IControlledDotnetTasksFactory
 {
     public bool IsAvailable
     {
@@ -27,13 +27,13 @@ internal sealed class ControlledDotnetTasksFactory : IControlledDotnetTasksFacto
     public IControlledDotnetTasks Create(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy,
         AgentExecutionPolicy execution, IWorkspaceFiles files,
         Func<ProcessApprovalPreview, CancellationToken, ValueTask<ProcessApprovalDecision>> approve, Action<string> progress) =>
-        new ControlledDotnetTasks(workspace, policy, execution, files, approve, progress);
+        new ControlledDotnetTasks(workspace, policy, execution, files, approve, progress, observeWrapper, observeProcess);
     public override string ToString() => "[ControlledDotnetTasksFactory]";
 }
 
 internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensitiveDataPolicy policy,
     AgentExecutionPolicy execution, IWorkspaceFiles files,
-    Func<ProcessApprovalPreview, CancellationToken, ValueTask<ProcessApprovalDecision>> approve, Action<string> progress)
+    Func<ProcessApprovalPreview, CancellationToken, ValueTask<ProcessApprovalDecision>> approve, Action<string> progress, Action<int>? observeWrapper = null, Action<ProcessObservation>? observeProcess = null)
     : IControlledDotnetTasks, IProcessTurnLifecycle
 {
     private readonly object _session = new();
@@ -137,6 +137,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                 if (!lease.IsCurrent || lifetime.IsCancellationRequested) return NotStarted("turn_cancelled", ToolStatus.Cancelled);
                 if (!_budget.TryStart(task, out budget)) return NotStarted("process_limit");
                 granted = true;
+                observeProcess?.Invoke(new(ProcessObservationPhase.BudgetStarted, Stopwatch.GetTimestamp(), (int)budget!.Timeout.TotalMilliseconds));
             }
             DotnetTaskResult result;
             using (budget)
@@ -217,7 +218,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             start.ArgumentList.Add(snapshot.Installation.HostExecutable); start.ArgumentList.Add(commands.GetClientHandleAsString()); start.ArgumentList.Add(events.GetClientHandleAsString());
             progress("受控 .NET 任務：正在驗證隔離與啟動監督器。");
             wrapper = new() { StartInfo = start };
-            if (!wrapper.Start()) throw new IOException(); wrapperStarted = true; wrapper.StandardInput.Close();
+            if (!wrapper.Start()) throw new IOException(); wrapperStarted = true; observeWrapper?.Invoke(wrapper.Id); wrapper.StandardInput.Close();
             commands.DisposeLocalCopyOfClientHandle(); events.DisposeLocalCopyOfClientHandle();
             stdout = output.ReadAsync(wrapper.StandardOutput.BaseStream, false, pipeReadCancellation.Token);
             stderr = output.ReadAsync(wrapper.StandardError.BaseStream, true, pipeReadCancellation.Token);
@@ -226,7 +227,9 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                 writer.Write(0x41494131); writer.Write((byte)(task == DotnetTaskKind.Build ? 0 : 1));
                 foreach (var field in new[] { snapshot.Root, snapshot.Installation.Executable, snapshot.Project, privateRoot, snapshot.Installation.Packages })
                 { var bytes = Encoding.UTF8.GetBytes(field); writer.Write(bytes.Length); writer.Write(bytes); }
-                writer.Write(Math.Max(1, (int)(budget.Timeout.TotalMilliseconds - budget.ElapsedMilliseconds))); writer.Flush();
+                var remaining = Math.Max(1, (int)(budget.Timeout.TotalMilliseconds - budget.ElapsedMilliseconds));
+                var sentAt = Stopwatch.GetTimestamp(); writer.Write(remaining); writer.Flush();
+                observeProcess?.Invoke(new(ProcessObservationPhase.DescriptorSent, sentAt, remaining));
             }
             control = Task.Run(() =>
             {
@@ -237,10 +240,13 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
                     {
                         case 1:
                             if (Interlocked.Exchange(ref started, reader.ReadInt32()) != 0 || Volatile.Read(ref started) <= 0) throw new IOException();
+                            observeProcess?.Invoke(new(ProcessObservationPhase.TargetStarted, Stopwatch.GetTimestamp(), TargetPid: Volatile.Read(ref started)));
                             break;
                         case 5:
                             if (Interlocked.Exchange(ref cleanupStarted, 1) != 0) throw new IOException();
-                            StartCleanupDeadline(); budget.Dispose(); timeout.OnCleanupStarted(); break;
+                            StartCleanupDeadline();
+                            observeProcess?.Invoke(new(ProcessObservationPhase.CleanupStarted, Volatile.Read(ref cleanupStartedAt)));
+                            budget.Dispose(); timeout.OnCleanupStarted(); break;
                         case 2: return new HostReply(true, reader.ReadBooleanAfterInt32(out var exit), reader.ReadBoolean(), reader.ReadBoolean(), exit);
                         case 3: return new HostReply(false, false, true, false, -1);
                         case 4: throw new IOException();
@@ -319,6 +325,7 @@ internal sealed class ControlledDotnetTasks(ConfirmedWorkspace workspace, ISensi
             output.StdoutTruncated, output.StderrTruncated, output.State);
         var status = error == "none" ? ToolStatus.Success : end == ProcessEndState.Cancelled ? ToolStatus.Cancelled :
             !reply.TargetAttempted && !unconfirmed ? ToolStatus.Rejected : ToolStatus.Failed;
+        observeProcess?.Invoke(new(ProcessObservationPhase.Finished, Stopwatch.GetTimestamp()));
         try { return new(ProcessResultWriter.Create(status, error, summary, output, policy, error != "none")); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException)
         { return new(new(status, error, null, processSummary: summary, processCleanupFailed: summary.CleanupFailed, stopAfterOperation: true)); }

@@ -20,6 +20,10 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from _sensitive_scan.artifacts import open_root
+from _sensitive_scan.common import Limits, ScanError
+
 SCANNER = ROOT / "scripts/check_sensitive_content.py"
 CLI = "src/AIAgent.Cli/AIAgent.Cli.csproj"
 HOST = "src/AIAgent.ProcessHost/AIAgent.ProcessHost.csproj"
@@ -143,6 +147,107 @@ def validate_publish(output, built_host):
 
 
 @dataclass(frozen=True)
+class ArtifactIdentity:
+    root_device: int
+    root_inode: int
+    manifest_hash: str
+    file_count: int
+
+
+def artifact_identity(output):
+    """Identity only, not a content scanner or an authorization to launch.
+
+    v1: byte-sorted, length-prefixed relative names, kind, permission bits and
+    SHA-256 of every regular file, including hidden and non-UTF-8 names.
+    Two stable descriptor-based observations also reject concurrent exchange.
+    """
+    def signature(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns)
+
+    def capture(root):
+        records, states = [], []
+        total, files = 0, 0
+
+        def walk(descriptor, relative):
+            nonlocal total, files
+            before = os.fstat(descriptor)
+            names = []
+            with os.scandir(descriptor) as iterator:
+                for item in iterator:
+                    require(len(states) + len(names) < Limits.MaxScanEntries,
+                            "identity_limit")
+                    names.append(os.fsencode(item.name))
+            records.append((relative, b"D", stat.S_IMODE(before.st_mode), b""))
+            states.append((relative, signature(before)))
+            for name in sorted(names):
+                path = relative + b"/" + name if relative else name
+                require(len(path) <= Limits.MaxScanPathBytes and
+                        len(path.split(b"/")) <= Limits.MaxScanDepth, "identity_limit")
+                value = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+                require(stat.S_ISDIR(value.st_mode) or stat.S_ISREG(value.st_mode),
+                        "identity_entry_invalid")
+                flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+                if stat.S_ISDIR(value.st_mode):
+                    flags |= os.O_DIRECTORY
+                child = os.open(name, flags, dir_fd=descriptor)
+                try:
+                    require(signature(os.fstat(child)) == signature(value), "artifact_changed")
+                    if stat.S_ISDIR(value.st_mode):
+                        walk(child, path)
+                    else:
+                        require(len(states) < Limits.MaxScanEntries and
+                                value.st_size <= Limits.MaxScanFileBytes and
+                                total + value.st_size <= Limits.MaxScanTotalBytes,
+                                "identity_limit")
+                        total += value.st_size
+                        count, content = 0, hashlib.sha256()
+                        while True:
+                            block = os.read(child, min(65536, value.st_size + 1 - count))
+                            if not block:
+                                break
+                            count += len(block)
+                            require(count <= value.st_size, "artifact_changed")
+                            content.update(block)
+                        require(count == value.st_size, "artifact_changed")
+                        files += 1
+                        records.append((path, b"F", stat.S_IMODE(value.st_mode), content.digest()))
+                        states.append((path, signature(value)))
+                    require(signature(os.fstat(child)) == signature(value) and
+                            signature(os.stat(name, dir_fd=descriptor, follow_symlinks=False)) ==
+                            signature(value), "artifact_changed")
+                finally:
+                    os.close(child)
+            require(signature(os.fstat(descriptor)) == signature(before), "artifact_changed")
+
+        walk(root, b"")
+        result = hashlib.sha256(b"AIAgent-artifact-identity-v1\0")
+        for path, kind, mode, content in sorted(records):
+            result.update(len(path).to_bytes(4, "big"))
+            result.update(path + kind + mode.to_bytes(4, "big") + content)
+        return result.hexdigest(), files, tuple(sorted(states))
+
+    root = None
+    try:
+        root, chain = open_root(output)
+        initial = os.fstat(root)
+        first = capture(root)
+        require(first == capture(root), "artifact_changed")
+        fresh, current_chain = open_root(output)
+        try:
+            require(chain == current_chain and signature(initial) == signature(os.fstat(fresh)),
+                    "artifact_changed")
+        finally:
+            os.close(fresh)
+        return ArtifactIdentity(initial.st_dev, initial.st_ino, first[0], first[1])
+    except (OSError, ScanError):
+        raise PublishFailure("PUB-artifact_identity_unavailable") from None
+    finally:
+        if root is not None:
+            os.close(root)
+
+
+@dataclass(frozen=True)
 class ScanSummary:
     exit_code: int
     status: str
@@ -156,22 +261,33 @@ def scan_summary(result):
     lines = result.stdout.splitlines()
     require(bool(lines), "scan_summary_missing")
     summary = re.fullmatch(rb"\[scan\] mode=artifacts status=(passed|blocked|incomplete) "
-                           rb"scanned_files=([0-9]+) findings=([0-9]+)", lines[-1])
+                           rb"scanned_files=([0-9]{1,5}) findings=([0-9]{1,5})", lines[-1])
     require(summary is not None, "scan_summary_invalid")
-    rules = []
+    rules, entries, errors = [], set(), []
     for line in lines[:-1]:
-        finding = re.fullmatch(rb"\[finding\] item=[0-9]+ rule=(BUD-S[0-9]{3})", line)
+        finding = re.fullmatch(rb"\[finding\] item=([0-9]{6}) rule=(BUD-S00[1-6])", line)
         if finding:
-            rules.append(finding[1].decode("ascii"))
+            require(0 < int(finding[1]) <= Limits.MaxScanEntries and line not in entries,
+                    "scan_finding_invalid")
+            entries.add(line)
+            rules.append(finding[2].decode("ascii"))
         else:
             require(re.fullmatch(rb"\[error\] code=[a-z_]+", line) is not None,
                     "scan_output_invalid")
+            errors.append(line)
     status = summary[1].decode("ascii")
     findings = int(summary[3])
     require(findings == len(rules), "scan_count_invalid")
     require((result.returncode, status) in ((0, "passed"), (1, "blocked"),
                                           (2, "incomplete")), "scan_exit_invalid")
     require(status != "passed" or findings == 0, "scan_pass_invalid")
+    require((status == "incomplete") == bool(errors) and len(errors) <= 1,
+            "scan_error_invalid")
+    require(status != "blocked" or findings > 0, "scan_block_invalid")
+    require(status == "incomplete" or int(summary[2]) >= len(CLI_FILES) + len(HOST_FILES),
+            "scan_file_count_invalid")
+    require(int(summary[2]) <= Limits.MaxScanEntries and findings <= 6 * Limits.MaxScanEntries,
+            "scan_count_invalid")
     return ScanSummary(result.returncode, status, int(summary[2]), findings,
                        tuple(sorted(set(rules))))
 
@@ -180,17 +296,24 @@ def scan_summary(result):
 class ReleaseOutcome:
     scan: ScanSummary
     help_exit: Optional[int] = None
+    identity: Optional[ArtifactIdentity] = None
 
 
 def release_steps(fixture, output):
     succeeded(fixture.publish(output), "publish")
     fixture.validate(output)
+    identity = fixture.identity(output)
     scan = scan_summary(fixture.scan(output))
+    require(identity == fixture.identity(output), "artifact_changed")
+    require(scan.exit_code == 2 or scan.scanned_files == identity.file_count,
+            "scan_manifest_count_mismatch")
     if scan.exit_code != 0:
-        return ReleaseOutcome(scan)
+        return ReleaseOutcome(scan, identity=identity)
+    require(identity == fixture.identity(output), "artifact_changed")
     help_result = fixture.help(output)
+    require(identity == fixture.identity(output), "artifact_changed")
     succeeded(help_result, "help")
-    return ReleaseOutcome(scan, help_result.returncode)
+    return ReleaseOutcome(scan, help_result.returncode, identity)
 
 
 class SdkFixture:
@@ -204,6 +327,7 @@ class SdkFixture:
                     ("PATH", "DOTNET_ROOT", "TMPDIR", "LANG", "LC_ALL")
                     if name in os.environ}
         self.env.update(DOTNET_CLI_TELEMETRY_OPTOUT="1", DOTNET_NOLOGO="1",
+                        DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE="1",
                         DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1",
                         DOTNET_EnableDiagnostics="0",
                         DOTNET_CLI_HOME=str(self.root / "sdk-home"),
@@ -245,6 +369,9 @@ class SdkFixture:
 
     def scan(self, output):
         return self.run(sys.executable, "-B", str(SCANNER), "artifacts", "--path", str(output))
+
+    def identity(self, output):
+        return artifact_identity(output)
 
     def help(self, output):
         return self.run("dotnet", str(output / "AIAgent.Cli.dll"), "--help")
@@ -288,11 +415,20 @@ class ReleaseSdkTests(unittest.TestCase):
             output = fixture.root / name
             outcome = release_steps(fixture, output)
             scan = outcome.scan
+            identity = outcome.identity
+            record = dict(manifest_format="AIAgent-artifact-identity-v1", output=str(output),
+                          source=str(fixture.source), configuration="Release",
+                          root_device=identity.root_device, root_inode=identity.root_inode,
+                          manifest_sha256=identity.manifest_hash, file_count=identity.file_count,
+                          scan_exit=scan.exit_code, scan_status=scan.status,
+                          findings=scan.findings, rules=scan.rules, help_exit=outcome.help_exit)
+            (fixture.root / (name + ".identity.json")).write_text(json.dumps(record, indent=2))
             print("[pub] output=" + str(output) + " publish=0 structure=passed scan_exit="
                   + str(scan.exit_code) + " scan_status=" + scan.status + " scanned_files="
                   + str(scan.scanned_files) + " findings=" + str(scan.findings) + " rules="
                   + (",".join(scan.rules) or "none") + " help="
-                  + ("not_run release=blocked" if outcome.help_exit is None else "0 release=passed"),
+                  + ("not_run release=blocked" if outcome.help_exit is None else "0 release=passed")
+                  + " manifest_sha256=" + identity.manifest_hash,
                   flush=True)
             if scan.exit_code != 0:
                 require(scan.exit_code == 1 and scan.status == "blocked" and scan.findings > 0
@@ -308,8 +444,12 @@ class ReleaseBoundaryTests(unittest.TestCase):
 
     def fixture(self, scan_code=0):
         status = {0: b"passed", 1: b"blocked", 2: b"incomplete"}[scan_code]
-        output = b"[scan] mode=artifacts status=" + status + b" scanned_files=8 findings=0\n"
+        output = (b"[finding] item=000001 rule=BUD-S003\n" if scan_code == 1 else
+                  b"[error] code=scan_changed\n" if scan_code == 2 else b"")
+        output += (b"[scan] mode=artifacts status=" + status + b" scanned_files=8 findings=" +
+                   (b"1" if scan_code == 1 else b"0") + b"\n")
         fixture = mock.Mock()
+        fixture.identity.return_value = ArtifactIdentity(0, 0, "synthetic", 8)
         fixture.publish.return_value = self.completed()
         fixture.scan.return_value = self.completed(scan_code, output)
         fixture.help.return_value = self.completed()
@@ -347,7 +487,9 @@ class ReleaseBoundaryTests(unittest.TestCase):
         outcome = release_steps(fixture, output)
         require(outcome.help_exit == 0, "help_missing")
         self.assertTrue(fixture.mock_calls == [mock.call.publish(output), mock.call.validate(output),
-                                              mock.call.scan(output), mock.call.help(output)],
+                                              mock.call.identity(output), mock.call.scan(output),
+                                              mock.call.identity(output), mock.call.identity(output),
+                                              mock.call.help(output), mock.call.identity(output)],
                         "PUB-release_order")
 
     def test_PUBAC006_help_failure_is_not_success(self):
